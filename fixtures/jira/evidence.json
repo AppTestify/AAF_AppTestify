@@ -1,0 +1,21 @@
+{
+  "simulated": true,
+  "issues": [
+    {
+      "key": "PROJ-101",
+      "fields": {
+        "summary": "Blocked: waiting on API contract",
+        "status": {"name": "Blocked"},
+        "issuetype": {"name": "Story"}
+      }
+    },
+    {
+      "key": "PROJ-88",
+      "fields": {
+        "summary": "Regression in checkout flow",
+        "status": {"name": "In Progress"},
+        "issuetype": {"name": "Bug"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "simulated": true,
+  "pull_requests": [
+    {
+      "number": 42,
+      "title": "Release candidate: payment service rollout",
+      "state": "open",
+      "draft": false
+    }
+  ],
+  "workflow_runs": [
+    {
+      "id": 9001,
+      "name": "ci",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "id": 9002,
+      "name": "deploy-staging",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "issues": [
+    {
+      "title": "Intermittent 503 after last deploy",
+      "labels": [{"name": "bug"}, {"name": "incident"}]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "simulated": true,
+  "daily_spend": [
+    {
+      "day": "2026-05-01",
+      "amount_usd": 4200.0,
+      "baseline_usd": 3000.0
+    }
+  ],
+  "anomalies": [
+    {
+      "description": "EC2 compute spike after autoscaling event",
+      "severity": 0.72
+    }
+  ]
+}

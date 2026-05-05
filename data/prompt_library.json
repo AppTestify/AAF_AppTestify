@@ -1,0 +1,24 @@
+{
+  "prompts": [
+    {
+      "id": "release-readiness",
+      "text": "Are we safe to release the current build based on GitHub activity?",
+      "tags": ["github", "release"]
+    },
+    {
+      "id": "sprint-blockers",
+      "text": "What is blocking the sprint and what should I escalate?",
+      "tags": ["jira", "delivery"]
+    },
+    {
+      "id": "cost-deployment",
+      "text": "Did the recent deployment increase cloud cost, and should we adjust capacity?",
+      "tags": ["finops", "cost"]
+    },
+    {
+      "id": "holistic",
+      "text": "Summarize delivery risk, release readiness, and cloud cost impact for this week.",
+      "tags": ["github", "jira", "finops"]
+    }
+  ]
+}

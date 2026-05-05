@@ -2,14 +2,57 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from pathlib import Path
+import logging
+import time
+from uuid import uuid4
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from aaf.config import get_settings
-from app.routers import governance, prompts
+from aaf.config import get_settings, validate_runtime_safety
+from app import db as db_mod
+from app.bootstrap import bootstrap_tenancy, create_tables
+from app.db import get_engine, init_db
+from app.routers import (
+    admin_tenants,
+    auth,
+    governance,
+    governance_policy,
+    governance_v1,
+    prompts,
+    rbac,
+    reports,
+    tenant_config,
+)
+from app.services.run_jobs import start_worker, stop_worker
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    validate_runtime_safety(settings)
+    if settings.database_url.startswith("sqlite") and ":memory:" not in settings.database_url:
+        Path("data").mkdir(parents=True, exist_ok=True)
+    init_db(settings.database_url)
+    create_tables()
+    db = db_mod.SessionLocal()
+    try:
+        bootstrap_tenancy(db, settings)
+    finally:
+        db.close()
+    start_worker()
+    yield
+    stop_worker()
+    # dispose engine on shutdown (helps tests / reload)
+    get_engine().dispose()
+
 
 settings = get_settings()
-app = FastAPI(title="AgileOps Agentic Framework", version="0.1.0")
+app = FastAPI(title="AgileOps Agentic Framework", version="0.1.0", lifespan=lifespan)
+_log = logging.getLogger("aaf.api")
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
@@ -20,8 +63,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid4())
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception:  # noqa: BLE001
+        elapsed_ms = int((time.time() - start) * 1000)
+        _log.exception(
+            "request_failed",
+            extra={
+                "request_id": request_id,
+                "path": request.url.path,
+                "method": request.method,
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+        return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
+    elapsed_ms = int((time.time() - start) * 1000)
+    response.headers["x-request-id"] = request_id
+    _log.info(
+        "request_complete",
+        extra={
+            "request_id": request_id,
+            "path": request.url.path,
+            "method": request.method,
+            "status_code": response.status_code,
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+    return response
+
+app.include_router(auth.router, prefix=settings.api_v1_prefix)
+app.include_router(admin_tenants.router, prefix=settings.api_v1_prefix)
 app.include_router(governance.router, prefix=settings.api_v1_prefix)
+app.include_router(governance_v1.router, prefix=settings.api_v1_prefix)
+app.include_router(governance_policy.router, prefix=settings.api_v1_prefix)
+app.include_router(rbac.router, prefix=settings.api_v1_prefix)
+app.include_router(reports.router, prefix=settings.api_v1_prefix)
 app.include_router(prompts.router, prefix=settings.api_v1_prefix)
+app.include_router(tenant_config.router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/health")

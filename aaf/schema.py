@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -37,7 +37,7 @@ class EvidenceRecord(BaseModel):
     kind: str  # e.g. pr_failed, blocked_issue, cost_spike
     summary: str
     severity: float = Field(ge=0.0, le=1.0, default=0.5)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentOpinion(BaseModel):
@@ -46,15 +46,15 @@ class AgentOpinion(BaseModel):
     agent_id: str
     claim: str
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence_refs: list[str] = Field(default_factory=list)
+    evidence_refs: List[str] = Field(default_factory=list)
     risk_theme: RiskTheme = RiskTheme.UNKNOWN
-    raw_signals: dict[str, Any] = Field(default_factory=dict)
+    raw_signals: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ConsensusResult(BaseModel):
     consensus_score: float = Field(ge=0.0, le=1.0)
-    theme_counts: dict[str, int] = Field(default_factory=dict)
-    dominant_theme: RiskTheme | None = None
+    theme_counts: Dict[str, int] = Field(default_factory=dict)
+    dominant_theme: Optional[RiskTheme] = None
     notes: str = ""
 
 
@@ -63,36 +63,36 @@ class RARResult(BaseModel):
     rar_loops: int
     consensus_before: float
     consensus_after: float
-    reground_notes: list[str] = Field(default_factory=list)
+    reground_notes: List[str] = Field(default_factory=list)
 
 
 class UtilityResult(BaseModel):
     recommended_action: GovernanceAction
     utility_score: float
-    scores_by_action: dict[str, float] = Field(default_factory=dict)
-    weights_used: dict[str, float] = Field(default_factory=dict)
+    scores_by_action: Dict[str, float] = Field(default_factory=dict)
+    weights_used: Dict[str, float] = Field(default_factory=dict)
 
 
 class ExplainabilityResult(BaseModel):
     xi_score: float = Field(ge=0.0, le=1.0, description="Explainability index 0-1")
-    checks: dict[str, bool] = Field(default_factory=dict)
+    checks: Dict[str, bool] = Field(default_factory=dict)
 
 
 class PMFormattedDecision(BaseModel):
     title: str
     summary_markdown: str
-    detail_json: dict[str, Any] = Field(default_factory=dict)
+    detail_json: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PipelineResult(BaseModel):
     """Full run output for API and UI."""
 
     prompt: str
-    prompt_id: str | None = None
-    connectors_used: list[str] = Field(default_factory=list)
-    raw_evidence_by_connector: dict[str, Any] = Field(default_factory=dict)
-    normalized_evidence: list[EvidenceRecord] = Field(default_factory=list)
-    agent_opinions: list[AgentOpinion] = Field(default_factory=list)
+    prompt_id: Optional[str] = None
+    connectors_used: List[str] = Field(default_factory=list)
+    raw_evidence_by_connector: Dict[str, Any] = Field(default_factory=dict)
+    normalized_evidence: List[EvidenceRecord] = Field(default_factory=list)
+    agent_opinions: List[AgentOpinion] = Field(default_factory=list)
     consensus: ConsensusResult
     rar: RARResult
     utility: UtilityResult

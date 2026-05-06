@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveDecision, createCase, createDecision, fetchCasesAdvanced, type Decision, type GovernanceCase } from "../api";
+import { useSearchParams } from "react-router-dom";
+import {
+  approveDecision,
+  createCase,
+  createDecision,
+  fetchCasesAdvanced,
+  fetchPortfolioProjects,
+  type Decision,
+  type GovernanceCase,
+  type PortfolioProject,
+} from "../api";
 
 type WorkspaceCasesPageProps = {
   token: string;
@@ -8,8 +18,19 @@ type WorkspaceCasesPageProps = {
 };
 
 export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCasesPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
+  const setListProjectFilter = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set("portfolio_project_id", v);
+    else next.delete("portfolio_project_id");
+    setSearchParams(next, { replace: true });
+  };
+
   const [cases, setCases] = useState<GovernanceCase[]>([]);
+  const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [title, setTitle] = useState("");
+  const [createProjectId, setCreateProjectId] = useState<string>("");
   const [selectedCase, setSelectedCase] = useState<GovernanceCase | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +40,12 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   const [query, setQuery] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(false);
+  const projectById = useMemo(() => {
+    const m = new Map<number, PortfolioProject>();
+    for (const p of projects) m.set(p.id, p);
+    return m;
+  }, [projects]);
+
   const caseStats = useMemo(() => {
     const draft = cases.filter((c) => c.status === "new").length;
     const review = cases.filter((c) => c.status === "in_review").length;
@@ -26,6 +53,12 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
     const closed = cases.filter((c) => c.status === "closed").length;
     return { draft, review, approved, closed };
   }, [cases]);
+
+  useEffect(() => {
+    fetchPortfolioProjects(token)
+      .then(setProjects)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
+  }, [token]);
 
   const loadCases = async () => {
     try {
@@ -35,6 +68,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
         limit: 50,
         offset,
         query: query || undefined,
+        portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
       });
       setCases(rows);
     } finally {
@@ -45,13 +79,21 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   useEffect(() => {
     loadCases().catch((e) => setError(e instanceof Error ? e.message : "Failed to load cases"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, statusFilter, offset, query]);
+  }, [token, statusFilter, offset, query, listProjectFilter]);
 
   const handleCreateCase = async () => {
     if (!title.trim()) return;
     try {
-      const row = await createCase(token, { title: title.trim() }, tenantSlug);
+      const row = await createCase(
+        token,
+        {
+          title: title.trim(),
+          portfolio_project_id: createProjectId ? Number(createProjectId) : null,
+        },
+        tenantSlug
+      );
       setTitle("");
+      setCreateProjectId("");
       setSelectedCase(row);
       setToast(`Case #${row.id} created`);
       setTimeout(() => setToast(null), 2200);
@@ -143,6 +185,22 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
           <label htmlFor="case-title" className="field-label-required">Title</label>
           <input id="case-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canManage} />
         </div>
+        <div className="form-row">
+          <label htmlFor="case-portfolio-project">Portfolio project (optional)</label>
+          <select
+            id="case-portfolio-project"
+            value={createProjectId}
+            onChange={(e) => setCreateProjectId(e.target.value)}
+            disabled={!canManage}
+          >
+            <option value="">None</option>
+            {projects.map((p) => (
+              <option key={p.id} value={String(p.id)}>
+                {p.key} — {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primary" type="button" disabled={!canManage || !title.trim()} onClick={handleCreateCase}>
           Create case
         </button>
@@ -170,6 +228,21 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
             <label htmlFor="case-query-filter">Search title</label>
             <input id="case-query-filter" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
+          <div className="form-row">
+            <label htmlFor="case-project-filter">Project</label>
+            <select
+              id="case-project-filter"
+              value={listProjectFilter}
+              onChange={(e) => setListProjectFilter(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.key} — {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             className="btn btn-ghost btn-sm"
             type="button"
@@ -190,6 +263,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
               <tr>
                 <th>ID</th>
                 <th>Title</th>
+                <th>Project</th>
                 <th>Status</th>
                 <th>Updated</th>
               </tr>
@@ -199,6 +273,11 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
                   <tr key={c.id} onClick={() => setSelectedCase(c)} className={selectedCase?.id === c.id ? "row-selected" : ""}>
                     <td>#{c.id}</td>
                     <td>{c.title}</td>
+                    <td className="mono">
+                      {c.portfolio_project_id != null
+                        ? projectById.get(c.portfolio_project_id)?.key ?? `#${c.portfolio_project_id}`
+                        : "—"}
+                    </td>
                     <td>
                       <span className={`status-chip ${c.status}`}>{c.status}</span>
                     </td>
@@ -207,7 +286,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
                 ))}
               {cases.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="table-empty">
+                  <td colSpan={5} className="table-empty">
                     No cases found for the current filters.
                   </td>
                 </tr>
@@ -227,6 +306,12 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
             <span className={`status-chip ${selectedCase.status}`}>{selectedCase.status}</span>
           </div>
           <p className="mono">{selectedCase.title}</p>
+          {selectedCase.portfolio_project_id != null ? (
+            <p className="workspace-meta mono">
+              Project:{" "}
+              {projectById.get(selectedCase.portfolio_project_id)?.key ?? `#${selectedCase.portfolio_project_id}`}
+            </p>
+          ) : null}
           <div className="actions">
             <button className="btn btn-ghost" type="button" onClick={handleCreateDecision} disabled={!canManage || decisionLoading}>
               {decisionLoading ? "Processing…" : "Create decision"}

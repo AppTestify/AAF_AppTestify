@@ -16,6 +16,9 @@ class GovernanceRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    portfolio_project_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("portfolio_projects.id"), nullable=True, index=True
+    )
     requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -44,6 +47,9 @@ class GovernanceCase(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    portfolio_project_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("portfolio_projects.id"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="new", nullable=False, index=True)
     owner_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

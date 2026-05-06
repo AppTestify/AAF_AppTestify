@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
-from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun
+from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun, PortfolioProject
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.config_resolver import resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/governance", tags=["governance-v1"])
 class CreateRunBody(BaseModel):
     prompt: str = Field(min_length=1)
     prompt_id: Optional[str] = None
+    portfolio_project_id: Optional[int] = None
 
 
 class RunOut(BaseModel):
@@ -31,6 +33,7 @@ class RunOut(BaseModel):
     prompt: str
     prompt_id: Optional[str] = None
     tenant_id: Optional[int] = None
+    portfolio_project_id: Optional[int] = None
     retry_count: int
     error_message: Optional[str] = None
     runtime_config_json: dict
@@ -44,11 +47,13 @@ class CaseCreateBody(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     run_id: Optional[int] = None
     owner_user_id: Optional[int] = None
+    portfolio_project_id: Optional[int] = None
 
 
 class CaseOut(BaseModel):
     id: int
     tenant_id: Optional[int] = None
+    portfolio_project_id: Optional[int] = None
     title: str
     status: str
     owner_user_id: Optional[int] = None
@@ -62,6 +67,7 @@ class CasePatchBody(BaseModel):
     status: Optional[str] = None
     owner_user_id: Optional[int] = None
     latest_run_id: Optional[int] = None
+    portfolio_project_id: Optional[int] = None
 
 
 class DecisionCreateBody(BaseModel):
@@ -110,6 +116,65 @@ class EvidenceOut(BaseModel):
     created_at: datetime
 
 
+def _validate_portfolio_project_for_context(
+    db: Session,
+    current: User,
+    tenant: Optional[Tenant],
+    portfolio_project_id: Optional[int],
+) -> Optional[int]:
+    if portfolio_project_id is None:
+        return None
+    project = db.get(PortfolioProject, portfolio_project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio project not found")
+    if not current.is_superadmin:
+        if project.tenant_id != current.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this portfolio project")
+        return portfolio_project_id
+    if tenant is not None and project.tenant_id is not None and project.tenant_id != tenant.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Portfolio project is not in the selected tenant context"
+        )
+    return portfolio_project_id
+
+
+def _validate_portfolio_project_for_case_row(
+    db: Session,
+    current: User,
+    case_row: GovernanceCase,
+    portfolio_project_id: Optional[int],
+) -> Optional[int]:
+    if portfolio_project_id is None:
+        return None
+    project = db.get(PortfolioProject, portfolio_project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio project not found")
+    if not current.is_superadmin:
+        if project.tenant_id != current.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this portfolio project")
+        return portfolio_project_id
+    if case_row.tenant_id is not None and project.tenant_id is not None and project.tenant_id != case_row.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Portfolio project is not in the same tenant as this case"
+        )
+    return portfolio_project_id
+
+
+def _case_out(row: GovernanceCase) -> CaseOut:
+    return CaseOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        portfolio_project_id=row.portfolio_project_id,
+        title=row.title,
+        status=row.status,
+        owner_user_id=row.owner_user_id,
+        latest_run_id=row.latest_run_id,
+        created_by_user_id=row.created_by_user_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def _run_out(row: GovernanceRun) -> RunOut:
     return RunOut(
         id=row.id,
@@ -117,6 +182,7 @@ def _run_out(row: GovernanceRun) -> RunOut:
         prompt=row.prompt,
         prompt_id=row.prompt_id,
         tenant_id=row.tenant_id,
+        portfolio_project_id=row.portfolio_project_id,
         retry_count=row.retry_count,
         error_message=row.error_message,
         runtime_config_json=row.runtime_config_json,
@@ -135,11 +201,13 @@ def create_run_v1(
     current: User = Depends(require_permission("runs.create")),
 ):
     tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    portfolio_project_id = _validate_portfolio_project_for_context(db, current, tenant, body.portfolio_project_id)
     run = GovernanceRun(
         tenant_id=tenant.id if tenant else None,
         requested_by_user_id=current.id,
         prompt=body.prompt.strip(),
         prompt_id=body.prompt_id,
+        portfolio_project_id=portfolio_project_id,
         status="queued",
         runtime_config_json={"tenant_slug": tenant.slug if tenant else None},
     )
@@ -180,6 +248,7 @@ def get_run_v1(
 def list_runs_v1(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     prompt_contains: Optional[str] = Query(default=None),
+    portfolio_project_id: Optional[int] = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -192,6 +261,8 @@ def list_runs_v1(
         q = q.where(GovernanceRun.status == status_filter)
     if prompt_contains:
         q = q.where(GovernanceRun.prompt.ilike(f"%{prompt_contains.strip()}%"))
+    if portfolio_project_id is not None:
+        q = q.where(GovernanceRun.portfolio_project_id == portfolio_project_id)
     rows = db.execute(q).scalars().all()
     return [_run_out(r) for r in rows]
 
@@ -204,12 +275,28 @@ def create_case(
     current: User = Depends(require_permission("cases.manage")),
 ):
     tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    effective_project_id: Optional[int] = body.portfolio_project_id
+    if body.run_id is not None:
+        run = db.get(GovernanceRun, body.run_id)
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+        if not current.is_superadmin and current.tenant_id != run.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+        if body.portfolio_project_id is None:
+            effective_project_id = run.portfolio_project_id
+        elif run.portfolio_project_id is not None and body.portfolio_project_id != run.portfolio_project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="portfolio_project_id does not match the linked run's portfolio project",
+            )
+    portfolio_project_id = _validate_portfolio_project_for_context(db, current, tenant, effective_project_id)
     case = GovernanceCase(
         tenant_id=tenant.id if tenant else None,
         title=body.title.strip(),
         status="new",
         owner_user_id=body.owner_user_id,
         latest_run_id=body.run_id,
+        portfolio_project_id=portfolio_project_id,
         created_by_user_id=current.id,
     )
     db.add(case)
@@ -227,13 +314,14 @@ def create_case(
     )
     db.commit()
     db.refresh(case)
-    return CaseOut(**case.__dict__)
+    return _case_out(case)
 
 
 @router.get("/cases", response_model=list[CaseOut])
 def list_cases(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     title_contains: Optional[str] = Query(default=None),
+    portfolio_project_id: Optional[int] = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -246,14 +334,17 @@ def list_cases(
         q = q.where(GovernanceCase.status == status_filter)
     if title_contains:
         q = q.where(GovernanceCase.title.ilike(f"%{title_contains.strip()}%"))
+    if portfolio_project_id is not None:
+        q = q.where(GovernanceCase.portfolio_project_id == portfolio_project_id)
     rows = db.execute(q).scalars().all()
-    return [CaseOut(**r.__dict__) for r in rows]
+    return [_case_out(r) for r in rows]
 
 
 @router.get("/evidence", response_model=list[EvidenceOut])
 def list_evidence(
     connector: Optional[str] = Query(default=None),
     run_id: Optional[int] = Query(default=None),
+    portfolio_project_id: Optional[int] = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -272,6 +363,8 @@ def list_evidence(
         q = q.where(EvidenceSnapshot.connector_name == connector)
     if run_id is not None:
         q = q.where(EvidenceSnapshot.run_id == run_id)
+    if portfolio_project_id is not None:
+        q = q.where(GovernanceRun.portfolio_project_id == portfolio_project_id)
     rows = db.execute(q).scalars().all()
     return [EvidenceOut(**r.__dict__) for r in rows]
 
@@ -292,8 +385,42 @@ def update_case(
         row.status = body.status
     if body.owner_user_id is not None:
         row.owner_user_id = body.owner_user_id
+
+    effective_project_for_run_check = (
+        body.portfolio_project_id if body.portfolio_project_id is not None else row.portfolio_project_id
+    )
     if body.latest_run_id is not None:
+        linked_run = db.get(GovernanceRun, body.latest_run_id)
+        if linked_run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+        if not current.is_superadmin and current.tenant_id != linked_run.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+        if (
+            effective_project_for_run_check is not None
+            and linked_run.portfolio_project_id is not None
+            and effective_project_for_run_check != linked_run.portfolio_project_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="latest_run_id does not match the case portfolio project",
+            )
         row.latest_run_id = body.latest_run_id
+
+    if body.portfolio_project_id is not None:
+        _validate_portfolio_project_for_case_row(db, current, row, body.portfolio_project_id)
+        run_id_check = row.latest_run_id
+        if run_id_check is not None:
+            linked_run = db.get(GovernanceRun, run_id_check)
+            if (
+                linked_run is not None
+                and linked_run.portfolio_project_id is not None
+                and linked_run.portfolio_project_id != body.portfolio_project_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="portfolio_project_id does not match the case latest run's portfolio project",
+                )
+        row.portfolio_project_id = body.portfolio_project_id
     row.updated_at = datetime.now(timezone.utc)
     db.add(
         AuditEvent(
@@ -308,7 +435,7 @@ def update_case(
     )
     db.commit()
     db.refresh(row)
-    return CaseOut(**row.__dict__)
+    return _case_out(row)
 
 
 @router.post("/cases/{case_id}/decisions", response_model=DecisionOut, status_code=status.HTTP_201_CREATED)

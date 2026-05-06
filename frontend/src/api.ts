@@ -381,6 +381,7 @@ export type GovernanceRunV1 = {
   prompt: string;
   prompt_id: string | null;
   tenant_id: number | null;
+  portfolio_project_id: number | null;
   retry_count: number;
   error_message: string | null;
   runtime_config_json: Record<string, unknown>;
@@ -393,6 +394,7 @@ export type GovernanceRunV1 = {
 export type GovernanceCase = {
   id: number;
   tenant_id: number | null;
+  portfolio_project_id: number | null;
   title: string;
   status: string;
   owner_user_id: number | null;
@@ -720,7 +722,7 @@ export async function fetchWorkflowRuns(token: string, workflowType?: string): P
 
 export async function createGovernanceRun(
   token: string,
-  body: { prompt: string; prompt_id?: string | null },
+  body: { prompt: string; prompt_id?: string | null; portfolio_project_id?: number | null },
   tenantSlug?: string | null
 ): Promise<GovernanceRunV1> {
   const r = await fetch(`${API}/governance/runs${tenantQuery(tenantSlug)}`, {
@@ -742,13 +744,16 @@ export async function fetchGovernanceRun(token: string, runId: number): Promise<
 
 export async function fetchGovernanceRuns(
   token: string,
-  params?: { status?: string; limit?: number; offset?: number; query?: string }
+  params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
 ): Promise<GovernanceRunV1[]> {
   const search = new URLSearchParams();
   if (params?.status) search.set("status", params.status);
   if (params?.limit) search.set("limit", String(params.limit));
   if (typeof params?.offset === "number") search.set("offset", String(params.offset));
   if (params?.query) search.set("prompt_contains", params.query);
+  if (typeof params?.portfolio_project_id === "number") {
+    search.set("portfolio_project_id", String(params.portfolio_project_id));
+  }
   const suffix = search.toString() ? `?${search.toString()}` : "";
   const r = await fetch(`${API}/governance/runs${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -759,7 +764,12 @@ export async function fetchGovernanceRuns(
 
 export async function createCase(
   token: string,
-  body: { title: string; run_id?: number | null; owner_user_id?: number | null },
+  body: {
+    title: string;
+    run_id?: number | null;
+    owner_user_id?: number | null;
+    portfolio_project_id?: number | null;
+  },
   tenantSlug?: string | null
 ): Promise<GovernanceCase> {
   const r = await fetch(`${API}/governance/cases${tenantQuery(tenantSlug)}`, {
@@ -781,13 +791,16 @@ export async function fetchCases(token: string, limit = 100): Promise<Governance
 
 export async function fetchCasesAdvanced(
   token: string,
-  params?: { status?: string; limit?: number; offset?: number; query?: string }
+  params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
 ): Promise<GovernanceCase[]> {
   const q = new URLSearchParams();
   if (params?.status) q.set("status", params.status);
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
   if (typeof params?.offset === "number") q.set("offset", String(params.offset));
   if (params?.query) q.set("title_contains", params.query);
+  if (typeof params?.portfolio_project_id === "number") {
+    q.set("portfolio_project_id", String(params.portfolio_project_id));
+  }
   const suffix = q.toString() ? `?${q.toString()}` : "";
   const r = await fetch(`${API}/governance/cases${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -799,7 +812,12 @@ export async function fetchCasesAdvanced(
 export async function updateCase(
   token: string,
   caseId: number,
-  body: { status?: string; owner_user_id?: number | null; latest_run_id?: number | null }
+  body: {
+    status?: string;
+    owner_user_id?: number | null;
+    latest_run_id?: number | null;
+    portfolio_project_id?: number | null;
+  }
 ): Promise<GovernanceCase> {
   const r = await fetch(`${API}/governance/cases/${caseId}`, {
     method: "PATCH",
@@ -864,11 +882,14 @@ export type EvidenceRow = {
 
 export async function fetchEvidence(
   token: string,
-  params?: { connector?: string; run_id?: number; limit?: number; offset?: number }
+  params?: { connector?: string; run_id?: number; portfolio_project_id?: number; limit?: number; offset?: number }
 ): Promise<EvidenceRow[]> {
   const q = new URLSearchParams();
   if (params?.connector) q.set("connector", params.connector);
   if (typeof params?.run_id === "number") q.set("run_id", String(params.run_id));
+  if (typeof params?.portfolio_project_id === "number") {
+    q.set("portfolio_project_id", String(params.portfolio_project_id));
+  }
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
   if (typeof params?.offset === "number") q.set("offset", String(params.offset));
   const suffix = q.toString() ? `?${q.toString()}` : "";

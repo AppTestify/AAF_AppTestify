@@ -179,6 +179,70 @@ def test_public_metrics_hidden_when_disabled(client: TestClient):
     assert r.status_code == 404
 
 
+def test_portfolio_project_filters_runs_cases_evidence(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    proj = client.post(
+        "/api/v1/portfolio/projects",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"key": "trace-proj", "name": "Traceability project", "status": "active"},
+    )
+    assert proj.status_code == 201, proj.text
+    project_id = proj.json()["id"]
+
+    run_tagged = client.post(
+        "/api/v1/governance/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"prompt": "portfolio tagged run", "portfolio_project_id": project_id},
+    )
+    assert run_tagged.status_code == 202, run_tagged.text
+    run_tagged_id = run_tagged.json()["id"]
+    assert run_tagged.json().get("portfolio_project_id") == project_id
+    _wait_for_run(client, token, run_tagged_id)
+
+    run_plain = client.post(
+        "/api/v1/governance/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"prompt": "untagged run"},
+    )
+    assert run_plain.status_code == 202, run_plain.text
+    run_plain_id = run_plain.json()["id"]
+    _wait_for_run(client, token, run_plain_id)
+
+    listed = client.get(
+        f"/api/v1/governance/runs?portfolio_project_id={project_id}&limit=100",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert listed.status_code == 200, listed.text
+    ids = {r["id"] for r in listed.json()}
+    assert run_tagged_id in ids
+    assert run_plain_id not in ids
+
+    case = client.post(
+        "/api/v1/governance/cases",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Tagged case", "run_id": run_tagged_id},
+    )
+    assert case.status_code == 201, case.text
+    case_id = case.json()["id"]
+    assert case.json().get("portfolio_project_id") == project_id
+
+    cases_f = client.get(
+        f"/api/v1/governance/cases?portfolio_project_id={project_id}&limit=100",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert cases_f.status_code == 200, cases_f.text
+    assert any(c["id"] == case_id for c in cases_f.json())
+
+    ev = client.get(
+        f"/api/v1/governance/evidence?portfolio_project_id={project_id}&limit=200",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert ev.status_code == 200, ev.text
+    rows = ev.json()
+    assert len(rows) >= 1
+    assert all(r["run_id"] == run_tagged_id for r in rows)
+
+
 def test_evidence_and_alert_acknowledge_flows(client: TestClient):
     token = _login(client, "admin@localhost", "test-password-123")
     run = client.post(

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { createGovernanceRun, fetchGovernanceRun, fetchGovernanceRuns, type GovernanceRunV1 } from "../api";
+import { useSearchParams } from "react-router-dom";
+import {
+  createGovernanceRun,
+  fetchGovernanceRun,
+  fetchGovernanceRuns,
+  fetchPortfolioProjects,
+  type GovernanceRunV1,
+  type PortfolioProject,
+} from "../api";
 
 type WorkspaceRunsPageProps = {
   token: string;
@@ -7,9 +15,20 @@ type WorkspaceRunsPageProps = {
 };
 
 export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
+  const setListProjectFilter = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set("portfolio_project_id", v);
+    else next.delete("portfolio_project_id");
+    setSearchParams(next, { replace: true });
+  };
+
   const [runs, setRuns] = useState<GovernanceRunV1[]>([]);
+  const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [prompt, setPrompt] = useState("");
   const [promptId, setPromptId] = useState("");
+  const [createProjectId, setCreateProjectId] = useState<string>("");
   const [selectedRun, setSelectedRun] = useState<GovernanceRunV1 | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [query, setQuery] = useState<string>("");
@@ -18,6 +37,12 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const projectById = useMemo(() => {
+    const m = new Map<number, PortfolioProject>();
+    for (const p of projects) m.set(p.id, p);
+    return m;
+  }, [projects]);
 
   const activeRunIds = useMemo(
     () => runs.filter((r) => r.status === "queued" || r.status === "running").map((r) => r.id),
@@ -31,6 +56,12 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     return { queued, running, succeeded, failed };
   }, [runs]);
 
+  useEffect(() => {
+    fetchPortfolioProjects(token)
+      .then(setProjects)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
+  }, [token]);
+
   const loadRuns = async () => {
     try {
       setListLoading(true);
@@ -39,6 +70,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
         offset,
         status: statusFilter === "all" ? undefined : statusFilter,
         query: query || undefined,
+        portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
       });
       setRuns(list);
       if (selectedRun) {
@@ -53,7 +85,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   useEffect(() => {
     loadRuns().catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, offset, statusFilter, query]);
+  }, [token, offset, statusFilter, query, listProjectFilter]);
 
   useEffect(() => {
     if (activeRunIds.length === 0) return;
@@ -71,11 +103,16 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
       setError(null);
       const created = await createGovernanceRun(
         token,
-        { prompt: prompt.trim(), prompt_id: promptId.trim() || null },
+        {
+          prompt: prompt.trim(),
+          prompt_id: promptId.trim() || null,
+          portfolio_project_id: createProjectId ? Number(createProjectId) : null,
+        },
         tenantSlug
       );
       setPrompt("");
       setPromptId("");
+      setCreateProjectId("");
       setSelectedRun(created);
       setToast(`Run #${created.id} queued`);
       setTimeout(() => setToast(""), 2000);
@@ -149,6 +186,21 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
           <label htmlFor="run-prompt-id">Prompt ID (optional)</label>
           <input id="run-prompt-id" value={promptId} onChange={(e) => setPromptId(e.target.value)} />
         </div>
+        <div className="form-row">
+          <label htmlFor="run-portfolio-project">Portfolio project (optional)</label>
+          <select
+            id="run-portfolio-project"
+            value={createProjectId}
+            onChange={(e) => setCreateProjectId(e.target.value)}
+          >
+            <option value="">None</option>
+            {projects.map((p) => (
+              <option key={p.id} value={String(p.id)}>
+                {p.key} — {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primary" type="button" onClick={handleCreate} disabled={loading || !prompt.trim()}>
           {loading ? "Submitting…" : "Create run"}
         </button>
@@ -181,6 +233,21 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               placeholder="Prompt text"
             />
           </div>
+          <div className="form-row">
+            <label htmlFor="run-project-filter">Project</label>
+            <select
+              id="run-project-filter"
+              value={listProjectFilter}
+              onChange={(e) => setListProjectFilter(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.key} — {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             className="btn btn-ghost btn-sm"
             type="button"
@@ -201,6 +268,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               <tr>
                 <th>ID</th>
                 <th>Status</th>
+                <th>Project</th>
                 <th>Prompt</th>
                 <th>Created</th>
               </tr>
@@ -216,13 +284,18 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
                     <td>
                       <span className={`status-chip ${r.status}`}>{r.status}</span>
                     </td>
+                    <td className="mono">
+                      {r.portfolio_project_id != null
+                        ? projectById.get(r.portfolio_project_id)?.key ?? `#${r.portfolio_project_id}`
+                        : "—"}
+                    </td>
                     <td className="mono">{r.prompt.slice(0, 88)}</td>
                     <td>{new Date(r.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
               {runs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="table-empty">
+                  <td colSpan={5} className="table-empty">
                     No runs found for the current filters.
                   </td>
                 </tr>
@@ -243,6 +316,9 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
           </div>
           <p className="mono" style={{ marginTop: 0 }}>
             status={selectedRun.status} · retries={selectedRun.retry_count}
+            {selectedRun.portfolio_project_id != null
+              ? ` · project=${projectById.get(selectedRun.portfolio_project_id)?.key ?? selectedRun.portfolio_project_id}`
+              : ""}
           </p>
           <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
         </div>

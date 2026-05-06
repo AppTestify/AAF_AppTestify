@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchEvidence, type EvidenceRow } from "../api";
+import { useSearchParams } from "react-router-dom";
+import { fetchEvidence, fetchPortfolioProjects, type EvidenceRow, type PortfolioProject } from "../api";
 
 type WorkspaceEvidencePageProps = {
   token: string;
 };
 
 export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
+  const setListProjectFilter = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set("portfolio_project_id", v);
+    else next.delete("portfolio_project_id");
+    setSearchParams(next, { replace: true });
+  };
+
   const [rows, setRows] = useState<EvidenceRow[]>([]);
+  const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [connector, setConnector] = useState<string>("");
   const [runId, setRunId] = useState<string>("");
   const [selected, setSelected] = useState<EvidenceRow | null>(null);
@@ -25,12 +36,23 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
   }, [rows]);
 
   useEffect(() => {
+    fetchPortfolioProjects(token)
+      .then(setProjects)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
+  }, [token]);
+
+  useEffect(() => {
     setListLoading(true);
-    fetchEvidence(token, { connector: connector || undefined, run_id: runId ? Number(runId) : undefined, limit: 200 })
+    fetchEvidence(token, {
+      connector: connector || undefined,
+      run_id: runId ? Number(runId) : undefined,
+      portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
+      limit: 200,
+    })
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load evidence"))
       .finally(() => setListLoading(false));
-  }, [token, connector, runId]);
+  }, [token, connector, runId, listProjectFilter]);
 
   return (
     <div className="app">
@@ -59,7 +81,7 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
         <div className="workspace-section-intro">
           <div>
             <h2>Evidence & history</h2>
-            <p>Filter by connector/run and inspect normalized payload snapshots.</p>
+            <p>Filter by connector, run, or portfolio project and inspect normalized payload snapshots.</p>
           </div>
           <div className="workspace-meta">Use row selection to inspect full payload</div>
         </div>
@@ -78,6 +100,21 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
           <div className="form-row">
             <label htmlFor="run-filter">Run ID</label>
             <input id="run-filter" value={runId} onChange={(e) => setRunId(e.target.value)} placeholder="optional" />
+          </div>
+          <div className="form-row">
+            <label htmlFor="evidence-project-filter">Project</label>
+            <select
+              id="evidence-project-filter"
+              value={listProjectFilter}
+              onChange={(e) => setListProjectFilter(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.key} — {p.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="table-wrap">

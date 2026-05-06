@@ -78,7 +78,11 @@ def test_connector_config_upsert_and_validate(client: TestClient):
         headers={"Authorization": f"Bearer {token}"},
         json={
             "connectors": {
-                "azure": {"enabled": True, "config_json": {"subscription_id": "sub-1"}, "credentials_json": {"client_secret": "x"}},
+                "azure": {
+                    "enabled": True,
+                    "config_json": {"organization": "myorg", "project": "myproject"},
+                    "credentials_json": {"token": "pat-placeholder"},
+                },
                 "aws": {"enabled": True, "config_json": {"account_id": "123456789012"}, "credentials_json": {"access_key_id": "y"}},
             }
         },
@@ -177,3 +181,4 @@ def test_governance_runtime_uses_tenant_connector_override(client: TestClient):
     runtime = run.json()["runtime_config"]
     assert runtime["connector_mode"].endswith("live")
     assert runtime["github_repo"] == "acme/platform"
+    assert "llm_invocation" in run.json()

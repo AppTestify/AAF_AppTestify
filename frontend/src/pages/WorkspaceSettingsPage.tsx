@@ -1,21 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createRbacUser,
+  fetchNotificationConfig,
   fetchConnectorConfigs,
   fetchProviderConfigs,
+  fetchRbacUsers,
   fetchTenantSettings,
   patchTenantSettings,
   runGovernance,
   saveConnectorConfigs,
+  saveNotificationConfig,
   saveProviderConfigs,
+  testNotificationConfig,
   validateConnectorConfig,
   validateProviderConfig,
+  type AdminUser,
   type ConnectorConfig,
+  type NotificationTemplate,
   type ProviderConfig,
+  type TenantNotificationConfig,
   type TenantRow,
   type UserPublic,
 } from "../api";
 
-type SettingsTab = "general" | "connectors" | "ai";
+type SettingsTab = "general" | "connectors" | "ai" | "users";
 
 type WorkspaceSettingsPageProps = {
   token: string;
@@ -44,12 +52,15 @@ type ProviderDraft = {
 };
 
 const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock"];
+/** Match live telemetry expectations and server validation. */
+const CONNECTOR_ORDER = ["github", "jira", "azure", "aws", "finops"] as const;
+
 const CONNECTOR_HELP: Record<string, string> = {
-  github: "Required when enabled: config_json.repo",
-  jira: "Required when enabled: config_json.project",
-  azure: "Required when enabled: config_json.subscription_id",
-  aws: "Required when enabled: config_json.account_id",
-  finops: "Required when enabled: config_json.cost_file",
+  github: "Live: repo slug + PAT. Save, then run connection test.",
+  jira: "Live: Jira Cloud/DC base URL, project key, email + API token.",
+  azure: "Live: Azure DevOps org + project name, PAT with build/release read.",
+  aws: "Account scope only — live AWS telemetry is not available in this build.",
+  finops: "Path to a local cost export file (JSON/CSV) when FinOps mode is used.",
 };
 
 export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "general" }: WorkspaceSettingsPageProps) {
@@ -68,6 +79,12 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
   const [providerRows, setProviderRows] = useState<ProviderConfig[]>([]);
   const [providerDraft, setProviderDraft] = useState<Record<string, ProviderDraft>>({});
   const [aiTestPrompt, setAiTestPrompt] = useState("Health-check prompt: verify AI provider runtime configuration.");
+  const [notificationCfg, setNotificationCfg] = useState<TenantNotificationConfig | null>(null);
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpTestEmail, setSmtpTestEmail] = useState("");
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState("reviewer");
 
   const canEdit = user.is_superadmin || user.is_admin;
   const targetForApi = user.is_superadmin ? targetTenantSlug : undefined;
@@ -89,8 +106,10 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       fetchTenantSettings(token, targetForApi),
       fetchConnectorConfigs(token, targetForApi),
       fetchProviderConfigs(token, targetForApi),
+      fetchNotificationConfig(token, targetForApi),
+      fetchRbacUsers(token, targetForApi),
     ])
-      .then(([settings, connectors, providers]) => {
+      .then(([settings, connectors, providers, notifications, users]) => {
         setDefaultProvider(settings.default_ai_provider ?? "");
         setUiPrefsText(JSON.stringify(settings.ui_preferences ?? {}, null, 2));
         setLlmKeysText(
@@ -143,6 +162,8 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
         if (!settings.default_ai_provider && providers.default_provider) {
           setDefaultProvider(providers.default_provider);
         }
+        setNotificationCfg(notifications);
+        setAdminUsers(users);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
       .finally(() => setLoading(false));
@@ -173,13 +194,115 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     }
   };
 
+  const handleSaveNotifications = async () => {
+    if (!notificationCfg) return;
+    try {
+      setSaving(true);
+      const saved = await saveNotificationConfig(
+        token,
+        {
+          smtp_host: notificationCfg.smtp_host,
+          smtp_port: notificationCfg.smtp_port,
+          smtp_username: notificationCfg.smtp_username,
+          smtp_password: smtpPassword || null,
+          smtp_from_email: notificationCfg.smtp_from_email,
+          use_tls: notificationCfg.use_tls,
+          use_ssl: notificationCfg.use_ssl,
+          notifications_enabled: notificationCfg.notifications_enabled,
+          templates: notificationCfg.templates,
+        },
+        targetForApi
+      );
+      setNotificationCfg(saved);
+      setSmtpPassword("");
+      setMessage("SMTP and notification templates saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save notification config");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    try {
+      setSaving(true);
+      const result = await testNotificationConfig(token, { to_email: smtpTestEmail || null }, targetForApi);
+      setMessage(result.message);
+      const refreshed = await fetchNotificationConfig(token, targetForApi);
+      setNotificationCfg(refreshed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "SMTP test failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim()) return;
+    try {
+      setSaving(true);
+      const created = await createRbacUser(
+        token,
+        { email: newUserEmail.trim(), role_name: newUserRole, is_active: true },
+        targetForApi
+      );
+      setNewUserEmail("");
+      setMessage(
+        created.temporary_password
+          ? `User created. Email delivery: ${created.delivery_status}. Temporary password: ${created.temporary_password}`
+          : `User created and credentials sent by email.`
+      );
+      setAdminUsers(await fetchRbacUsers(token, targetForApi));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add user");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const mergeConnectorConfig = (name: string, patch: Record<string, unknown>) => {
+    setConnectorDraft((prev) => ({
+      ...prev,
+      [name]: {
+        ...prev[name],
+        config_json: { ...(prev[name]?.config_json ?? {}), ...patch },
+      },
+    }));
+  };
+
+  const mergeConnectorCreds = (name: string, patch: Record<string, unknown>) => {
+    setConnectorDraft((prev) => ({
+      ...prev,
+      [name]: {
+        ...prev[name],
+        credentials_json: { ...(prev[name]?.credentials_json ?? {}), ...patch },
+      },
+    }));
+  };
+
+  const syncDraftFromSavedConnectors = (saved: ConnectorConfig[]) => {
+    setConnectorDraft((prev) => {
+      const next = { ...prev };
+      for (const c of saved) {
+        next[c.connector_name] = {
+          enabled: c.enabled,
+          config_json: { ...(c.config_json ?? {}) },
+          credentials_json: { ...(prev[c.connector_name]?.credentials_json ?? {}) },
+        };
+      }
+      return next;
+    });
+  };
+
   const handleSaveConnectors = async () => {
     try {
       setSaving(true);
       setMessage(null);
+      setError(null);
       const saved = await saveConnectorConfigs(token, connectorDraft, targetForApi);
       setConnectorRows(saved);
-      setMessage("Connector settings saved.");
+      syncDraftFromSavedConnectors(saved);
+      setMessage("All connector settings saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save connectors");
     } finally {
@@ -187,16 +310,48 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     }
   };
 
+  const handleSaveAndTestConnector = async (name: string) => {
+    try {
+      setSaving(true);
+      setMessage(null);
+      setError(null);
+      const saved = await saveConnectorConfigs(token, connectorDraft, targetForApi);
+      setConnectorRows(saved);
+      syncDraftFromSavedConnectors(saved);
+      const validated = await validateConnectorConfig(token, name, targetForApi);
+      setConnectorRows((prev) =>
+        prev.map((c) => (c.connector_name === name ? validated : c)).concat(
+          prev.some((c) => c.connector_name === name) ? [] : [validated]
+        )
+      );
+      if (validated.last_validation_ok) {
+        setMessage(`${name}: saved and connection check passed.`);
+      } else {
+        setMessage(`${name}: saved. Check failed: ${validated.last_validation_error || "see details below"}.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save or connection test failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleValidateConnector = async (name: string) => {
     try {
+      setSaving(true);
       setMessage(null);
+      setError(null);
       const validated = await validateConnectorConfig(token, name, targetForApi);
       setConnectorRows((prev) =>
         prev.map((c) => (c.connector_name === name ? validated : c)).concat(prev.some((c) => c.connector_name === name) ? [] : [validated])
       );
-      setMessage(`${name} validated.`);
+      setMessage(
+        validated.last_validation_ok ? `${name}: connection check passed.` : `${name}: ${validated.last_validation_error || "check failed"}.`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connector validation failed");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -270,9 +425,11 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       const runtime = (result.runtime_config as Record<string, unknown>) || {};
       const ai = (runtime.ai as Record<string, unknown>) || {};
       const activeProvider = ai.default_provider as string | undefined;
+      const llmInvocation = (result as Record<string, unknown>).llm_invocation as Record<string, unknown> | undefined;
+      const llmStatus = String(llmInvocation?.status ?? "unknown");
       setMessage(
         activeProvider
-          ? `AI runtime smoke test succeeded. Active default provider: ${activeProvider}`
+          ? `AI runtime check completed. Active default provider: ${activeProvider}. Invocation status: ${llmStatus}.`
           : "AI runtime smoke test ran. No default provider configured."
       );
     } catch (e) {
@@ -329,6 +486,9 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
         <button className={activeTab === "ai" ? "active" : ""} onClick={() => setActiveTab("ai")} type="button">
           AI Providers
         </button>
+        <button className={activeTab === "users" ? "active" : ""} onClick={() => setActiveTab("users")} type="button">
+          Users & Notifications
+        </button>
       </div>
 
       {error ? (
@@ -341,152 +501,357 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       {loading ? <div className="card">Loading settings…</div> : null}
 
       {!loading && activeTab === "general" ? (
-        <div className="card">
-          <div className="workspace-section-intro">
-            <div>
-              <h2>General</h2>
-              <p>Core tenant defaults and structured runtime preferences.</p>
+        <div className="settings-general-stack">
+          <div className="card settings-highlight-card">
+            <div className="workspace-section-intro">
+              <div>
+                <h2>General</h2>
+                <p>Set your default AI route, then use Connectors and AI Providers to validate end-to-end.</p>
+              </div>
+            </div>
+            <ol className="settings-onboarding-steps">
+              <li>
+                <strong>Default AI provider</strong> — picks which model family governance runs prefer.
+              </li>
+              <li>
+                <strong>Connectors tab</strong> — link GitHub, Jira, Azure DevOps; use <em>Save &amp; test</em> on each.
+              </li>
+              <li>
+                <strong>AI Providers tab</strong> — add API keys and run <em>Test connection</em>.
+              </li>
+            </ol>
+            <div className="config-columns settings-quick-grid">
+              <div className="form-row">
+                <label htmlFor="default-provider">Default AI provider</label>
+                <select
+                  id="default-provider"
+                  value={defaultProvider}
+                  onChange={(e) => setDefaultProvider(e.target.value)}
+                  disabled={!canEdit || saving}
+                >
+                  <option value="">None (not recommended for production)</option>
+                  {PROVIDERS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <p className="field-hint">Must match an enabled provider on the AI Providers tab.</p>
+              </div>
+            </div>
+            <div className="actions settings-primary-actions">
+              <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveGeneral}>
+                {saving ? "Saving…" : "Save general settings"}
+              </button>
             </div>
           </div>
-          <div className="form-row">
-            <label htmlFor="default-provider" className="field-label-required">Default AI provider</label>
-            <select
-              id="default-provider"
-              value={defaultProvider}
-              onChange={(e) => setDefaultProvider(e.target.value)}
-              disabled={!canEdit || saving}
-            >
-              <option value="">None</option>
-              {PROVIDERS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+
+          <div className="card">
+            <details className="settings-advanced-details">
+              <summary>Advanced — JSON (UI preferences, LLM key map, RAG)</summary>
+              <p className="workspace-meta" style={{ marginTop: "0.5rem" }}>
+                For power users. Invalid JSON will fail on save. LLM keys: use real secret values only when updating; placeholder entries are ignored by the
+                backend if unchanged.
+              </p>
+              <div className="form-row">
+                <label htmlFor="ui-prefs">UI preferences (JSON)</label>
+                <textarea
+                  id="ui-prefs"
+                  className="settings-json-area"
+                  value={uiPrefsText}
+                  onChange={(e) => setUiPrefsText(e.target.value)}
+                  disabled={!canEdit || saving}
+                  rows={8}
+                />
+              </div>
+              <div className="form-row">
+                <label htmlFor="llm-keys">LLM keys (JSON map)</label>
+                <textarea
+                  id="llm-keys"
+                  className="settings-json-area"
+                  value={llmKeysText}
+                  onChange={(e) => setLlmKeysText(e.target.value)}
+                  disabled={!canEdit || saving}
+                  rows={8}
+                />
+              </div>
+              <div className="form-row">
+                <label htmlFor="rag-config">RAG config (JSON)</label>
+                <textarea
+                  id="rag-config"
+                  className="settings-json-area"
+                  value={ragConfigText}
+                  onChange={(e) => setRagConfigText(e.target.value)}
+                  disabled={!canEdit || saving}
+                  rows={8}
+                />
+              </div>
+              <button className="btn btn-ghost" type="button" disabled={!canEdit || saving} onClick={handleSaveGeneral}>
+                Save advanced JSON
+              </button>
+            </details>
           </div>
-          <p className="workspace-meta">Required foundation: set default routing before connector/provider tests.</p>
-          <div className="form-row">
-            <label htmlFor="ui-prefs">UI preferences (JSON)</label>
-            <textarea
-              id="ui-prefs"
-              value={uiPrefsText}
-              onChange={(e) => setUiPrefsText(e.target.value)}
-              disabled={!canEdit || saving}
-            />
-          </div>
-          <div className="form-row">
-            <label htmlFor="llm-keys">LLM keys (JSON)</label>
-            <textarea
-              id="llm-keys"
-              value={llmKeysText}
-              onChange={(e) => setLlmKeysText(e.target.value)}
-              disabled={!canEdit || saving}
-            />
-          </div>
-          <div className="form-row">
-            <label htmlFor="rag-config">RAG config (JSON)</label>
-            <textarea
-              id="rag-config"
-              value={ragConfigText}
-              onChange={(e) => setRagConfigText(e.target.value)}
-              disabled={!canEdit || saving}
-            />
-          </div>
-          <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveGeneral}>
-            {saving ? "Saving…" : "Save general settings"}
-          </button>
         </div>
       ) : null}
 
       {!loading && activeTab === "connectors" ? (
-        <div className="card">
+        <div className="card settings-connectors-card">
           <div className="workspace-section-intro">
             <div>
-              <h2>Integrate connectors</h2>
-              <p>Enable connectors, provide required config + credentials, validate, then save.</p>
+              <h2>Connectors</h2>
+              <p>
+                Use the quick fields for each system, then <strong>Save &amp; test</strong> to store settings and run the connection check in one step. Use{" "}
+                <strong>Test only</strong> if you already saved and only want to re-check.
+              </p>
             </div>
-            <div className="workspace-meta">Required fields vary by connector type</div>
           </div>
-          {Object.keys(connectorDraft)
-            .sort()
-            .map((name) => {
-              const draft = connectorDraft[name];
-              const status = connectorStatus(name);
-              return (
-                <div key={name} className="config-block">
-                  <h3>{name}</h3>
-                  <div className="field-hint" style={{ marginBottom: "0.55rem" }}>
-                    {CONNECTOR_HELP[name] ?? "Set connector config and validate."}
-                  </div>
-                  <div className="form-row">
-                    <label>
+          <p className="field-hint settings-cred-hint">
+            Credentials are encrypted when saved and are never returned by the API — re-enter a token or password to update it.
+          </p>
+
+          {CONNECTOR_ORDER.map((name) => {
+            const draft = connectorDraft[name];
+            const status = connectorStatus(name);
+            if (!draft) return null;
+            const cfg = draft.config_json ?? {};
+            const cred = draft.credentials_json ?? {};
+
+            return (
+              <div key={name} className="config-block settings-connector-block">
+                <div className="settings-connector-head">
+                  <h3 className="settings-connector-title">{name}</h3>
+                  <label className="settings-enable-inline">
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(e) =>
+                        setConnectorDraft((prev) => ({
+                          ...prev,
+                          [name]: { ...prev[name], enabled: e.target.checked },
+                        }))
+                      }
+                      disabled={!canEdit || saving}
+                    />{" "}
+                    Enabled
+                  </label>
+                </div>
+                <p className="field-hint">{CONNECTOR_HELP[name] ?? "Configure and test."}</p>
+
+                {name === "github" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>Repository</label>
                       <input
-                        type="checkbox"
-                        checked={draft.enabled}
-                        onChange={(e) =>
-                          setConnectorDraft((prev) => ({ ...prev, [name]: { ...prev[name], enabled: e.target.checked } }))
-                        }
+                        value={String(cfg.repo ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { repo: e.target.value })}
+                        placeholder="owner/repo"
                         disabled={!canEdit || saving}
-                      />{" "}
-                      Enabled
-                    </label>
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>GitHub token (PAT)</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.token ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                        placeholder="ghp_…"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
                   </div>
+                ) : null}
+
+                {name === "jira" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>Jira base URL</label>
+                      <input
+                        value={String(cfg.base_url ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { base_url: e.target.value.replace(/\/$/, "") })}
+                        placeholder="https://your-domain.atlassian.net"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Project key</label>
+                      <input
+                        value={String(cfg.project ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { project: e.target.value.toUpperCase() })}
+                        placeholder="PROJ"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Account email</label>
+                      <input
+                        type="email"
+                        value={String(cred.email ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { email: e.target.value })}
+                        placeholder="you@company.com"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>API token</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.token ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {name === "azure" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>Organization</label>
+                      <input
+                        value={String(cfg.organization ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { organization: e.target.value })}
+                        placeholder="Azure DevOps org name"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Project</label>
+                      <input
+                        value={String(cfg.project ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { project: e.target.value })}
+                        placeholder="Project name"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Personal access token (PAT)</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.token ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                        placeholder="Build + Release read scopes"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {name === "aws" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>AWS account ID</label>
+                      <input
+                        value={String(cfg.account_id ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { account_id: e.target.value })}
+                        placeholder="123456789012"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {name === "finops" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>Cost file path</label>
+                      <input
+                        value={String(cfg.cost_file ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { cost_file: e.target.value })}
+                        placeholder="/path/to/cost-export.json"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="actions settings-connector-actions">
+                  <span
+                    className={`status-chip ${
+                      status?.last_validation_ok === true
+                        ? "succeeded"
+                        : status?.last_validation_ok === false
+                          ? "failed"
+                          : "queued"
+                    }`}
+                  >
+                    {status?.last_validation_ok === true
+                      ? "Check OK"
+                      : status?.last_validation_ok === false
+                        ? "Check failed"
+                        : "Not checked yet"}
+                  </span>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => void handleSaveAndTestConnector(name)}
+                    disabled={!canEdit || saving}
+                  >
+                    Save &amp; test
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => void handleValidateConnector(name)}
+                    disabled={!canEdit || saving}
+                  >
+                    Test only
+                  </button>
+                  {status?.last_validation_error ? (
+                    <span className="settings-validation-msg" title={status.last_validation_error}>
+                      {status.last_validation_error}
+                    </span>
+                  ) : null}
+                </div>
+
+                <details className="settings-advanced-details settings-connector-raw">
+                  <summary>Edit raw JSON</summary>
                   <div className="form-row">
                     <label>Config JSON</label>
                     <textarea
+                      className="settings-json-area"
                       value={JSON.stringify(draft.config_json ?? {}, null, 2)}
                       onChange={(e) => {
                         try {
                           const parsed = JSON.parse(e.target.value || "{}") as Record<string, unknown>;
                           setConnectorDraft((prev) => ({ ...prev, [name]: { ...prev[name], config_json: parsed } }));
                         } catch {
-                          // keep textarea editable; invalid JSON will be rejected on save
+                          /* keep editable */
                         }
                       }}
                       disabled={!canEdit || saving}
+                      rows={6}
                     />
                   </div>
                   <div className="form-row">
                     <label>Credentials JSON</label>
                     <textarea
+                      className="settings-json-area"
                       value={JSON.stringify(draft.credentials_json ?? {}, null, 2)}
                       onChange={(e) => {
                         try {
                           const parsed = JSON.parse(e.target.value || "{}") as Record<string, unknown>;
                           setConnectorDraft((prev) => ({ ...prev, [name]: { ...prev[name], credentials_json: parsed } }));
                         } catch {
-                          // keep editable
+                          /* keep editable */
                         }
                       }}
                       disabled={!canEdit || saving}
+                      rows={5}
                     />
                   </div>
-                  <div className="actions">
-                    <span className={`status-chip ${status?.enabled ? "succeeded" : "queued"}`}>
-                      {status?.enabled ? "connected" : "not connected"}
-                    </span>
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      onClick={() => handleValidateConnector(name)}
-                      disabled={!canEdit || saving}
-                    >
-                      Validate
-                    </button>
-                    <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-                      {status?.last_validation_ok == null
-                        ? "Not validated"
-                        : status.last_validation_ok
-                          ? "Validation passed"
-                          : status.last_validation_error || "Validation failed"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveConnectors}>
-            {saving ? "Saving…" : "Save connector settings"}
-          </button>
+                </details>
+              </div>
+            );
+          })}
+
+          <div className="actions settings-connectors-footer">
+            <button className="btn btn-ghost" type="button" disabled={!canEdit || saving} onClick={handleSaveConnectors}>
+              {saving ? "Saving…" : "Save all connectors (no test)"}
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -662,6 +1027,100 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveProviders}>
             {saving ? "Saving…" : "Save AI provider settings"}
           </button>
+        </div>
+      ) : null}
+      {!loading && activeTab === "users" ? (
+        <div className="card">
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Users, SMTP, and notifications</h2>
+              <p>Manage RBAC users, SMTP delivery, connection testing, and template content.</p>
+            </div>
+          </div>
+          <div className="config-block">
+            <h3>Tenant users</h3>
+            <div className="config-columns">
+              <div className="form-row">
+                <label>Email</label>
+                <input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="user@company.com" />
+              </div>
+              <div className="form-row">
+                <label>Role</label>
+                <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
+                  <option value="reviewer">reviewer</option>
+                  <option value="tenant_admin">tenant_admin</option>
+                </select>
+              </div>
+            </div>
+            <div className="actions">
+              <button className="btn btn-primary" type="button" onClick={handleAddUser} disabled={!canEdit || saving}>
+                Add user and send password email
+              </button>
+            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Email</th><th>Roles</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {adminUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.email}</td>
+                      <td>{u.role_names.join(", ") || "-"}</td>
+                      <td>{u.is_active ? "active" : "disabled"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="config-block">
+            <h3>SMTP setup</h3>
+            <div className="config-columns">
+              <div className="form-row"><label>SMTP host</label><input value={notificationCfg?.smtp_host ?? ""} onChange={(e) => setNotificationCfg((p) => p ? { ...p, smtp_host: e.target.value } : p)} /></div>
+              <div className="form-row"><label>SMTP port</label><input value={notificationCfg?.smtp_port ?? ""} onChange={(e) => setNotificationCfg((p) => p ? { ...p, smtp_port: Number(e.target.value || 0) || null } : p)} /></div>
+              <div className="form-row"><label>Username</label><input value={notificationCfg?.smtp_username ?? ""} onChange={(e) => setNotificationCfg((p) => p ? { ...p, smtp_username: e.target.value } : p)} /></div>
+              <div className="form-row"><label>Password</label><input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} placeholder={notificationCfg?.smtp_password_configured ? "Configured (enter to rotate)" : ""} /></div>
+              <div className="form-row"><label>From email</label><input value={notificationCfg?.smtp_from_email ?? ""} onChange={(e) => setNotificationCfg((p) => p ? { ...p, smtp_from_email: e.target.value } : p)} /></div>
+              <div className="form-row"><label>Test recipient</label><input value={smtpTestEmail} onChange={(e) => setSmtpTestEmail(e.target.value)} placeholder="optional test email" /></div>
+            </div>
+            <div className="form-row">
+              <label><input type="checkbox" checked={notificationCfg?.use_tls ?? true} onChange={(e) => setNotificationCfg((p) => p ? { ...p, use_tls: e.target.checked } : p)} /> Use TLS</label>
+              <label><input type="checkbox" checked={notificationCfg?.use_ssl ?? false} onChange={(e) => setNotificationCfg((p) => p ? { ...p, use_ssl: e.target.checked } : p)} /> Use SSL</label>
+              <label><input type="checkbox" checked={notificationCfg?.notifications_enabled ?? false} onChange={(e) => setNotificationCfg((p) => p ? { ...p, notifications_enabled: e.target.checked } : p)} /> Enable notifications</label>
+            </div>
+            <div className="actions">
+              <button className="btn btn-ghost" type="button" onClick={handleTestSmtp} disabled={!canEdit || saving}>Test SMTP connection</button>
+              <button className="btn btn-primary" type="button" onClick={handleSaveNotifications} disabled={!canEdit || saving}>Save SMTP + templates</button>
+            </div>
+          </div>
+          <div className="config-block">
+            <h3>Email templates</h3>
+            {Object.entries(notificationCfg?.templates ?? {}).map(([key, tpl]) => (
+              <div key={key} className="form-row">
+                <label>{key} subject</label>
+                <input
+                  value={tpl.subject}
+                  onChange={(e) =>
+                    setNotificationCfg((p) =>
+                      p
+                        ? { ...p, templates: { ...p.templates, [key]: { ...(p.templates[key] as NotificationTemplate), subject: e.target.value } } }
+                        : p
+                    )
+                  }
+                />
+                <label>{key} body</label>
+                <textarea
+                  value={tpl.body}
+                  onChange={(e) =>
+                    setNotificationCfg((p) =>
+                      p ? { ...p, templates: { ...p.templates, [key]: { ...(p.templates[key] as NotificationTemplate), body: e.target.value } } } : p
+                    )
+                  }
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin
 from aaf.config import get_settings
-from app.models.config import ConfigAuditLog, TenantAIProviderConfig, TenantConnectorConfig, TenantSettings
+from app.models.config import ConfigAuditLog, TenantAIProviderConfig, TenantConnectorConfig, TenantNotificationConfig, TenantSettings
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.security import decrypt_json, encrypt_json
+from app.services.email_runtime import resolved_templates, send_templated_email, test_smtp_connection
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
@@ -130,6 +131,42 @@ class ProviderSetOut(BaseModel):
     providers: list[ProviderConfigOut]
 
 
+class NotificationTemplateOut(BaseModel):
+    subject: str
+    body: str
+
+
+class NotificationConfigOut(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password_configured: bool = False
+    smtp_from_email: Optional[str] = None
+    use_tls: bool = True
+    use_ssl: bool = False
+    notifications_enabled: bool = False
+    templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
+    last_test_ok: Optional[bool] = None
+    last_test_error: Optional[str] = None
+    last_tested_at: Optional[datetime] = None
+
+
+class NotificationConfigIn(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    use_tls: bool = True
+    use_ssl: bool = False
+    notifications_enabled: bool = False
+    templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
+
+
+class NotificationTestIn(BaseModel):
+    to_email: Optional[str] = None
+
+
 def _resolve_tenant_for_user(
     db: Session,
     user: User,
@@ -194,6 +231,15 @@ def _sanitize_connector_config(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             out[k] = v
     return out
+
+
+def _get_or_create_notification_config(db: Session, tenant_id: int) -> TenantNotificationConfig:
+    row = db.execute(select(TenantNotificationConfig).where(TenantNotificationConfig.tenant_id == tenant_id)).scalar_one_or_none()
+    if row is None:
+        row = TenantNotificationConfig(tenant_id=tenant_id, templates_json={})
+        db.add(row)
+        db.flush()
+    return row
 
 
 @router.get("/settings", response_model=TenantSettingsOut)
@@ -397,12 +443,12 @@ def validate_connector_config(
     err: Optional[str] = None
     if key == "github" and row.enabled and not cfg.get("repo"):
         err = "github.repo is required when connector is enabled"
-    if key == "jira" and row.enabled and not cfg.get("project"):
-        err = "jira.project is required when connector is enabled"
+    if key == "jira" and row.enabled and (not cfg.get("project") or not cfg.get("base_url")):
+        err = "jira.base_url and jira.project are required when connector is enabled"
     if key == "finops" and row.enabled and not cfg.get("cost_file"):
         err = "finops.cost_file is required when connector is enabled"
-    if key == "azure" and row.enabled and not cfg.get("subscription_id"):
-        err = "azure.subscription_id is required when connector is enabled"
+    if key == "azure" and row.enabled and (not cfg.get("organization") or not cfg.get("project")):
+        err = "azure.organization and azure.project are required when connector is enabled"
     if key == "aws" and row.enabled and not cfg.get("account_id"):
         err = "aws.account_id is required when connector is enabled"
     row.last_validated_at = datetime.now(timezone.utc)
@@ -575,6 +621,8 @@ def validate_ai_provider_config(
         region = (row.metadata_json or {}).get("region")
         if not region:
             err = "metadata_json.region is required for aws_bedrock when enabled"
+        elif not err:
+            err = "aws_bedrock runtime invocation is not implemented in this release"
     # Lightweight reachability test (401/403 still means endpoint is reachable)
     if row.enabled and not err and row.endpoint_url:
         try:
@@ -613,3 +661,92 @@ def validate_ai_provider_config(
         last_validation_error=row.last_validation_error,
         last_validated_at=row.last_validated_at,
     )
+
+
+@router.get("/notifications", response_model=NotificationConfigOut)
+def get_notification_config(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(select(TenantNotificationConfig).where(TenantNotificationConfig.tenant_id == tenant.id)).scalar_one_or_none()
+    templates = resolved_templates(row)
+    return NotificationConfigOut(
+        smtp_host=row.smtp_host if row else None,
+        smtp_port=row.smtp_port if row else None,
+        smtp_username=row.smtp_username if row else None,
+        smtp_password_configured=bool(row and row.smtp_password_encrypted),
+        smtp_from_email=row.smtp_from_email if row else None,
+        use_tls=row.use_tls if row else True,
+        use_ssl=row.use_ssl if row else False,
+        notifications_enabled=row.notifications_enabled if row else False,
+        templates={k: NotificationTemplateOut(**v) for k, v in templates.items()},
+        last_test_ok=row.last_test_ok if row else None,
+        last_test_error=row.last_test_error if row else None,
+        last_tested_at=row.last_tested_at if row else None,
+    )
+
+
+@router.put("/notifications", response_model=NotificationConfigOut)
+def put_notification_config(
+    body: NotificationConfigIn,
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(require_tenant_admin_or_superadmin),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = _get_or_create_notification_config(db, tenant.id)
+    row.smtp_host = body.smtp_host
+    row.smtp_port = body.smtp_port
+    row.smtp_username = body.smtp_username
+    if body.smtp_password:
+        row.smtp_password_encrypted = encrypt_json({"password": body.smtp_password}, secret=get_settings().app_encryption_key)
+    row.smtp_from_email = body.smtp_from_email
+    row.use_tls = body.use_tls
+    row.use_ssl = body.use_ssl
+    row.notifications_enabled = body.notifications_enabled
+    row.templates_json = {k: v.model_dump() for k, v in body.templates.items()}
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=current.id,
+        area="notifications",
+        action="upsert",
+        target_key="smtp",
+        before_json=None,
+        after_json={"smtp_host": row.smtp_host, "smtp_port": row.smtp_port, "notifications_enabled": row.notifications_enabled},
+    )
+    db.commit()
+    return get_notification_config(tenant_slug=tenant.slug, db=db, current=current)
+
+
+@router.post("/notifications/test")
+def test_notification_config(
+    body: NotificationTestIn,
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(require_tenant_admin_or_superadmin),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = _get_or_create_notification_config(db, tenant.id)
+    try:
+        test_smtp_connection(row)
+        if body.to_email:
+            send_templated_email(
+                row,
+                template_key="user_welcome",
+                to_email=body.to_email,
+                values={"user_email": body.to_email, "tenant_slug": tenant.slug, "temporary_password": "test-password"},
+            )
+        row.last_test_ok = True
+        row.last_test_error = None
+        row.last_tested_at = datetime.now(timezone.utc)
+        db.commit()
+        return {"ok": True, "message": "SMTP test succeeded"}
+    except Exception as exc:  # noqa: BLE001
+        row.last_test_ok = False
+        row.last_test_error = str(exc)
+        row.last_tested_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status_code=422, detail=f"SMTP test failed: {exc}") from exc

@@ -16,6 +16,7 @@ from app.db import get_db
 from app.models.user import User
 from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings, resolve_tenant_for_user
 from app.services.governance_service import run_governance
+from app.services.llm_runtime import resolve_provider_chain
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
 router = APIRouter(prefix="/governance", tags=["governance"])
@@ -39,13 +40,18 @@ async def governance_run(
 ):
     tenant = resolve_tenant_for_user(db, user, tenant_slug)
     effective = resolve_effective_settings(db, settings, tenant)
-    result = await run_governance(body.prompt, body.prompt_id, effective)
+    provider_chain = resolve_provider_chain(db, tenant)
+    result = await run_governance(body.prompt, body.prompt_id, effective, llm_providers=provider_chain)
     out = pipeline_result_to_jsonable(result)
     out["runtime_config"] = {
         "tenant_slug": tenant.slug if tenant else None,
         "connector_mode": effective.connector_mode.value,
         "github_repo": effective.github_repo,
         "ai": get_ai_runtime_summary(db, tenant),
+    }
+    out["llm_invocation"] = out.get("llm_invocation") or {
+        "status": "degraded",
+        "reason": "no_active_provider",
     }
     return out
 
@@ -59,13 +65,14 @@ async def governance_batch(
 ):
     tenant = resolve_tenant_for_user(db, admin, tenant_slug)
     effective = resolve_effective_settings(db, settings, tenant)
+    provider_chain = resolve_provider_chain(db, tenant)
     data = json.loads(_LIBRARY_PATH.read_text(encoding="utf-8"))
     prompts = data.get("prompts") or []
     results: list[dict] = []
     for p in prompts:
         text = p.get("text") or ""
         pid = p.get("id")
-        r = await run_governance(text, pid, effective)
+        r = await run_governance(text, pid, effective, llm_providers=provider_chain)
         results.append(
             {
                 "prompt_id": pid,
@@ -84,4 +91,5 @@ async def governance_batch(
             "github_repo": effective.github_repo,
             "ai": get_ai_runtime_summary(db, tenant),
         },
+        "llm_invocation": {"status": "ok" if provider_chain else "degraded", "providers": [p.provider_name for p in provider_chain]},
     }

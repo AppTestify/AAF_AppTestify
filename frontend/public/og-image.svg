@@ -4,25 +4,28 @@
       <stop offset="0%" stop-color="#081023" />
       <stop offset="100%" stop-color="#10244a" />
     </linearGradient>
-    <linearGradient id="mark" x1="12%" y1="10%" x2="92%" y2="92%">
-      <stop offset="0%" stop-color="#6eb1ff" />
-      <stop offset="60%" stop-color="#2f78f6" />
-      <stop offset="100%" stop-color="#1f4fb8" />
+    <linearGradient id="mark" x1="6%" y1="8%" x2="96%" y2="96%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="42%" stop-color="#dbeaff" />
+      <stop offset="100%" stop-color="#9fc5ff" />
     </linearGradient>
   </defs>
   <rect width="1200" height="630" fill="url(#bg)" />
-  <rect x="72" y="72" width="198" height="198" rx="42" fill="#eaf3ff" />
-  <rect x="86" y="86" width="170" height="170" rx="36" fill="none" stroke="#9dbef6" stroke-width="2.4" opacity="0.9" />
+  <rect x="72" y="72" width="198" height="198" rx="42" fill="url(#bg)" />
+  <rect x="86" y="86" width="170" height="170" rx="36" fill="none" stroke="#b5d4ff" stroke-width="2.4" opacity="0.9" />
+  <circle cx="171" cy="171" r="58" fill="none" stroke="rgba(207,227,255,0.55)" stroke-width="2.2" />
+  <ellipse cx="171" cy="171" rx="37" ry="58" fill="none" stroke="rgba(207,227,255,0.35)" stroke-width="1.7" />
+  <ellipse cx="171" cy="171" rx="58" ry="25" fill="none" stroke="rgba(207,227,255,0.32)" stroke-width="1.7" />
   <path d="M214 112c-11-9-26-14-43-14-36 0-65 29-65 65s29 65 65 65c17 0 32-5 43-14l-18-22c-6 5-13 9-25 9-21 0-38-17-38-38s17-38 38-38c12 0 19 4 25 9l18-22z" fill="url(#mark)" />
-  <path d="M205 138h40v40h-40z" fill="#dbe9ff" opacity="0.9" />
+  <path d="M205 138h40v40h-40z" fill="#2b63c9" opacity="0.78" />
   <text x="296" y="176" fill="#f7fbff" font-size="72" font-family="Inter, Arial, sans-serif" font-weight="700">Casantris</text>
   <text x="76" y="338" fill="#d3e1f8" font-size="42" font-family="Inter, Arial, sans-serif" font-weight="600">
-    Enterprise Governance Intelligence You Can Defend
+    Global Standard for Governed AI Delivery
   </text>
   <text x="76" y="398" fill="#9fb8df" font-size="29" font-family="Inter, Arial, sans-serif">
-    Controlled release posture, explainable decisions, and auditable operational evidence.
+    Trusted release intelligence, explainable decisions, and auditable operational evidence.
   </text>
   <text x="76" y="454" fill="#88a5d2" font-size="24" font-family="Inter, Arial, sans-serif">
-    Trusted by platform, risk, and engineering leadership teams.
+    Built for enterprise leaders scaling governance across regions, teams, and platforms.
   </text>
 </svg>

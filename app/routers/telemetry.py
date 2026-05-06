@@ -68,6 +68,7 @@ class ObservabilitySummaryOut(BaseModel):
     connector_status_counts: dict
     connector_error_categories: dict
     failure_recovery: dict
+    llm_invocation: dict
 
 
 class DecisionLifecycleOut(BaseModel):

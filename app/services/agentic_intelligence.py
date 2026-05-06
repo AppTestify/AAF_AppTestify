@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
+
+from app.services.llm_runtime import ActiveProvider, LLMInvocationError, invoke_json_with_failover
 
 
 def _clamp(v: float) -> float:
@@ -68,6 +71,50 @@ def build_agent_findings(integration_signals: dict[str, Any], obs: dict[str, Any
     )
 
     return findings
+
+
+def build_agent_findings_with_llm(
+    integration_signals: dict[str, Any],
+    obs: dict[str, Any],
+    providers: list[ActiveProvider],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    baseline = build_agent_findings(integration_signals, obs)
+    if not providers:
+        return baseline, {"status": "degraded", "reason": "no_active_provider"}
+    prompt = (
+        "Generate JSON with key 'findings' as an array of 3-6 objects. "
+        "Each object must contain: agent_name, domain, severity(info|warning|critical), confidence(0..1), summary, evidence_json. "
+        "Use this context:\n"
+        + json.dumps({"integration_signals": integration_signals, "observability": obs}, default=str)
+    )
+    try:
+        payload, meta = invoke_json_with_failover(providers, prompt)
+        findings = payload.get("findings")
+        if not isinstance(findings, list) or not findings:
+            raise LLMInvocationError("missing findings array")
+        normalized: list[dict[str, Any]] = []
+        for row in findings:
+            if not isinstance(row, dict):
+                continue
+            normalized.append(
+                {
+                    "agent_name": str(row.get("agent_name") or "LLMAgent"),
+                    "domain": str(row.get("domain") or "governance"),
+                    "severity": str(row.get("severity") or "warning"),
+                    "confidence": _clamp(float(row.get("confidence") or 0.5)),
+                    "summary": str(row.get("summary") or "LLM-generated governance finding"),
+                    "evidence_json": row.get("evidence_json") if isinstance(row.get("evidence_json"), dict) else {},
+                }
+            )
+        if not normalized:
+            raise LLMInvocationError("no valid findings")
+        return normalized, {"status": "ok", **meta}
+    except Exception as exc:  # noqa: BLE001
+        return baseline, {
+            "status": "degraded",
+            "providers_attempted": [p.provider_name for p in providers],
+            "reason": str(exc),
+        }
 
 
 def compute_consensus(findings: list[dict[str, Any]]) -> dict[str, Any]:

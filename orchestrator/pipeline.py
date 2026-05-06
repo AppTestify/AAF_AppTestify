@@ -9,6 +9,7 @@ from aaf.schema import EvidenceRecord, PMFormattedDecision, PipelineResult
 from agents.registry import run_all_agents
 from connectors.evidence_normalizer import enrich_for_rar
 from llm.deterministic_explainer import build_explanation
+from app.services.llm_runtime import ActiveProvider, invoke_text_with_failover
 from metrics.explainability import compute_xi
 from orchestrator.rar import run_rar_loop
 from orchestrator.utility import score_actions
@@ -23,6 +24,7 @@ def run_pipeline(
     normalized_evidence: list[EvidenceRecord],
     raw_evidence_by_connector: dict[str, Any],
     connectors_used: list[str],
+    llm_providers: list[ActiveProvider] | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
@@ -40,13 +42,42 @@ def run_pipeline(
     )
 
     utility_result = score_actions(normalized_evidence, settings)
-    explanation = build_explanation(
+    deterministic_explanation = build_explanation(
         prompt=prompt,
         opinions=opinions,
         consensus=consensus_result,
         rar=rar_result,
         utility=utility_result,
     )
+    explanation = deterministic_explanation
+    llm_meta: dict[str, Any] = {"status": "degraded", "reason": "no_active_provider"}
+    if llm_providers:
+        llm_prompt = (
+            "Create a concise executive governance explanation in markdown with sections: "
+            "What we evaluated, Consensus, Recommended action, Why trustworthy. "
+            "Use this JSON context:\n"
+            + str(
+                {
+                    "prompt": prompt,
+                    "consensus": consensus_result.model_dump(),
+                    "rar": rar_result.model_dump(),
+                    "utility": utility_result.model_dump(),
+                    "opinions": [o.model_dump() for o in opinions],
+                }
+            )
+        )
+        try:
+            llm_text, meta = invoke_text_with_failover(llm_providers, llm_prompt)
+            if llm_text.strip():
+                explanation = llm_text.strip()
+                llm_meta = {"status": "ok", **meta}
+        except Exception:  # noqa: BLE001
+            explanation = deterministic_explanation
+            llm_meta = {
+                "status": "degraded",
+                "reason": "invocation_failed",
+                "providers_attempted": [p.provider_name for p in llm_providers],
+            }
     xi = compute_xi(
         evidence=normalized_evidence,
         opinions=opinions,
@@ -69,5 +100,6 @@ def run_pipeline(
         explanation=explanation,
         explainability=xi,
         pm_view=placeholder_pm,
+        llm_invocation=llm_meta,
     )
     return result.model_copy(update={"pm_view": to_pm_decision(result)})

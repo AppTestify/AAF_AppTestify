@@ -85,3 +85,26 @@ class ConfigAuditLog(Base):
     before_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     after_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TenantNotificationConfig(Base):
+    __tablename__ = "tenant_notification_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, unique=True, index=True)
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_password_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    smtp_from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    use_tls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    use_ssl: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    templates_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    last_test_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    last_test_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

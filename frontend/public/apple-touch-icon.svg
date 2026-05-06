@@ -1,20 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#eaf3ff" />
-      <stop offset="100%" stop-color="#d5e6ff" />
+    <linearGradient id="bg" x1="14%" y1="6%" x2="84%" y2="92%">
+      <stop offset="0%" stop-color="#0b1f45" />
+      <stop offset="56%" stop-color="#17408d" />
+      <stop offset="100%" stop-color="#2664d2" />
     </linearGradient>
-    <linearGradient id="ink" x1="12%" y1="10%" x2="92%" y2="92%">
-      <stop offset="0%" stop-color="#3f8cff" />
-      <stop offset="65%" stop-color="#1f62dd" />
-      <stop offset="100%" stop-color="#1847ab" />
+    <linearGradient id="halo" x1="8%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#c5ddff" stop-opacity="0.92" />
+      <stop offset="100%" stop-color="#84b7ff" stop-opacity="0.18" />
+    </linearGradient>
+    <linearGradient id="mark" x1="6%" y1="8%" x2="96%" y2="96%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="42%" stop-color="#dbeaff" />
+      <stop offset="100%" stop-color="#9fc5ff" />
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)" />
-  <rect x="38" y="38" width="436" height="436" rx="92" fill="none" stroke="#9dbef6" stroke-width="5" opacity="0.8" />
+  <rect x="38" y="38" width="436" height="436" rx="92" fill="none" stroke="url(#halo)" stroke-width="5" opacity="0.9" />
+  <circle cx="256" cy="256" r="146" fill="none" stroke="rgba(209,227,255,0.55)" stroke-width="4.8" />
+  <ellipse cx="256" cy="256" rx="90" ry="146" fill="none" stroke="rgba(209,227,255,0.34)" stroke-width="3.8" />
+  <ellipse cx="256" cy="256" rx="146" ry="64" fill="none" stroke="rgba(209,227,255,0.34)" stroke-width="3.8" />
   <path
-    d="M374 164c-29-27-68-43-112-43-81 0-146 65-146 146s65 146 146 146c44 0 83-16 112-43l-34-39c-19 15-43 25-76 25-49 0-89-40-89-89s40-89 89-89c33 0 57 10 76 25l34-39z"
-    fill="url(#ink)"
+    d="M373 174c-29-28-70-45-117-45-84 0-150 66-150 150s66 150 150 150c47 0 88-17 117-45l-35-43c-20 18-46 29-82 29-51 0-90-38-90-91 0-52 39-90 90-90 36 0 62 11 82 29l35-44z"
+    fill="url(#mark)"
   />
-  <path d="M350 224h78v79h-78z" fill="#dbe9ff" opacity="0.88" />
+  <path d="M347 222h70v68h-70z" fill="#2b63c9" opacity="0.78" />
 </svg>

@@ -53,6 +53,8 @@ _connectors: "deque[ConnectorEvent]" = deque(maxlen=4000)
 _inflight_requests = 0
 _run_queue_depth = 0
 _dead_letter_count = 0
+_llm_ok = 0
+_llm_degraded = 0
 
 
 def set_run_queue_depth(depth: int) -> None:
@@ -123,6 +125,15 @@ def record_dead_letter() -> None:
     global _dead_letter_count
     with _lock:
         _dead_letter_count += 1
+
+
+def record_llm_invocation(status: str) -> None:
+    global _llm_ok, _llm_degraded
+    with _lock:
+        if status == "ok":
+            _llm_ok += 1
+        else:
+            _llm_degraded += 1
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -262,6 +273,8 @@ def snapshot(window_seconds: int = 300) -> dict:
         spans_recent = [s for s in _spans if now - s.ts <= long_window_seconds][-20:]
         conn_window = [c for c in _connectors if now - c.ts <= window_seconds]
         dead_letters = _dead_letter_count
+        llm_ok = _llm_ok
+        llm_degraded = _llm_degraded
 
     base = _window_metrics(req_window, run_window, window_seconds)
     conn_base = _connector_metrics(conn_window)
@@ -297,6 +310,10 @@ def snapshot(window_seconds: int = 300) -> dict:
         "failure_recovery": {
             "dead_letter_count": dead_letters,
             "run_retry_events": base["runs_retried"],
+        },
+        "llm_invocation": {
+            "ok_total": llm_ok,
+            "degraded_total": llm_degraded,
         },
         **conn_base,
     }
@@ -351,5 +368,11 @@ def render_prometheus(window_seconds: int = 300) -> str:
         "# HELP aaf_dead_letter_count Dead-lettered runs count",
         "# TYPE aaf_dead_letter_count counter",
         f"aaf_dead_letter_count {s.get('failure_recovery', {}).get('dead_letter_count', 0)}",
+        "# HELP aaf_llm_invocations_ok_total Successful LLM invocation runs",
+        "# TYPE aaf_llm_invocations_ok_total counter",
+        f"aaf_llm_invocations_ok_total {s.get('llm_invocation', {}).get('ok_total', 0)}",
+        "# HELP aaf_llm_invocations_degraded_total Degraded/fallback LLM invocation runs",
+        "# TYPE aaf_llm_invocations_degraded_total counter",
+        f"aaf_llm_invocations_degraded_total {s.get('llm_invocation', {}).get('degraded_total', 0)}",
     ]
     return "\n".join(lines) + "\n"

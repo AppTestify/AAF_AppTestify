@@ -24,6 +24,7 @@ from app.routers import (
     governance_intelligence,
     governance_policy,
     leads,
+    portfolio,
     governance_v1,
     prompts,
     rbac,
@@ -132,6 +133,7 @@ app.include_router(telemetry.router, prefix=settings.api_v1_prefix)
 app.include_router(prompts.router, prefix=settings.api_v1_prefix)
 app.include_router(tenant_config.router, prefix=settings.api_v1_prefix)
 app.include_router(leads.router, prefix=settings.api_v1_prefix)
+app.include_router(portfolio.router, prefix=settings.api_v1_prefix)
 
 # Optional production static hosting fallback for React SPA.
 _dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"

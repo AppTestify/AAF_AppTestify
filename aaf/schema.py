@@ -99,3 +99,4 @@ class PipelineResult(BaseModel):
     explanation: str
     explainability: ExplainabilityResult
     pm_view: PMFormattedDecision
+    llm_invocation: Dict[str, Any] = Field(default_factory=dict)

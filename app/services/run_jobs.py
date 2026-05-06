@@ -17,15 +17,16 @@ from app.models.governance import AgentFinding, CorrelatedIncident, ExecutiveSum
 from app.models.config import TenantConnectorConfig, TenantSettings
 from app.models.tenant import Tenant
 from app.services.agentic_intelligence import (
-    build_agent_findings,
+    build_agent_findings_with_llm,
     build_executive_summary,
     build_incident,
     compute_consensus,
 )
 from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings
 from app.services.governance_service import run_governance
+from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
-from app.services.observability import record_connector_call, record_dead_letter, record_run, set_run_queue_depth
+from app.services.observability import record_connector_call, record_dead_letter, record_llm_invocation, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
@@ -92,7 +93,8 @@ def _process_one(run_id: int) -> None:
         settings = get_settings()
         tenant = db.get(Tenant, run.tenant_id) if run.tenant_id else None
         effective = resolve_effective_settings(db, settings, tenant)
-        result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective))
+        provider_chain = resolve_provider_chain(db, tenant)
+        result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
         out = pipeline_result_to_jsonable(result)
         connector_rows = (
             db.execute(select(TenantConnectorConfig).where(TenantConnectorConfig.tenant_id == run.tenant_id))
@@ -133,16 +135,31 @@ def _process_one(run_id: int) -> None:
         out["integration_signals"] = integration_signals
         out["rag_context"] = rag_context
 
-        findings = build_agent_findings(integration_signals, observability_snapshot(window_seconds=900))
+        findings, findings_llm_meta = build_agent_findings_with_llm(
+            integration_signals,
+            observability_snapshot(window_seconds=900),
+            provider_chain,
+        )
         consensus = compute_consensus(findings)
         incident = build_incident(findings, consensus)
         exec_summary = build_executive_summary(incident)
+        explanation_meta = out.get("llm_invocation") if isinstance(out.get("llm_invocation"), dict) else {}
         out["agentic_intelligence"] = {
             "findings": findings,
             "consensus": consensus,
             "incident": incident,
             "executive_summary": exec_summary,
         }
+        out["llm_invocation"] = {
+            "status": "ok" if findings_llm_meta.get("status") == "ok" and explanation_meta.get("status") == "ok" else "degraded",
+            "provider": explanation_meta.get("provider"),
+            "model": explanation_meta.get("model"),
+            "stages": {
+                "agent_findings": findings_llm_meta,
+                "explanation": explanation_meta if explanation_meta else {"status": "degraded", "reason": "no_active_provider"},
+            },
+        }
+        record_llm_invocation(out["llm_invocation"]["status"])
 
         run.result_json = out
         run.status = "succeeded"

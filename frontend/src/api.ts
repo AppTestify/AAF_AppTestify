@@ -522,6 +522,10 @@ export type ObservabilitySummary = {
     dead_letter_count: number;
     run_retry_events: number;
   };
+  llm_invocation: {
+    ok_total: number;
+    degraded_total: number;
+  };
 };
 
 export async function fetchObservabilitySummary(token: string, windowSeconds = 300): Promise<ObservabilitySummary> {
@@ -915,5 +919,236 @@ export async function fetchAuditExport(
   });
   if (!r.ok) throw new Error(await parseError(r));
   if (format === "csv") return r.blob();
+  return r.json();
+}
+
+export type PortfolioProject = {
+  id: number;
+  tenant_id: number | null;
+  key: string;
+  name: string;
+  owner: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PortfolioRelease = {
+  id: number;
+  tenant_id: number | null;
+  project_id: number;
+  version: string;
+  target_date: string | null;
+  status: string;
+  release_decision: string | null;
+  decision_confidence: number | null;
+  consensus_score: number | null;
+  risk_level: string | null;
+  run_id: number | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExecutivePortfolioReport = {
+  projects_total: number;
+  active_projects: number;
+  releases_total: number;
+  releases_planned: number;
+  releases_approved: number;
+  releases_blocked: number;
+  avg_confidence: number;
+  avg_consensus: number;
+  high_risk_open: number;
+  project_breakdown: {
+    project_id: number;
+    project_key: string;
+    project_name: string;
+    releases_total: number;
+    go_count: number;
+    hold_count: number;
+    avg_confidence: number;
+  }[];
+};
+
+export type PortfolioOperationsContext = {
+  runs_total: number;
+  runs_24h: number;
+  runs_success_24h: number;
+  cases_open: number;
+  cases_total: number;
+  alerts_24h: number;
+  evidence_snapshots_total: number;
+  decisions_total: number;
+  decisions_approved: number;
+  portfolio_releases_total: number;
+  portfolio_releases_linked_to_run: number;
+};
+
+export async function fetchPortfolioProjects(token: string): Promise<PortfolioProject[]> {
+  const r = await fetch(`${API}/portfolio/projects`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PortfolioProject[]>;
+}
+
+export async function createPortfolioProject(
+  token: string,
+  body: { key: string; name: string; owner?: string | null; status?: string }
+): Promise<PortfolioProject> {
+  const r = await fetch(`${API}/portfolio/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PortfolioProject>;
+}
+
+export async function fetchPortfolioReleases(token: string): Promise<PortfolioRelease[]> {
+  const r = await fetch(`${API}/portfolio/releases`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PortfolioRelease[]>;
+}
+
+export async function createPortfolioRelease(
+  token: string,
+  body: {
+    project_id: number;
+    version: string;
+    status?: string;
+    target_date?: string | null;
+    release_decision?: string | null;
+    decision_confidence?: number | null;
+    consensus_score?: number | null;
+    risk_level?: string | null;
+    run_id?: number | null;
+  }
+): Promise<PortfolioRelease> {
+  const r = await fetch(`${API}/portfolio/releases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PortfolioRelease>;
+}
+
+export async function fetchExecutivePortfolioReport(token: string): Promise<ExecutivePortfolioReport> {
+  const r = await fetch(`${API}/portfolio/reports/executive`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ExecutivePortfolioReport>;
+}
+
+export async function fetchPortfolioOperationsContext(token: string): Promise<PortfolioOperationsContext> {
+  const r = await fetch(`${API}/portfolio/reports/operations-context`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PortfolioOperationsContext>;
+}
+
+export type NotificationTemplate = {
+  subject: string;
+  body: string;
+};
+
+export type TenantNotificationConfig = {
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_password_configured: boolean;
+  smtp_from_email: string | null;
+  use_tls: boolean;
+  use_ssl: boolean;
+  notifications_enabled: boolean;
+  templates: Record<string, NotificationTemplate>;
+  last_test_ok: boolean | null;
+  last_test_error: string | null;
+  last_tested_at: string | null;
+};
+
+export async function fetchNotificationConfig(token: string, tenantSlug?: string | null): Promise<TenantNotificationConfig> {
+  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<TenantNotificationConfig>;
+}
+
+export async function saveNotificationConfig(
+  token: string,
+  body: {
+    smtp_host?: string | null;
+    smtp_port?: number | null;
+    smtp_username?: string | null;
+    smtp_password?: string | null;
+    smtp_from_email?: string | null;
+    use_tls?: boolean;
+    use_ssl?: boolean;
+    notifications_enabled?: boolean;
+    templates?: Record<string, NotificationTemplate>;
+  },
+  tenantSlug?: string | null
+): Promise<TenantNotificationConfig> {
+  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<TenantNotificationConfig>;
+}
+
+export async function testNotificationConfig(
+  token: string,
+  body: { to_email?: string | null },
+  tenantSlug?: string | null
+): Promise<{ ok: boolean; message: string }> {
+  const r = await fetch(`${API}/tenant/notifications/test${tenantQuery(tenantSlug)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<{ ok: boolean; message: string }>;
+}
+
+export type AdminUser = {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  is_superadmin: boolean;
+  is_active: boolean;
+  tenant_id: number | null;
+  role_names: string[];
+};
+
+export async function fetchRbacUsers(token: string, tenantSlug?: string | null): Promise<AdminUser[]> {
+  const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
+  const r = await fetch(`${API}/rbac/users${q}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AdminUser[]>;
+}
+
+export async function createRbacUser(
+  token: string,
+  body: { email: string; role_name: string; is_active?: boolean },
+  tenantSlug?: string | null
+): Promise<{ id: number; email: string; role_name: string; tenant_id: number; delivery_status: string; temporary_password: string | null }> {
+  const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
+  const r = await fetch(`${API}/rbac/users${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
   return r.json();
 }

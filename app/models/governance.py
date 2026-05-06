@@ -177,3 +177,39 @@ class GovernanceWorkflowRun(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     output_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PortfolioProject(Base):
+    __tablename__ = "portfolio_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    owner: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ProjectRelease(Base):
+    __tablename__ = "project_releases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("portfolio_projects.id"), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="planned", nullable=False, index=True)
+    release_decision: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    decision_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    consensus_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    risk_level: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("governance_runs.id"), nullable=True, index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

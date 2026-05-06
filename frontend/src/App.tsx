@@ -30,6 +30,7 @@ import { SignupPage } from "./pages/SignupPage";
 import { WorkspaceEvidencePage } from "./pages/WorkspaceEvidencePage";
 import { WorkspaceHomePage } from "./pages/WorkspaceHomePage";
 import { WorkspaceIntegrationsPage } from "./pages/WorkspaceIntegrationsPage";
+import { WorkspacePortfolioPage } from "./pages/WorkspacePortfolioPage";
 import { RequestAccessPage } from "./pages/RequestAccessPage";
 import { WorkspaceReportsPage } from "./pages/WorkspaceReportsPage";
 import { WorkspaceRunsPage } from "./pages/WorkspaceRunsPage";
@@ -310,6 +311,10 @@ function AppRoutes() {
               canManage={Boolean(user?.is_superadmin || user?.is_admin)}
             />
           }
+        />
+        <Route
+          path="portfolio"
+          element={<WorkspacePortfolioPage token={token} canManage={Boolean(user?.is_superadmin || user?.is_admin)} />}
         />
         <Route path="reports" element={<WorkspaceReportsPage token={token} />} />
         <Route

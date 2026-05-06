@@ -4,6 +4,7 @@ import {
   fetchAuditExport,
   fetchConsensusSummary,
   fetchExecutiveSummaries,
+  fetchExecutivePortfolioReport,
   fetchGovernanceRuns,
   fetchIntelligenceIncidents,
   fetchReleaseGovernance,
@@ -12,6 +13,7 @@ import {
   type AuditEvent,
   type ConsensusSummary,
   type ExecutiveSummary,
+  type ExecutivePortfolioReport,
   type GovernanceRunV1,
   type IntelligenceIncident,
   type ReleaseGovernance,
@@ -40,6 +42,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
   const [auditRows, setAuditRows] = useState<AuditEvent[]>([]);
   const [consensus, setConsensus] = useState<ConsensusSummary | null>(null);
   const [releaseGov, setReleaseGov] = useState<ReleaseGovernance | null>(null);
+  const [portfolioReport, setPortfolioReport] = useState<ExecutivePortfolioReport | null>(null);
   const [output, setOutput] = useState<string>("");
   const [toast, setToast] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -62,8 +65,9 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
       fetchAuditEvents(token, { limit: 500 }),
       fetchConsensusSummary(token),
       fetchReleaseGovernance(token),
+      fetchExecutivePortfolioReport(token),
     ])
-      .then(([r, i, w, e, a, c, g]) => {
+      .then(([r, i, w, e, a, c, g, p]) => {
         setRuns(r);
         setIncidents(i);
         setWorkflowRuns(w);
@@ -71,6 +75,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
         setAuditRows(a);
         setConsensus(c);
         setReleaseGov(g);
+        setPortfolioReport(p);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load reports"))
       .finally(() => setLoading(false));
@@ -189,8 +194,27 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
             <div className="label">Release decision</div>
             <div className="value">{releaseGov?.decision ?? "..."}</div>
           </div>
+          <div className="metric">
+            <div className="label">Portfolio projects</div>
+            <div className="value">{portfolioReport?.projects_total ?? "..."}</div>
+          </div>
         </div>
       ) : null}
+      <div className="card">
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Executive portfolio report</h2>
+            <p>Cross-project release readiness and decision posture for leadership governance.</p>
+          </div>
+        </div>
+        <div className="workspace-kpi-strip">
+          <div className="metric"><div className="label">Releases total</div><div className="value">{portfolioReport?.releases_total ?? 0}</div></div>
+          <div className="metric"><div className="label">Approved</div><div className="value good">{portfolioReport?.releases_approved ?? 0}</div></div>
+          <div className="metric"><div className="label">Blocked</div><div className="value warn">{portfolioReport?.releases_blocked ?? 0}</div></div>
+          <div className="metric"><div className="label">High risk</div><div className="value warn">{portfolioReport?.high_risk_open ?? 0}</div></div>
+          <div className="metric"><div className="label">Avg confidence</div><div className="value">{(((portfolioReport?.avg_confidence ?? 0) * 100)).toFixed(1)}%</div></div>
+        </div>
+      </div>
       <div className="card-group">
       <div className="card">
         <div className="workspace-section-intro">

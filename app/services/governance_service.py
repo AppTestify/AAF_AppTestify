@@ -6,6 +6,7 @@ from typing import Any
 
 from aaf.config import Settings
 from aaf.schema import PipelineResult
+from app.services.llm_runtime import ActiveProvider
 from connectors.evidence_normalizer import normalize_all
 from connectors.finops_connector import FinopsConnector
 from connectors.github_connector import GitHubConnector
@@ -18,6 +19,7 @@ async def run_governance(
     prompt: str,
     prompt_id: str | None,
     settings: Settings,
+    llm_providers: list[ActiveProvider] | None = None,
 ) -> PipelineResult:
     names = route_connectors(prompt)
     ctx: dict[str, str] = {"prompt": prompt, "github_repo": settings.github_repo, "jira_project": "PROJ"}
@@ -40,4 +42,5 @@ async def run_governance(
         normalized_evidence=normalized,
         raw_evidence_by_connector=raw,
         connectors_used=names,
+        llm_providers=llm_providers or [],
     )

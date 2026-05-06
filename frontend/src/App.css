@@ -2142,3 +2142,239 @@ textarea:focus-visible {
     align-items: flex-start;
   }
 }
+
+/* Settings — general + connectors quick connect */
+.settings-general-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings-highlight-card {
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow) 55%, transparent);
+}
+
+.settings-onboarding-steps {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.settings-onboarding-steps li {
+  margin-bottom: 0.35rem;
+}
+
+.settings-quick-grid {
+  gap: 0.75rem 1.25rem;
+}
+
+.settings-primary-actions {
+  margin-top: 0.5rem;
+}
+
+.settings-advanced-details {
+  margin-top: 0.25rem;
+}
+
+.settings-advanced-details > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  list-style: none;
+}
+
+.settings-advanced-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-json-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.settings-connectors-card .settings-cred-hint {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border: 1px solid var(--border);
+}
+
+.settings-connector-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.settings-connector-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.settings-connector-title {
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.settings-enable-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-connector-actions {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.settings-validation-msg {
+  flex: 1 1 200px;
+  font-size: 0.82rem;
+  color: var(--danger, #c45c5c);
+  min-width: 0;
+}
+
+.settings-connector-raw {
+  margin-top: 0.75rem;
+}
+
+.settings-connectors-footer {
+  margin-top: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Portfolio page */
+.portfolio-page .portfolio-explainer {
+  margin-bottom: 1rem;
+}
+
+.portfolio-explainer h2 {
+  margin-top: 0;
+}
+
+.portfolio-explainer-lead {
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.portfolio-explainer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .portfolio-explainer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portfolio-explainer-col h3 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.portfolio-bullet-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.portfolio-bullet-list a {
+  font-weight: 600;
+}
+
+.portfolio-ops-link-table {
+  margin-top: 0.5rem;
+}
+
+.portfolio-inline-link {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.portfolio-kpi-section {
+  margin-bottom: 1rem;
+}
+
+.portfolio-kpi-heading {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0.75rem 0 0.35rem;
+}
+
+.portfolio-kpi-strip {
+  margin-bottom: 0.5rem;
+}
+
+.portfolio-lifecycle-card .workspace-kpi-strip {
+  margin-top: 0.75rem;
+}
+
+.portfolio-distribution-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .portfolio-distribution-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portfolio-mix-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.portfolio-mix-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+}
+
+.portfolio-mix-key {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.portfolio-mix-val {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.portfolio-release-head {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.portfolio-filter-row {
+  min-width: 200px;
+  margin-bottom: 0;
+}

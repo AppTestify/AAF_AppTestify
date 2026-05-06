@@ -48,63 +48,65 @@ export function LoginPage({ onAuthed, signupEnabled }: LoginPageProps) {
 
       <div className="auth-panel">
         <div className="auth-surface">
-          <div className="card auth-card-main">
-            <div className="auth-badge">Trusted Enterprise Access</div>
-            <h1 className="auth-heading">Sign in to Casantris</h1>
-            <p className="auth-sub">Access governance operations with tenant-scoped controls, policy traceability, and leadership-ready visibility.</p>
-            {error ? (
-              <div className="alert alert-error" role="alert">
-                {error}
-              </div>
-            ) : null}
-            <form onSubmit={handleLogin}>
-              <div className="form-row">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="text"
-                  inputMode="email"
-                  autoComplete="username"
-                  spellCheck={false}
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-row">
-                <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <button className="btn btn-primary" type="submit" disabled={loading}>
-                {loading ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
+          <div className="auth-layout-stack">
+            <div className="card auth-card-main">
+              <div className="auth-badge">Trusted Enterprise Access</div>
+              <h1 className="auth-heading">Sign in to Casantris</h1>
+              <p className="auth-sub">Access governance operations with tenant-scoped controls, policy traceability, and leadership-ready visibility.</p>
+              {error ? (
+                <div className="alert alert-error" role="alert">
+                  {error}
+                </div>
+              ) : null}
+              <form onSubmit={handleLogin}>
+                <div className="form-row">
+                  <label htmlFor="email">Email</label>
+                  <input
+                    id="email"
+                    type="text"
+                    inputMode="email"
+                    autoComplete="username"
+                    spellCheck={false}
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="password">Password</label>
+                  <input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={loading}>
+                  {loading ? "Signing in…" : "Sign in"}
+                </button>
+              </form>
+            </div>
           </div>
-          <div className="card auth-card-side">
-            <h2>Enterprise trust posture</h2>
-            <p>Built for secure, accountable operations across multiple teams, tenants, and governance owners.</p>
-            <div className="auth-kpis">
-              <div className="auth-kpi">
-                <span className="label">Access model</span>
-                <strong>JWT + role-aware</strong>
+          <div className="auth-visual-panel" aria-hidden="true">
+            <span className="auth-visual-tag">Casantris trust layer</span>
+            <h2 className="auth-visual-title">Governance confidence by design</h2>
+            <p className="auth-visual-sub">A controlled operating surface that keeps decisions explainable, auditable, and leadership-ready.</p>
+            <div className="auth-pillars">
+              <div className="auth-pillar">
+                <strong>Policy-grade access</strong>
+                <span>Role-constrained workflows across superadmin and tenant boundaries.</span>
               </div>
-              <div className="auth-kpi">
-                <span className="label">Decision trail</span>
-                <strong>Audited workflows</strong>
+              <div className="auth-pillar">
+                <strong>Decision traceability</strong>
+                <span>Evidence-linked recommendations and approval history for every critical action.</span>
+              </div>
+              <div className="auth-pillar">
+                <strong>Operational assurance</strong>
+                <span>Dashboard posture, telemetry, and exports aligned to enterprise review standards.</span>
               </div>
             </div>
-            <ul className="auth-points">
-              <li>Superadmin and tenant-admin separation</li>
-              <li>Approval and decision audit trail</li>
-              <li>Operational dashboard visibility</li>
-            </ul>
           </div>
         </div>
         {signupEnabled ? (

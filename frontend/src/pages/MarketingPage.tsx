@@ -80,6 +80,16 @@ export function MarketingPage() {
         </div>
       </section>
 
+      <section className="tech-strip" aria-label="Technology stack">
+        <div className="tech-strip-inner">
+          {["AWS", "Azure", "Google Cloud", "OpenAI", "LangChain", "Docker", "Kubernetes", "PostgreSQL", "React", "Node.js", "Python", "Terraform"].map((tech) => (
+            <span key={tech} className="tech-chip">
+              {tech}
+            </span>
+          ))}
+        </div>
+      </section>
+
       <div className="trust-bar">
         <div className="trust-bar-inner">
           <span className="trust-item">

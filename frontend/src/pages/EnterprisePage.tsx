@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchSignupStatus } from "../api";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
@@ -13,13 +14,21 @@ export function EnterprisePage() {
 
   return (
     <MarketingLayout signupOpen={signupOpen}>
-      <section className="section">
-        <p className="section-eyebrow">Enterprise</p>
-        <h1 className="section-title">Enterprise controls, trust posture, and governance continuity</h1>
+      <section className="marketing-subhero">
+        <div className="marketing-subhero-inner">
+          <p className="section-eyebrow">Enterprise</p>
+          <h1 className="section-title">Enterprise controls, trust posture, and governance continuity</h1>
+          <p className="section-lead">Governance-ready control boundaries and rollout confidence for multi-organization operations.</p>
+        </div>
+      </section>
+
+      <section className="section subpage-band subpage-band-dark">
+        <p className="section-eyebrow">Controls</p>
+        <h2 className="section-title">Built for multi-organization governance at scale</h2>
         <div className="enterprise-band" style={{ marginTop: "1rem" }}>
           <div>
-            <p className="section-eyebrow section-eyebrow--on-dark">Controls</p>
-            <h2 className="enterprise-title">Built for multi-organization governance at scale</h2>
+            <p className="section-eyebrow section-eyebrow--on-dark">Assurance model</p>
+            <h2 className="enterprise-title">Defensible operational governance from intake to action</h2>
             <p className="enterprise-lead">
               Superadmin boundaries, tenant-admin operations, request-access onboarding, and audit-ready workflows deliver a
               defensible enterprise operating model.
@@ -34,7 +43,7 @@ export function EnterprisePage() {
         </div>
       </section>
 
-      <section className="section section-alt">
+      <section className="section subpage-band">
         <p className="section-eyebrow">Security & Governance</p>
         <h2 className="section-title">Controls that support enterprise assurance models</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
@@ -57,7 +66,7 @@ export function EnterprisePage() {
         </div>
       </section>
 
-      <section className="section">
+      <section className="section subpage-band subpage-band-dark">
         <p className="section-eyebrow">Rollout Model</p>
         <h2 className="section-title">How enterprises roll out Casantris across teams</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
@@ -77,6 +86,19 @@ export function EnterprisePage() {
             <h3>Phase 4: Continuous optimization</h3>
             <p>Iterate on policies, confidence triggers, and connector coverage to reduce operational risk over time.</p>
           </article>
+        </div>
+      </section>
+
+      <section className="subpage-cta">
+        <div className="subpage-cta-inner">
+          <div className="subpage-cta-copy">
+            <strong>Align your governance rollout with an enterprise trust model.</strong>
+            <span>Start with controlled onboarding, then scale with confidence across teams.</span>
+          </div>
+          <div className="subpage-cta-actions">
+            <Link to="/platform" className="btn btn-ghost">View platform</Link>
+            <Link to="/request-access" className="btn btn-primary">Talk to sales</Link>
+          </div>
         </div>
       </section>
     </MarketingLayout>

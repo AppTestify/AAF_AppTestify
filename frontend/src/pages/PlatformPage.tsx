@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchSignupStatus } from "../api";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
@@ -13,13 +14,21 @@ export function PlatformPage() {
 
   return (
     <MarketingLayout signupOpen={signupOpen}>
-      <section className="section">
-        <p className="section-eyebrow">Platform</p>
-        <h1 className="section-title">A trust architecture for enterprise operational governance</h1>
-        <p className="section-lead">
-          Casantris brings policy controls, evidence continuity, and decision accountability into one tenant-aware control
-          plane for engineering and risk leadership.
-        </p>
+      <section className="marketing-subhero">
+        <div className="marketing-subhero-inner">
+          <p className="section-eyebrow">Platform</p>
+          <h1 className="section-title">A trust architecture for enterprise operational governance</h1>
+          <p className="section-lead">
+            Casantris brings policy controls, evidence continuity, and decision accountability into one tenant-aware control
+            plane for engineering and risk leadership.
+          </p>
+        </div>
+      </section>
+
+      <section className="section subpage-band">
+        <p className="section-eyebrow">Core capabilities</p>
+        <h2 className="section-title">The control plane for defensible release posture</h2>
+        <p className="section-lead">Operational intelligence, governance workflows, and traceability in a single experience.</p>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
             <h3>Defensible decision runs</h3>
@@ -48,8 +57,8 @@ export function PlatformPage() {
         </div>
       </section>
 
-      <section className="section section-alt">
-        <p className="section-eyebrow">Architecture</p>
+      <section className="section subpage-band subpage-band-dark">
+        <p className="section-eyebrow">Architecture proof</p>
         <h2 className="section-title">Designed for accountability at scale</h2>
         <p className="section-lead">
           The platform combines API-governed workflows, background execution controls, connector validation, and
@@ -71,8 +80,8 @@ export function PlatformPage() {
         </div>
       </section>
 
-      <section className="section">
-        <p className="section-eyebrow">Business Value</p>
+      <section className="section subpage-band">
+        <p className="section-eyebrow">Business value</p>
         <h2 className="section-title">Leadership outcomes from day one</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
@@ -87,6 +96,19 @@ export function PlatformPage() {
             <h3>Audit continuity</h3>
             <p>Exportable reports and event trails support internal controls, external audits, and board communication.</p>
           </article>
+        </div>
+      </section>
+
+      <section className="subpage-cta">
+        <div className="subpage-cta-inner">
+          <div className="subpage-cta-copy">
+            <strong>Review how this architecture maps to your governance model.</strong>
+            <span>Talk to the team or move directly into the enterprise control scope.</span>
+          </div>
+          <div className="subpage-cta-actions">
+            <Link to="/request-access" className="btn btn-primary">Talk to sales</Link>
+            <Link to="/enterprise" className="btn btn-ghost">Explore enterprise controls</Link>
+          </div>
         </div>
       </section>
     </MarketingLayout>

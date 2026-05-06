@@ -17,7 +17,7 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           <div>
             <h2>Casantris</h2>
             <span>
-            {user.is_superadmin ? "superadmin" : user.tenant_slug ? `tenant: ${user.tenant_slug}` : "workspace"}
+            {user.is_superadmin ? "enterprise core" : user.tenant_slug ? `tenant: ${user.tenant_slug}` : "workspace"}
             </span>
           </div>
         </div>

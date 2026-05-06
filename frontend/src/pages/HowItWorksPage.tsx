@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchSignupStatus } from "../api";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
@@ -13,9 +14,17 @@ export function HowItWorksPage() {
 
   return (
     <MarketingLayout signupOpen={signupOpen}>
-      <section className="section section-alt">
-        <p className="section-eyebrow">How It Works</p>
-        <h1 className="section-title">From operational signals to auditable governance decisions</h1>
+      <section className="marketing-subhero">
+        <div className="marketing-subhero-inner">
+          <p className="section-eyebrow">How It Works</p>
+          <h1 className="section-title">From operational signals to auditable governance decisions</h1>
+          <p className="section-lead">A structured execution rhythm that keeps controls, context, and outcomes aligned.</p>
+        </div>
+      </section>
+
+      <section className="section subpage-band subpage-band-dark">
+        <p className="section-eyebrow">Execution model</p>
+        <h2 className="section-title">A repeatable trust-first operating sequence</h2>
         <ol className="steps steps--enterprise" style={{ marginTop: "1rem" }}>
           <li>
             <span className="step-num">1</span>
@@ -48,7 +57,7 @@ export function HowItWorksPage() {
         </ol>
       </section>
 
-      <section className="section">
+      <section className="section subpage-band">
         <p className="section-eyebrow">Workflow Breakdown</p>
         <h2 className="section-title">Detailed execution model for production teams</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
@@ -71,7 +80,7 @@ export function HowItWorksPage() {
         </div>
       </section>
 
-      <section className="section section-alt">
+      <section className="section subpage-band subpage-band-dark">
         <p className="section-eyebrow">Operational Cadence</p>
         <h2 className="section-title">How trusted operating teams run Casantris weekly</h2>
         <ol className="steps steps--enterprise" style={{ marginTop: "1rem" }}>
@@ -104,6 +113,19 @@ export function HowItWorksPage() {
             </div>
           </li>
         </ol>
+      </section>
+
+      <section className="subpage-cta">
+        <div className="subpage-cta-inner">
+          <div className="subpage-cta-copy">
+            <strong>Ready to operationalize this cadence with your team?</strong>
+            <span>Move from process understanding to enterprise rollout planning.</span>
+          </div>
+          <div className="subpage-cta-actions">
+            <Link to="/enterprise" className="btn btn-ghost">Enterprise rollout</Link>
+            <Link to="/request-access" className="btn btn-primary">Request access</Link>
+          </div>
+        </div>
       </section>
     </MarketingLayout>
   );

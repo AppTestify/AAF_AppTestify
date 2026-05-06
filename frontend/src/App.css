@@ -32,6 +32,15 @@
   color: var(--muted);
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, white 30%);
+  outline-offset: 2px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -790,6 +799,20 @@
 
 .subpage-band-dark .feature-card {
   background: rgba(255, 255, 255, 0.95);
+}
+
+.subpage-band-dark .steps--enterprise strong {
+  color: #f7fbff;
+}
+
+.subpage-band-dark .steps--enterprise p {
+  color: #d3e2fb;
+}
+
+.subpage-band-dark .step-num {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(220, 233, 255, 0.85);
+  color: #17408d;
 }
 
 .subpage-cta {

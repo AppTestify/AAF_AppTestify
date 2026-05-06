@@ -35,13 +35,24 @@ class SpanEvent:
     attributes: dict
 
 
+@dataclass
+class ConnectorEvent:
+    ts: float
+    connector: str
+    status: str
+    latency_ms: float
+    error_category: Optional[str]
+
+
 _lock = Lock()
 _started_at = time.time()
 _requests: "deque[RequestEvent]" = deque(maxlen=5000)
 _runs: "deque[RunEvent]" = deque(maxlen=2000)
 _spans: "deque[SpanEvent]" = deque(maxlen=4000)
+_connectors: "deque[ConnectorEvent]" = deque(maxlen=4000)
 _inflight_requests = 0
 _run_queue_depth = 0
+_dead_letter_count = 0
 
 
 def set_run_queue_depth(depth: int) -> None:
@@ -89,6 +100,31 @@ def record_span(name: str, duration_ms: float, status: str, attributes: Optional
         )
 
 
+def record_connector_call(
+    connector: str,
+    *,
+    status: str,
+    latency_ms: float,
+    error_category: Optional[str] = None,
+) -> None:
+    with _lock:
+        _connectors.append(
+            ConnectorEvent(
+                ts=time.time(),
+                connector=connector,
+                status=status,
+                latency_ms=latency_ms,
+                error_category=error_category,
+            )
+        )
+
+
+def record_dead_letter() -> None:
+    global _dead_letter_count
+    with _lock:
+        _dead_letter_count += 1
+
+
 def _percentile(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
@@ -131,6 +167,29 @@ def _window_metrics(req_window: list[RequestEvent], run_window: list[RunEvent], 
             }
             for endpoint, count in by_endpoint.most_common(12)
         ],
+    }
+
+
+def _connector_metrics(conn_window: list[ConnectorEvent]) -> dict:
+    if not conn_window:
+        return {
+            "connector_calls_total": 0,
+            "connector_error_rate": 0.0,
+            "connector_latency_ms_p95": 0.0,
+            "connector_status_counts": {},
+            "connector_error_categories": {},
+        }
+    total = len(conn_window)
+    failed = sum(1 for c in conn_window if c.status != "ok")
+    latencies = [c.latency_ms for c in conn_window]
+    status_counts = Counter(c.status for c in conn_window)
+    error_categories = Counter(c.error_category for c in conn_window if c.error_category)
+    return {
+        "connector_calls_total": total,
+        "connector_error_rate": round(failed / total, 4),
+        "connector_latency_ms_p95": round(_percentile(latencies, 0.95), 2),
+        "connector_status_counts": dict(status_counts),
+        "connector_error_categories": dict(error_categories),
     }
 
 
@@ -201,8 +260,11 @@ def snapshot(window_seconds: int = 300) -> dict:
         inflight = _inflight_requests
         queue_depth = _run_queue_depth
         spans_recent = [s for s in _spans if now - s.ts <= long_window_seconds][-20:]
+        conn_window = [c for c in _connectors if now - c.ts <= window_seconds]
+        dead_letters = _dead_letter_count
 
     base = _window_metrics(req_window, run_window, window_seconds)
+    conn_base = _connector_metrics(conn_window)
     long_base = _window_metrics(req_window_long, [], long_window_seconds)
     slo_burn = _compute_slo_burn(base["error_rate"], long_base["error_rate"])
     uptime = int(now - _started_at)
@@ -232,6 +294,11 @@ def snapshot(window_seconds: int = 300) -> dict:
             }
             for s in spans_recent
         ],
+        "failure_recovery": {
+            "dead_letter_count": dead_letters,
+            "run_retry_events": base["runs_retried"],
+        },
+        **conn_base,
     }
     return merged
 
@@ -275,5 +342,14 @@ def render_prometheus(window_seconds: int = 300) -> str:
         "# HELP aaf_alert_rules_triggered Number of triggered alert rules",
         "# TYPE aaf_alert_rules_triggered gauge",
         f"aaf_alert_rules_triggered {sum(1 for r in s['alert_rules'] if r.get('triggered'))}",
+        "# HELP aaf_connector_calls_total Connector calls in rolling window",
+        "# TYPE aaf_connector_calls_total gauge",
+        f"aaf_connector_calls_total {s.get('connector_calls_total', 0)}",
+        "# HELP aaf_connector_error_rate Connector error rate in rolling window",
+        "# TYPE aaf_connector_error_rate gauge",
+        f"aaf_connector_error_rate {s.get('connector_error_rate', 0.0)}",
+        "# HELP aaf_dead_letter_count Dead-lettered runs count",
+        "# TYPE aaf_dead_letter_count counter",
+        f"aaf_dead_letter_count {s.get('failure_recovery', {}).get('dead_letter_count', 0)}",
     ]
     return "\n".join(lines) + "\n"

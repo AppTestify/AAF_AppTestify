@@ -25,7 +25,7 @@ from app.services.agentic_intelligence import (
 from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings
 from app.services.governance_service import run_governance
 from app.services.integration_signals import connector_signal
-from app.services.observability import record_run, set_run_queue_depth
+from app.services.observability import record_connector_call, record_dead_letter, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
@@ -101,7 +101,17 @@ def _process_one(run_id: int) -> None:
             if run.tenant_id
             else []
         )
-        integration_signals = {row.connector_name: connector_signal(row) for row in connector_rows}
+        integration_signals = {}
+        for row in connector_rows:
+            signal = connector_signal(row)
+            integration_signals[row.connector_name] = signal
+            status = "ok" if signal.get("freshness") != "degraded" else "error"
+            record_connector_call(
+                row.connector_name,
+                status=status,
+                latency_ms=float(signal.get("latency_ms") or 0),
+                error_category=str(signal.get("error_category")) if signal.get("error_category") else None,
+            )
         for row in connector_rows:
             row.telemetry_json = integration_signals[row.connector_name]
             row.last_sync_at = datetime.now(timezone.utc)
@@ -226,6 +236,7 @@ def _process_one(run_id: int) -> None:
             record_run("retry", elapsed_ms, run.retry_count)
             return
         run.status = "failed"
+        record_dead_letter()
         db.add(
             AuditEvent(
                 tenant_id=run.tenant_id,

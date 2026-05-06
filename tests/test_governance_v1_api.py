@@ -154,10 +154,23 @@ def test_observability_summary_and_metrics_endpoint(client: TestClient):
     body = summary.json()
     assert "requests_total" in body
     assert "latency_ms_p95" in body
+    assert "connector_calls_total" in body
+    assert "failure_recovery" in body
 
     metrics = client.get("/api/v1/telemetry/observability/metrics", headers={"Authorization": f"Bearer {token}"})
     assert metrics.status_code == 200, metrics.text
     assert "aaf_requests_window_total" in metrics.text
+    assert "aaf_connector_calls_total" in metrics.text
+
+
+def test_decision_lifecycle_endpoint(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    lifecycle = client.get("/api/v1/telemetry/decision-lifecycle", headers={"Authorization": f"Bearer {token}"})
+    assert lifecycle.status_code == 200, lifecycle.text
+    body = lifecycle.json()
+    assert "release" in body
+    assert "defendability" in body
+    assert "governance" in body
 
 
 def test_public_metrics_hidden_when_disabled(client: TestClient):

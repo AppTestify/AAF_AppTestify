@@ -513,6 +513,15 @@ export type ObservabilitySummary = {
     attributes: Record<string, unknown>;
     ts: number;
   }[];
+  connector_calls_total: number;
+  connector_error_rate: number;
+  connector_latency_ms_p95: number;
+  connector_status_counts: Record<string, number>;
+  connector_error_categories: Record<string, number>;
+  failure_recovery: {
+    dead_letter_count: number;
+    run_retry_events: number;
+  };
 };
 
 export async function fetchObservabilitySummary(token: string, windowSeconds = 300): Promise<ObservabilitySummary> {
@@ -521,6 +530,55 @@ export async function fetchObservabilitySummary(token: string, windowSeconds = 3
   });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ObservabilitySummary>;
+}
+
+export type DecisionLifecycle = {
+  connectors: {
+    github: Record<string, unknown>;
+    jira: Record<string, unknown>;
+    azure: Record<string, unknown>;
+    coverage_total: number;
+    fresh_connectors: number;
+  };
+  telemetry: {
+    requests_per_min: number;
+    error_rate: number;
+    latency_ms_p95: number;
+    slo_state: string;
+    connector_error_rate: number;
+  };
+  governance: {
+    runs_total: number;
+    runs_succeeded: number;
+    cases_total: number;
+    cases_open: number;
+    decisions_total: number;
+    decisions_approved: number;
+    evidence_total: number;
+    audit_events_total: number;
+  };
+  release: {
+    github_success_rate: number;
+    github_failing_checks: number;
+    jira_blocked_tickets: number;
+    azure_release_readiness: string;
+    azure_build_success_rate: number;
+    release_confidence: number;
+    status: string;
+  };
+  defendability: {
+    outcome_traceability_score: number;
+    defendable: boolean;
+    explainability_basis: string[];
+  };
+};
+
+export async function fetchDecisionLifecycle(token: string): Promise<DecisionLifecycle> {
+  const r = await fetch(`${API}/telemetry/decision-lifecycle`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<DecisionLifecycle>;
 }
 
 export type IntelligenceIncident = {

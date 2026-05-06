@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_active_user
 from app.models.config import TenantAIProviderConfig, TenantConnectorConfig
-from app.models.governance import AuditEvent, GovernanceCase, GovernanceRun
+from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun
 from app.models.user import User
 from app.services.observability import render_prometheus, snapshot
 
@@ -62,6 +62,20 @@ class ObservabilitySummaryOut(BaseModel):
     slo_burn_rate: dict
     alert_rules: list[dict]
     spans_recent: list[dict]
+    connector_calls_total: int
+    connector_error_rate: float
+    connector_latency_ms_p95: float
+    connector_status_counts: dict
+    connector_error_categories: dict
+    failure_recovery: dict
+
+
+class DecisionLifecycleOut(BaseModel):
+    connectors: dict
+    telemetry: dict
+    governance: dict
+    release: dict
+    defendability: dict
 
 
 def _tenant_scope(where_col, current: User):
@@ -240,3 +254,123 @@ def get_prometheus_metrics(
     _current: User = Depends(get_current_active_user),
 ):
     return PlainTextResponse(render_prometheus(window_seconds=window_seconds), media_type="text/plain; version=0.0.4")
+
+
+@router.get("/decision-lifecycle", response_model=DecisionLifecycleOut)
+def get_decision_lifecycle(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    run_scope = _tenant_scope(GovernanceRun.tenant_id, current)
+    case_scope = _tenant_scope(GovernanceCase.tenant_id, current)
+    audit_scope = _tenant_scope(AuditEvent.tenant_id, current)
+    connector_scope = _tenant_scope(TenantConnectorConfig.tenant_id, current)
+
+    runs_q = select(func.count(GovernanceRun.id), func.sum(case((GovernanceRun.status == "succeeded", 1), else_=0)))
+    cases_q = select(
+        func.count(GovernanceCase.id),
+        func.sum(case((GovernanceCase.status.in_(["new", "in_review"]), 1), else_=0)),
+    )
+    decisions_q = select(
+        func.count(Decision.id),
+        func.sum(case((Decision.status == "approved", 1), else_=0)),
+    ).select_from(Decision).join(GovernanceCase, GovernanceCase.id == Decision.case_id)
+    evidence_q = select(func.count(EvidenceSnapshot.id)).select_from(EvidenceSnapshot).join(
+        GovernanceRun, GovernanceRun.id == EvidenceSnapshot.run_id
+    )
+    audits_q = select(func.count(AuditEvent.id)).where(AuditEvent.area.in_(["governance_run", "governance_case", "decision", "alerts"]))
+    connectors_q = select(TenantConnectorConfig).order_by(TenantConnectorConfig.connector_name.asc())
+
+    if run_scope is not None:
+        runs_q = runs_q.where(run_scope)
+        evidence_q = evidence_q.where(run_scope)
+    if case_scope is not None:
+        cases_q = cases_q.where(case_scope)
+        decisions_q = decisions_q.where(case_scope)
+    if audit_scope is not None:
+        audits_q = audits_q.where(audit_scope)
+    if connector_scope is not None:
+        connectors_q = connectors_q.where(connector_scope)
+
+    runs_total, runs_succeeded = db.execute(runs_q).one()
+    cases_total, cases_open = db.execute(cases_q).one()
+    decisions_total, decisions_approved = db.execute(decisions_q).one()
+    evidence_total = int(db.scalar(evidence_q) or 0)
+    audit_total = int(db.scalar(audits_q) or 0)
+
+    connector_rows = db.execute(connectors_q).scalars().all()
+    connector_payload = {r.connector_name: (r.telemetry_json or {}) for r in connector_rows}
+    github = connector_payload.get("github", {})
+    jira = connector_payload.get("jira", {})
+    azure = connector_payload.get("azure", {})
+
+    obs = snapshot(window_seconds=900)
+    release_signals = {
+        "github_success_rate": float(github.get("success_rate") or 0.0),
+        "github_failing_checks": int(github.get("failing_checks") or 0),
+        "jira_blocked_tickets": int(jira.get("blocked_tickets") or 0),
+        "azure_release_readiness": str(azure.get("release_readiness") or "unknown"),
+        "azure_build_success_rate": float(azure.get("build_success_rate") or 0.0),
+    }
+    release_confidence = 0.0
+    if release_signals["github_success_rate"] > 0:
+        release_confidence += 0.4 * release_signals["github_success_rate"]
+    if release_signals["azure_build_success_rate"] > 0:
+        release_confidence += 0.4 * release_signals["azure_build_success_rate"]
+    if release_signals["jira_blocked_tickets"] == 0:
+        release_confidence += 0.2
+    release_confidence = round(min(1.0, release_confidence), 3)
+
+    outcome_traceability = round(
+        min(
+            1.0,
+            (
+                (int(decisions_approved or 0) / max(1, int(decisions_total or 0))) * 0.45
+                + (evidence_total / max(1, int(runs_total or 0))) * 0.25
+                + (audit_total / max(1, int(runs_total or 0))) * 0.3
+            ),
+        ),
+        3,
+    )
+
+    return DecisionLifecycleOut(
+        connectors={
+            "github": github,
+            "jira": jira,
+            "azure": azure,
+            "coverage_total": len(connector_rows),
+            "fresh_connectors": sum(1 for r in connector_rows if (r.telemetry_json or {}).get("freshness") == "fresh"),
+        },
+        telemetry={
+            "requests_per_min": obs.get("requests_per_min", 0),
+            "error_rate": obs.get("error_rate", 0),
+            "latency_ms_p95": obs.get("latency_ms_p95", 0),
+            "slo_state": (obs.get("slo_burn_rate") or {}).get("state", "unknown"),
+            "connector_error_rate": obs.get("connector_error_rate", 0),
+        },
+        governance={
+            "runs_total": int(runs_total or 0),
+            "runs_succeeded": int(runs_succeeded or 0),
+            "cases_total": int(cases_total or 0),
+            "cases_open": int(cases_open or 0),
+            "decisions_total": int(decisions_total or 0),
+            "decisions_approved": int(decisions_approved or 0),
+            "evidence_total": evidence_total,
+            "audit_events_total": audit_total,
+        },
+        release={
+            **release_signals,
+            "release_confidence": release_confidence,
+            "status": "go" if release_confidence >= 0.75 else "review",
+        },
+        defendability={
+            "outcome_traceability_score": outcome_traceability,
+            "defendable": outcome_traceability >= 0.7 and release_confidence >= 0.75,
+            "explainability_basis": [
+                "connector telemetry",
+                "governance decisions",
+                "audit events",
+                "evidence snapshots",
+            ],
+        },
+    )

@@ -495,9 +495,9 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           <div className="workspace-section-intro">
             <div>
               <h2>AI providers</h2>
-              <p>Configure routing, validate connectivity, then verify runtime usage.</p>
+              <p>Pick a default provider, add keys, test connection, and save.</p>
             </div>
-            <div className="workspace-meta">Save config before running smoke tests</div>
+            <div className="workspace-meta">Keep advanced settings collapsed unless needed</div>
           </div>
           <div className="form-row">
             <label htmlFor="default-provider-ai" className="field-label-required">Default provider</label>
@@ -522,20 +522,20 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
             return (
               <div key={name} className="config-block">
                 <h3>{name}</h3>
-                <div className="form-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={draft.enabled}
-                      onChange={(e) =>
-                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], enabled: e.target.checked } }))
-                      }
-                      disabled={!canEdit || saving}
-                    />{" "}
-                    Enabled
-                  </label>
-                </div>
                 <div className="config-columns">
+                  <div className="form-row">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.enabled}
+                        onChange={(e) =>
+                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], enabled: e.target.checked } }))
+                        }
+                        disabled={!canEdit || saving}
+                      />{" "}
+                      Enabled
+                    </label>
+                  </div>
                   <div className="form-row">
                     <label className="field-label-required">Model</label>
                     <input
@@ -547,27 +547,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Temperature (advanced)</label>
-                    <input
-                      value={draft.temperature}
-                      onChange={(e) =>
-                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], temperature: e.target.value } }))
-                      }
-                      disabled={!canEdit || saving}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label>Max tokens (advanced)</label>
-                    <input
-                      value={draft.max_tokens}
-                      onChange={(e) =>
-                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], max_tokens: e.target.value } }))
-                      }
-                      disabled={!canEdit || saving}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label>Endpoint URL (required for Azure/OpenAI compatible)</label>
+                    <label>Endpoint URL</label>
                     <input
                       value={draft.endpoint_url}
                       onChange={(e) =>
@@ -577,7 +557,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>API key ref</label>
+                    <label>Key reference (optional)</label>
                     <input
                       value={draft.api_key_ref}
                       onChange={(e) =>
@@ -588,7 +568,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label className="field-label-required">API key (encrypted)</label>
+                    <label className="field-label-required">API key</label>
                     <input
                       type="password"
                       value={draft.api_key}
@@ -598,27 +578,52 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                       disabled={!canEdit || saving}
                     />
                   </div>
-                  <div className="form-row">
-                    <label>Timeout seconds (advanced)</label>
-                    <input
-                      value={draft.timeout_seconds}
-                      onChange={(e) =>
-                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], timeout_seconds: e.target.value } }))
-                      }
-                      disabled={!canEdit || saving}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label>Retry count (advanced)</label>
-                    <input
-                      value={draft.retry_count}
-                      onChange={(e) =>
-                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], retry_count: e.target.value } }))
-                      }
-                      disabled={!canEdit || saving}
-                    />
-                  </div>
                 </div>
+                <details style={{ marginTop: "0.35rem" }}>
+                  <summary style={{ cursor: "pointer", color: "var(--muted)" }}>Advanced settings</summary>
+                  <div className="config-columns" style={{ marginTop: "0.55rem" }}>
+                    <div className="form-row">
+                      <label>Temperature</label>
+                      <input
+                        value={draft.temperature}
+                        onChange={(e) =>
+                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], temperature: e.target.value } }))
+                        }
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Max tokens</label>
+                      <input
+                        value={draft.max_tokens}
+                        onChange={(e) =>
+                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], max_tokens: e.target.value } }))
+                        }
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Timeout seconds</label>
+                      <input
+                        value={draft.timeout_seconds}
+                        onChange={(e) =>
+                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], timeout_seconds: e.target.value } }))
+                        }
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Retry count</label>
+                      <input
+                        value={draft.retry_count}
+                        onChange={(e) =>
+                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], retry_count: e.target.value } }))
+                        }
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                </details>
                 <div className="actions">
                   <span className={`status-chip ${status?.enabled ? "succeeded" : "queued"}`}>
                     {status?.enabled ? "configured" : "not configured"}
@@ -643,14 +648,14 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
             );
           })}
           <div className="config-block">
-            <h3>Use AI Runtime Check</h3>
+            <h3>Runtime check</h3>
             <div className="form-row">
-              <label>Smoke test prompt</label>
+              <label>Test prompt</label>
               <textarea value={aiTestPrompt} onChange={(e) => setAiTestPrompt(e.target.value)} disabled={!canEdit || saving} />
             </div>
             <div className="actions">
               <button className="btn btn-ghost" type="button" onClick={handleAiRuntimeSmokeTest} disabled={!canEdit || saving}>
-                Run AI runtime smoke test
+                Run runtime check
               </button>
             </div>
           </div>

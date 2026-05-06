@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  fetchDecisionLifecycle,
   fetchConnectorConfigs,
   fetchDashboardSummary,
   fetchObservabilitySummary,
@@ -8,6 +9,7 @@ import {
   validateProviderConfig,
   type ConnectorConfig,
   type DashboardSummary,
+  type DecisionLifecycle,
   type ObservabilitySummary,
   type ProviderConfig,
 } from "../api";
@@ -28,6 +30,7 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [obs, setObs] = useState<ObservabilitySummary | null>(null);
+  const [lifecycle, setLifecycle] = useState<DecisionLifecycle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -37,16 +40,18 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
   };
 
   const load = async () => {
-    const [connectorRows, providerRows, telemetry] = await Promise.all([
+    const [connectorRows, providerRows, telemetry, lifecycleSummary] = await Promise.all([
       fetchConnectorConfigs(token, tenantSlug),
       fetchProviderConfigs(token, tenantSlug),
       fetchDashboardSummary(token),
+      fetchDecisionLifecycle(token),
     ]);
     const obsSummary = await fetchObservabilitySummary(token);
     setConnectors(connectorRows);
     setProviders(providerRows.providers);
     setSummary(telemetry);
     setObs(obsSummary);
+    setLifecycle(lifecycleSummary);
   };
 
   useEffect(() => {
@@ -120,6 +125,64 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
       <div className="card">
         <div className="workspace-section-intro">
           <div>
+            <h2>Decision lifecycle intelligence</h2>
+            <p>From telemetry and integration health to release posture and defendable governance outcomes.</p>
+          </div>
+        </div>
+        <div className="settings-grid">
+          <div className="metric">
+            <div className="label">Release confidence</div>
+            <div className={`value ${(lifecycle?.release.status ?? "review") === "go" ? "good" : "warn"}`}>
+              {lifecycle ? `${(lifecycle.release.release_confidence * 100).toFixed(1)}%` : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">Release status</div>
+            <div className={`value ${(lifecycle?.release.status ?? "review") === "go" ? "good" : "warn"}`}>
+              {lifecycle?.release.status ?? "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">Defendable outcome</div>
+            <div className={`value ${lifecycle?.defendability.defendable ? "good" : "warn"}`}>
+              {lifecycle ? (lifecycle.defendability.defendable ? "yes" : "review") : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">Traceability score</div>
+            <div className="value">{lifecycle ? lifecycle.defendability.outcome_traceability_score.toFixed(3) : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Runs succeeded</div>
+            <div className="value">
+              {lifecycle ? `${lifecycle.governance.runs_succeeded}/${lifecycle.governance.runs_total}` : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">Decisions approved</div>
+            <div className="value">
+              {lifecycle ? `${lifecycle.governance.decisions_approved}/${lifecycle.governance.decisions_total}` : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">GitHub success rate</div>
+            <div className="value">{lifecycle ? `${(lifecycle.release.github_success_rate * 100).toFixed(1)}%` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Jira blocked tickets</div>
+            <div className="value warn">{lifecycle?.release.jira_blocked_tickets ?? "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Azure readiness</div>
+            <div className={`value ${lifecycle?.release.azure_release_readiness === "green" ? "good" : "warn"}`}>
+              {lifecycle?.release.azure_release_readiness ?? "..."}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="workspace-section-intro">
+          <div>
             <h2>System observability (5m)</h2>
             <p>Live platform pressure, latency posture, and short/long-window SLO burn signals.</p>
           </div>
@@ -148,6 +211,18 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
           <div className="metric">
             <div className="label">Run latency p95</div>
             <div className="value">{obs ? `${obs.run_latency_ms_p95} ms` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Connector calls</div>
+            <div className="value">{obs?.connector_calls_total ?? "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Connector error rate</div>
+            <div className="value bad">{obs ? `${(obs.connector_error_rate * 100).toFixed(2)}%` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Dead letters</div>
+            <div className="value warn">{obs?.failure_recovery?.dead_letter_count ?? "..."}</div>
           </div>
         </div>
         <p className="field-hint">

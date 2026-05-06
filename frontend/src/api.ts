@@ -487,6 +487,32 @@ export type ObservabilitySummary = {
   runs_retried: number;
   run_latency_ms_p95: number;
   endpoints_top: { endpoint: string; count: number; errors: number }[];
+  slo_burn_rate: {
+    short_window_seconds: number;
+    long_window_seconds: number;
+    short_error_rate: number;
+    long_error_rate: number;
+    target: number;
+    error_budget: number;
+    short_burn_rate: number;
+    long_burn_rate: number;
+    state: string;
+  };
+  alert_rules: {
+    id: string;
+    name: string;
+    triggered: boolean;
+    severity: string;
+    threshold: number;
+    current_value: number;
+  }[];
+  spans_recent: {
+    name: string;
+    duration_ms: number;
+    status: string;
+    attributes: Record<string, unknown>;
+    ts: number;
+  }[];
 };
 
 export async function fetchObservabilitySummary(token: string, windowSeconds = 300): Promise<ObservabilitySummary> {

@@ -336,16 +336,20 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           {error}
         </div>
       ) : null}
-      {message ? <div className="alert">{message}</div> : null}
+      {message ? <div className="alert alert-success">{message}</div> : null}
 
       {loading ? <div className="card">Loading settings…</div> : null}
 
       {!loading && activeTab === "general" ? (
         <div className="card">
-          <h2>General</h2>
-          <p className="workspace-card-subtitle">Core tenant defaults and structured runtime preferences.</p>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>General</h2>
+              <p>Core tenant defaults and structured runtime preferences.</p>
+            </div>
+          </div>
           <div className="form-row">
-            <label htmlFor="default-provider">Default AI provider</label>
+            <label htmlFor="default-provider" className="field-label-required">Default AI provider</label>
             <select
               id="default-provider"
               value={defaultProvider}
@@ -360,6 +364,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
               ))}
             </select>
           </div>
+          <p className="workspace-meta">Required foundation: set default routing before connector/provider tests.</p>
           <div className="form-row">
             <label htmlFor="ui-prefs">UI preferences (JSON)</label>
             <textarea
@@ -395,11 +400,13 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
 
       {!loading && activeTab === "connectors" ? (
         <div className="card">
-          <h2>Integrate Connectors</h2>
-          <p className="field-hint" style={{ marginBottom: "0.85rem" }}>
-            Connect GitHub, Jira, Azure, AWS, and FinOps by enabling each connector, adding required config and credentials,
-            then running Validate.
-          </p>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Integrate connectors</h2>
+              <p>Enable connectors, provide required config + credentials, validate, then save.</p>
+            </div>
+            <div className="workspace-meta">Required fields vary by connector type</div>
+          </div>
           {Object.keys(connectorDraft)
             .sort()
             .map((name) => {
@@ -485,13 +492,15 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
 
       {!loading && activeTab === "ai" ? (
         <div className="card">
-          <h2>AI Providers</h2>
-          <p className="workspace-card-subtitle">Configure provider routing, validate connectivity, then verify runtime usage.</p>
-          <p className="field-hint" style={{ marginBottom: "0.85rem" }}>
-            Add provider keys, save, run Test connection for each provider, then run AI runtime smoke test to verify tenant runtime uses your configured AI.
-          </p>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>AI providers</h2>
+              <p>Configure routing, validate connectivity, then verify runtime usage.</p>
+            </div>
+            <div className="workspace-meta">Save config before running smoke tests</div>
+          </div>
           <div className="form-row">
-            <label htmlFor="default-provider-ai">Default provider</label>
+            <label htmlFor="default-provider-ai" className="field-label-required">Default provider</label>
             <select
               id="default-provider-ai"
               value={defaultProvider}
@@ -526,9 +535,9 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     Enabled
                   </label>
                 </div>
-                <div className="settings-grid">
+                <div className="config-columns">
                   <div className="form-row">
-                    <label>Model</label>
+                    <label className="field-label-required">Model</label>
                     <input
                       value={draft.model_name}
                       onChange={(e) =>
@@ -538,7 +547,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Temperature</label>
+                    <label>Temperature (advanced)</label>
                     <input
                       value={draft.temperature}
                       onChange={(e) =>
@@ -548,7 +557,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Max tokens</label>
+                    <label>Max tokens (advanced)</label>
                     <input
                       value={draft.max_tokens}
                       onChange={(e) =>
@@ -558,7 +567,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Endpoint URL</label>
+                    <label>Endpoint URL (required for Azure/OpenAI compatible)</label>
                     <input
                       value={draft.endpoint_url}
                       onChange={(e) =>
@@ -579,7 +588,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>API key (encrypted)</label>
+                    <label className="field-label-required">API key (encrypted)</label>
                     <input
                       type="password"
                       value={draft.api_key}
@@ -590,7 +599,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Timeout seconds</label>
+                    <label>Timeout seconds (advanced)</label>
                     <input
                       value={draft.timeout_seconds}
                       onChange={(e) =>
@@ -600,7 +609,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
-                    <label>Retry count</label>
+                    <label>Retry count (advanced)</label>
                     <input
                       value={draft.retry_count}
                       onChange={(e) =>

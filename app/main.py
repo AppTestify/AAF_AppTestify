@@ -31,7 +31,7 @@ from app.routers import (
     telemetry,
     tenant_config,
 )
-from app.services.observability import record_request, render_prometheus, request_started
+from app.services.observability import record_request, record_span, render_prometheus, request_started
 from app.services.otel import configure_otel, instrument_fastapi, shutdown_otel
 from app.services.run_jobs import start_worker, stop_worker
 
@@ -83,6 +83,12 @@ async def request_logging_middleware(request: Request, call_next):
     except Exception:  # noqa: BLE001
         elapsed_ms = int((time.time() - start) * 1000)
         record_request(request.method, request.url.path, 500, elapsed_ms)
+        record_span(
+            name=f"{request.method} {request.url.path}",
+            duration_ms=elapsed_ms,
+            status="error",
+            attributes={"path": request.url.path, "method": request.method, "status_code": 500},
+        )
         _log.exception(
             "request_failed",
             extra={
@@ -95,6 +101,12 @@ async def request_logging_middleware(request: Request, call_next):
         return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
     elapsed_ms = int((time.time() - start) * 1000)
     record_request(request.method, request.url.path, response.status_code, elapsed_ms)
+    record_span(
+        name=f"{request.method} {request.url.path}",
+        duration_ms=elapsed_ms,
+        status="ok" if response.status_code < 500 else "error",
+        attributes={"path": request.url.path, "method": request.method, "status_code": response.status_code},
+    )
     response.headers["x-request-id"] = request_id
     _log.info(
         "request_complete",

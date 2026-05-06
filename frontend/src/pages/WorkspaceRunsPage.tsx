@@ -23,21 +23,31 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     () => runs.filter((r) => r.status === "queued" || r.status === "running").map((r) => r.id),
     [runs]
   );
+  const runStats = useMemo(() => {
+    const queued = runs.filter((r) => r.status === "queued").length;
+    const running = runs.filter((r) => r.status === "running").length;
+    const succeeded = runs.filter((r) => r.status === "succeeded").length;
+    const failed = runs.filter((r) => r.status === "failed").length;
+    return { queued, running, succeeded, failed };
+  }, [runs]);
 
   const loadRuns = async () => {
-    setListLoading(true);
-    const list = await fetchGovernanceRuns(token, {
-      limit: 50,
-      offset,
-      status: statusFilter === "all" ? undefined : statusFilter,
-      query: query || undefined,
-    });
-    setRuns(list);
-    if (selectedRun) {
-      const next = list.find((r) => r.id === selectedRun.id);
-      if (next) setSelectedRun(next);
+    try {
+      setListLoading(true);
+      const list = await fetchGovernanceRuns(token, {
+        limit: 50,
+        offset,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        query: query || undefined,
+      });
+      setRuns(list);
+      if (selectedRun) {
+        const next = list.find((r) => r.id === selectedRun.id);
+        if (next) setSelectedRun(next);
+      }
+    } finally {
+      setListLoading(false);
     }
-    setListLoading(false);
   };
 
   useEffect(() => {
@@ -100,12 +110,39 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
           {error}
         </div>
       ) : null}
+      <div className="workspace-kpi-strip">
+        <div className="metric">
+          <div className="label">Visible runs</div>
+          <div className="value">{runs.length}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Queued</div>
+          <div className="value">{runStats.queued}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Running</div>
+          <div className="value warn">{runStats.running}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Succeeded</div>
+          <div className="value good">{runStats.succeeded}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Failed</div>
+          <div className="value bad">{runStats.failed}</div>
+        </div>
+      </div>
       <div className="workspace-split">
       <div className="card">
-        <h2>Create run</h2>
-        <p className="workspace-card-subtitle">Submit a governance run and monitor status from the run console.</p>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Create run</h2>
+            <p>Submit a governance run and monitor status from the run console.</p>
+          </div>
+          <div className="workspace-meta">Inputs are tenant-scoped</div>
+        </div>
         <div className="form-row">
-          <label htmlFor="run-prompt">Prompt</label>
+          <label htmlFor="run-prompt" className="field-label-required">Prompt</label>
           <textarea id="run-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         </div>
         <div className="form-row">
@@ -117,7 +154,13 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
         </button>
       </div>
       <div className="card">
-        <h2>Run history</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Run history</h2>
+            <p>Filter and inspect asynchronous governance execution records.</p>
+          </div>
+          <div className="workspace-meta">Page offset: {offset}</div>
+        </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="status-filter">Status filter</label>
@@ -149,7 +192,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => setOffset(offset + 50)} disabled={runs.length < 50}>
             Next
           </button>
-          <span className="field-hint">Showing {runs.length} runs</span>
+          <span className="workspace-meta">Showing {runs.length} runs</span>
         </div>
         <div className="table-wrap">
           {listLoading ? <div className="table-skeleton" /> : null}
@@ -191,7 +234,13 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
       </div>
       {selectedRun ? (
         <div className="card">
-          <h2>Run detail #{selectedRun.id}</h2>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Run detail #{selectedRun.id}</h2>
+              <p>Detailed execution payload for investigation and explainability.</p>
+            </div>
+            <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
+          </div>
           <p className="mono" style={{ marginTop: 0 }}>
             status={selectedRun.status} · retries={selectedRun.retry_count}
           </p>

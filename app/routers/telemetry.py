@@ -59,6 +59,9 @@ class ObservabilitySummaryOut(BaseModel):
     runs_retried: int
     run_latency_ms_p95: float
     endpoints_top: list[dict]
+    slo_burn_rate: dict
+    alert_rules: list[dict]
+    spans_recent: list[dict]
 
 
 def _tenant_scope(where_col, current: User):

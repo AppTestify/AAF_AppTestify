@@ -141,9 +141,12 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
       </section>
 
       <section className="dashboard-section">
-        <div className="dashboard-section-head">
-          <h2>Decision posture</h2>
-          <p>Release readiness and real-time operational pressure signals for high-impact decisions.</p>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Decision posture</h2>
+            <p>Release readiness and real-time operational pressure signals for high-impact decisions.</p>
+          </div>
+          <div className="workspace-meta">Updated from governance + telemetry streams in near real time</div>
         </div>
         <div className="dashboard-grid dashboard-grid-two">
           <div className="card dashboard-card-emphasis">
@@ -151,7 +154,7 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
             <div className="settings-grid">
               <div className="metric">
                 <div className="label">Decision</div>
-                <div className="value">{releaseGov?.decision ?? "..."}</div>
+                <div className="value">{releaseGov?.decision ?? "pending"}</div>
               </div>
               <div className="metric">
                 <div className="label">Risk level</div>
@@ -162,7 +165,7 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
                 <div className="value">{releaseGov ? releaseGov.consensus_score.toFixed(2) : "..."}</div>
               </div>
             </div>
-            <p className="field-hint">{releaseGov?.reason ?? "..."}</p>
+            <p className="field-hint">{releaseGov?.reason ?? "Awaiting enough correlated evidence for recommendation."}</p>
           </div>
 
           <div className="card dashboard-card-emphasis">
@@ -190,9 +193,12 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
       </section>
 
       <section className="dashboard-section">
-        <div className="dashboard-section-head">
-          <h2>Operational insights</h2>
-          <p>Delivery distribution, incident intelligence, and immediate corrective actions.</p>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Operational insights</h2>
+            <p>Delivery distribution, incident intelligence, and immediate corrective actions.</p>
+          </div>
+          <div className="workspace-meta">Prioritized for triage first, investigation second</div>
         </div>
         <div className="card">
           <h2>Delivery posture</h2>
@@ -249,13 +255,17 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
 
           <div className="card">
             <h2>Executive summaries</h2>
-            <ul className="list-plain">
-              {execSummaries.map((s) => (
-                <li key={s.id}>
-                  <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
-                </li>
-              ))}
-            </ul>
+            {execSummaries.length ? (
+              <ul className="list-plain">
+                {execSummaries.map((s) => (
+                  <li key={s.id}>
+                    <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="empty-state">No executive summaries generated yet. Run governance workflows to generate leadership narratives.</div>
+            )}
           </div>
         </div>
 
@@ -298,6 +308,13 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
                     <td>{i.confidence.toFixed(2)}</td>
                   </tr>
                 ))}
+                {incidents.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="table-empty">
+                      No correlated incidents detected in the current window.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -305,9 +322,12 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
       </section>
 
       <section className="dashboard-section">
-        <div className="dashboard-section-head">
-          <h2>Execution traceability</h2>
-          <p>Workflow outcomes, run history, alert stream, and endpoint pressure in one operational view.</p>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Execution traceability</h2>
+            <p>Workflow outcomes, run history, alert stream, and endpoint pressure in one operational view.</p>
+          </div>
+          <div className="workspace-meta">Use this layer for drill-down and operational forensics</div>
         </div>
         <div className="dashboard-grid dashboard-grid-two">
           <div className="card">
@@ -331,6 +351,13 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
                       <td>{new Date(w.created_at).toLocaleString()}</td>
                     </tr>
                   ))}
+                  {workflowRuns.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="table-empty">
+                        No workflow runs available yet.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -359,6 +386,13 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
                       <td>{new Date(run.created_at).toLocaleString()}</td>
                     </tr>
                   ))}
+                  {(summary?.recent_runs ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="table-empty">
+                        No recent runs found.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -368,17 +402,21 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
         <div className="dashboard-grid dashboard-grid-two">
           <div className="card">
             <h2>Alerts stream</h2>
-            <ul className="list-plain">
-              {(summary?.recent_alerts ?? []).map((e) => (
-                <li key={e.id}>
-                  <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
-                  <span className="mono">
-                    {e.area}/{e.action}
-                  </span>{" "}
-                  {e.summary}
-                </li>
-              ))}
-            </ul>
+            {(summary?.recent_alerts ?? []).length ? (
+              <ul className="list-plain">
+                {(summary?.recent_alerts ?? []).map((e) => (
+                  <li key={e.id}>
+                    <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
+                    <span className="mono">
+                      {e.area}/{e.action}
+                    </span>{" "}
+                    {e.summary}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="empty-state">No active alerts in the recent period.</div>
+            )}
           </div>
 
           <div className="card">
@@ -400,6 +438,13 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
                       <td>{row.errors}</td>
                     </tr>
                   ))}
+                  {(obs?.endpoints_top ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="table-empty">
+                        Endpoint telemetry will appear after traffic is observed.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

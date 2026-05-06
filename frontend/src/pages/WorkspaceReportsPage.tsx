@@ -160,7 +160,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
       ) : null}
       {loading ? <div className="card">Loading reports…</div> : null}
       {!loading ? (
-        <div className="metrics">
+        <div className="workspace-kpi-strip">
           <div className="metric">
             <div className="label">Total runs</div>
             <div className="value">{runs.length}</div>
@@ -191,8 +191,14 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
           </div>
         </div>
       ) : null}
+      <div className="card-group">
       <div className="card">
-        <h2>Run summary</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Run summary export</h2>
+            <p>Filter run-level outcomes, inspect JSON, or download governance summary CSV.</p>
+          </div>
+        </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="report-run-status">Run status</label>
@@ -215,7 +221,40 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
         </div>
       </div>
       <div className="card">
-        <h2>Operational distribution</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Audit export</h2>
+            <p>Query audit events by area and extract JSON/CSV for compliance trails.</p>
+          </div>
+        </div>
+        <div className="workspace-toolbar">
+          <div className="form-row">
+            <label htmlFor="report-audit-area">Area filter</label>
+            <input
+              id="report-audit-area"
+              value={auditAreaFilter}
+              onChange={(e) => setAuditAreaFilter(e.target.value)}
+              placeholder="e.g. governance_run"
+            />
+          </div>
+        </div>
+        <div className="actions">
+          <button className="btn btn-ghost" type="button" onClick={exportAuditJson}>
+            View JSON
+          </button>
+          <button className="btn btn-primary" type="button" onClick={exportAuditCsv}>
+            Download CSV
+          </button>
+        </div>
+      </div>
+      </div>
+      <div className="card">
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Operational distribution</h2>
+            <p>Cross-cut counts by run status, incident severity, and workflow type.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -252,7 +291,12 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
         </div>
       </div>
       <div className="card">
-        <h2>Incident intelligence report</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Incident intelligence report</h2>
+            <p>Top correlated incidents with confidence and consensus indicators.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -279,7 +323,12 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
         </div>
       </div>
       <div className="card">
-        <h2>Workflow outcomes report</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Workflow outcomes report</h2>
+            <p>Decision quality and completion status across workflow execution types.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -306,7 +355,12 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
         </div>
       </div>
       <div className="card">
-        <h2>Executive summaries report</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Executive summaries report</h2>
+            <p>Leadership-ready narratives with XI scoring and timeline context.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -330,31 +384,14 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
           </table>
         </div>
       </div>
-      <div className="card">
-        <h2>Audit events</h2>
-        <div className="workspace-toolbar">
-          <div className="form-row">
-            <label htmlFor="report-audit-area">Area filter</label>
-            <input
-              id="report-audit-area"
-              value={auditAreaFilter}
-              onChange={(e) => setAuditAreaFilter(e.target.value)}
-              placeholder="e.g. governance_run"
-            />
-          </div>
-        </div>
-        <div className="actions">
-          <button className="btn btn-ghost" type="button" onClick={exportAuditJson}>
-            View JSON
-          </button>
-          <button className="btn btn-primary" type="button" onClick={exportAuditCsv}>
-            Download CSV
-          </button>
-        </div>
-      </div>
       {output ? (
         <div className="card">
-          <h2>Preview</h2>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Export preview</h2>
+              <p>Rendered output for quick validation before sharing.</p>
+            </div>
+          </div>
           <pre className="json-preview" style={{ maxHeight: 420 }}>{output}</pre>
         </div>
       ) : null}

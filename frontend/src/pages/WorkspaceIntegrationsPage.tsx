@@ -148,6 +148,30 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
         <p className="field-hint">
           Prometheus format is available at <code>/api/v1/telemetry/observability/metrics</code> (authenticated).
         </p>
+        <div className="settings-grid">
+          <div className="metric">
+            <div className="label">SLO target</div>
+            <div className="value">{obs ? `${(obs.slo_burn_rate.target * 100).toFixed(2)}%` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Burn rate (short)</div>
+            <div className={`value ${obs?.slo_burn_rate.state === "critical" ? "bad" : obs?.slo_burn_rate.state === "warning" ? "warn" : "good"}`}>
+              {obs ? obs.slo_burn_rate.short_burn_rate.toFixed(2) : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">Burn rate (long)</div>
+            <div className={`value ${obs?.slo_burn_rate.state === "critical" ? "bad" : obs?.slo_burn_rate.state === "warning" ? "warn" : "good"}`}>
+              {obs ? obs.slo_burn_rate.long_burn_rate.toFixed(2) : "..."}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="label">SLO state</div>
+            <div className={`value ${obs?.slo_burn_rate.state === "critical" ? "bad" : obs?.slo_burn_rate.state === "warning" ? "warn" : "good"}`}>
+              {obs?.slo_burn_rate.state ?? "..."}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="card">
@@ -250,6 +274,64 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   <td className="mono">{row.endpoint}</td>
                   <td>{row.count}</td>
                   <td>{row.errors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <h2>Alert rules</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Rule</th>
+                <th>Status</th>
+                <th>Severity</th>
+                <th>Current</th>
+                <th>Threshold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(obs?.alert_rules ?? []).map((rule) => (
+                <tr key={rule.id}>
+                  <td>{rule.name}</td>
+                  <td>
+                    <span className={`status-chip ${rule.triggered ? "failed" : "succeeded"}`}>
+                      {rule.triggered ? "triggered" : "ok"}
+                    </span>
+                  </td>
+                  <td>{rule.severity}</td>
+                  <td>{rule.current_value}</td>
+                  <td>{rule.threshold}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <h2>Tracing spans (recent)</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Span</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Path</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(obs?.spans_recent ?? []).slice().reverse().map((span, idx) => (
+                <tr key={`${span.name}-${span.ts}-${idx}`}>
+                  <td className="mono">{span.name}</td>
+                  <td>{span.duration_ms.toFixed(2)} ms</td>
+                  <td>
+                    <span className={`status-chip ${span.status === "ok" ? "succeeded" : "failed"}`}>{span.status}</span>
+                  </td>
+                  <td className="mono">{String(span.attributes.path ?? "-")}</td>
                 </tr>
               ))}
             </tbody>

@@ -18,17 +18,21 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [listLoading, setListLoading] = useState(false);
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   const loadCases = async () => {
-    setListLoading(true);
-    const rows = await fetchCasesAdvanced(token, {
-      status: statusFilter === "all" ? undefined : statusFilter,
-      limit: 50,
-      offset,
-      query: query || undefined,
-    });
-    setCases(rows);
-    setListLoading(false);
+    try {
+      setListLoading(true);
+      const rows = await fetchCasesAdvanced(token, {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        limit: 50,
+        offset,
+        query: query || undefined,
+      });
+      setCases(rows);
+    } finally {
+      setListLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -53,6 +57,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   const handleCreateDecision = async () => {
     if (!selectedCase) return;
     try {
+      setDecisionLoading(true);
       const row = await createDecision(token, selectedCase.id, {
         recommended_action: "investigate",
         rationale: "Created from UI",
@@ -62,18 +67,23 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
       setTimeout(() => setToast(null), 2200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create decision");
+    } finally {
+      setDecisionLoading(false);
     }
   };
 
   const handleApproveDecision = async () => {
     if (!decision) return;
     try {
+      setDecisionLoading(true);
       const row = await approveDecision(token, decision.id, { final_action: "approved", rationale: "Approved in UI" });
       setDecision(row);
       setToast(`Decision #${row.id} approved`);
       setTimeout(() => setToast(null), 2200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to approve decision");
+    } finally {
+      setDecisionLoading(false);
     }
   };
 
@@ -172,16 +182,16 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
           <h2>Selected case #{selectedCase.id}</h2>
           <p className="mono">{selectedCase.title}</p>
           <div className="actions">
-            <button className="btn btn-ghost" type="button" onClick={handleCreateDecision} disabled={!canManage}>
-              Create decision
+            <button className="btn btn-ghost" type="button" onClick={handleCreateDecision} disabled={!canManage || decisionLoading}>
+              {decisionLoading ? "Processing…" : "Create decision"}
             </button>
             <button
               className="btn btn-primary"
               type="button"
               onClick={handleApproveDecision}
-              disabled={!canManage || !decision}
+              disabled={!canManage || !decision || decisionLoading}
             >
-              Approve decision
+              {decisionLoading ? "Processing…" : "Approve decision"}
             </button>
           </div>
           {decision ? (

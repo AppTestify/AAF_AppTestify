@@ -13,6 +13,7 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
+  const [ackLoadingId, setAckLoadingId] = useState<number | null>(null);
 
   useEffect(() => {
     setListLoading(true);
@@ -24,11 +25,14 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
 
   const onAcknowledge = async (id: number) => {
     try {
+      setAckLoadingId(id);
       await acknowledgeAlert(token, id);
       const next = await fetchAuditEvents(token, { area: area || undefined, severity: severity || undefined, limit: 200 });
       setEvents(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Acknowledge failed");
+    } finally {
+      setAckLoadingId(null);
     }
   };
 
@@ -102,8 +106,13 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
                   <td>{e.summary}</td>
                   <td>{new Date(e.created_at).toLocaleString()}</td>
                   <td>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => onAcknowledge(e.id)}>
-                      Ack
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => onAcknowledge(e.id)}
+                      disabled={ackLoadingId === e.id || bulkLoading}
+                    >
+                      {ackLoadingId === e.id ? "Ack…" : "Ack"}
                     </button>
                   </td>
                 </tr>

@@ -26,10 +26,20 @@ class RunEvent:
     retry_count: int
 
 
+@dataclass
+class SpanEvent:
+    ts: float
+    name: str
+    duration_ms: float
+    status: str
+    attributes: dict
+
+
 _lock = Lock()
 _started_at = time.time()
 _requests: "deque[RequestEvent]" = deque(maxlen=5000)
 _runs: "deque[RunEvent]" = deque(maxlen=2000)
+_spans: "deque[SpanEvent]" = deque(maxlen=4000)
 _inflight_requests = 0
 _run_queue_depth = 0
 
@@ -66,6 +76,19 @@ def record_run(status: str, elapsed_ms: float, retry_count: int) -> None:
         _runs.append(RunEvent(ts=time.time(), status=status, elapsed_ms=elapsed_ms, retry_count=retry_count))
 
 
+def record_span(name: str, duration_ms: float, status: str, attributes: Optional[dict] = None) -> None:
+    with _lock:
+        _spans.append(
+            SpanEvent(
+                ts=time.time(),
+                name=name,
+                duration_ms=duration_ms,
+                status=status,
+                attributes=attributes or {},
+            )
+        )
+
+
 def _percentile(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
@@ -74,14 +97,7 @@ def _percentile(values: list[float], pct: float) -> float:
     return values[idx]
 
 
-def snapshot(window_seconds: int = 300) -> dict:
-    now = time.time()
-    with _lock:
-        req_window = [r for r in _requests if now - r.ts <= window_seconds]
-        run_window = [r for r in _runs if now - r.ts <= window_seconds]
-        inflight = _inflight_requests
-        queue_depth = _run_queue_depth
-
+def _window_metrics(req_window: list[RequestEvent], run_window: list[RunEvent], window_seconds: int) -> dict:
     total = len(req_window)
     errors = sum(1 for r in req_window if r.status_code >= 500)
     latencies = [r.elapsed_ms for r in req_window]
@@ -94,18 +110,14 @@ def snapshot(window_seconds: int = 300) -> dict:
     run_retried = sum(1 for r in run_window if r.retry_count > 0)
     run_latencies = [r.elapsed_ms for r in run_window]
 
-    uptime = int(now - _started_at)
     return {
         "window_seconds": window_seconds,
-        "uptime_seconds": uptime,
         "requests_total": total,
         "requests_per_min": round((total / max(window_seconds, 1)) * 60, 2),
         "error_rate": round((errors / total), 4) if total else 0.0,
         "latency_ms_p50": round(_percentile(latencies, 0.50), 2),
         "latency_ms_p95": round(_percentile(latencies, 0.95), 2),
         "latency_ms_p99": round(_percentile(latencies, 0.99), 2),
-        "inflight_requests": inflight,
-        "run_queue_depth": queue_depth,
         "runs_total": runs_total,
         "runs_succeeded": run_succeeded,
         "runs_failed": run_failed,
@@ -120,6 +132,108 @@ def snapshot(window_seconds: int = 300) -> dict:
             for endpoint, count in by_endpoint.most_common(12)
         ],
     }
+
+
+def _compute_slo_burn(short_error_rate: float, long_error_rate: float, target: float = 0.999) -> dict:
+    error_budget = max(1e-9, 1.0 - target)
+    short_burn = round(short_error_rate / error_budget, 3)
+    long_burn = round(long_error_rate / error_budget, 3)
+    if short_burn > 14 and long_burn > 6:
+        state = "critical"
+    elif short_burn > 7 or long_burn > 3:
+        state = "warning"
+    else:
+        state = "healthy"
+    return {
+        "target": target,
+        "error_budget": round(error_budget, 6),
+        "short_burn_rate": short_burn,
+        "long_burn_rate": long_burn,
+        "state": state,
+    }
+
+
+def _evaluate_alert_rules(metrics: dict, slo_burn: dict) -> list[dict]:
+    rules = [
+        {
+            "id": "high_error_rate",
+            "name": "High error rate",
+            "triggered": metrics["error_rate"] >= 0.03,
+            "severity": "critical" if metrics["error_rate"] >= 0.06 else "warning",
+            "threshold": 0.03,
+            "current_value": metrics["error_rate"],
+        },
+        {
+            "id": "latency_p95_degraded",
+            "name": "Latency p95 degraded",
+            "triggered": metrics["latency_ms_p95"] >= 800,
+            "severity": "warning",
+            "threshold": 800,
+            "current_value": metrics["latency_ms_p95"],
+        },
+        {
+            "id": "run_queue_backlog",
+            "name": "Run queue backlog",
+            "triggered": metrics["run_queue_depth"] >= 25,
+            "severity": "warning",
+            "threshold": 25,
+            "current_value": metrics["run_queue_depth"],
+        },
+        {
+            "id": "slo_burn_rate",
+            "name": "SLO burn rate elevated",
+            "triggered": slo_burn["state"] in {"warning", "critical"},
+            "severity": slo_burn["state"],
+            "threshold": 3,
+            "current_value": slo_burn["long_burn_rate"],
+        },
+    ]
+    return rules
+
+
+def snapshot(window_seconds: int = 300) -> dict:
+    now = time.time()
+    with _lock:
+        req_window = [r for r in _requests if now - r.ts <= window_seconds]
+        run_window = [r for r in _runs if now - r.ts <= window_seconds]
+        long_window_seconds = min(3600, max(window_seconds * 12, 900))
+        req_window_long = [r for r in _requests if now - r.ts <= long_window_seconds]
+        inflight = _inflight_requests
+        queue_depth = _run_queue_depth
+        spans_recent = [s for s in _spans if now - s.ts <= long_window_seconds][-20:]
+
+    base = _window_metrics(req_window, run_window, window_seconds)
+    long_base = _window_metrics(req_window_long, [], long_window_seconds)
+    slo_burn = _compute_slo_burn(base["error_rate"], long_base["error_rate"])
+    uptime = int(now - _started_at)
+    merged = {
+        **base,
+        "uptime_seconds": uptime,
+        "inflight_requests": inflight,
+        "run_queue_depth": queue_depth,
+        "slo_burn_rate": {
+            "short_window_seconds": window_seconds,
+            "long_window_seconds": long_window_seconds,
+            "short_error_rate": base["error_rate"],
+            "long_error_rate": long_base["error_rate"],
+            **slo_burn,
+        },
+        "alert_rules": _evaluate_alert_rules(
+            {"error_rate": base["error_rate"], "latency_ms_p95": base["latency_ms_p95"], "run_queue_depth": queue_depth},
+            slo_burn,
+        ),
+        "spans_recent": [
+            {
+                "name": s.name,
+                "duration_ms": round(float(s.duration_ms), 2),
+                "status": s.status,
+                "attributes": s.attributes,
+                "ts": s.ts,
+            }
+            for s in spans_recent
+        ],
+    }
+    return merged
 
 
 def render_prometheus(window_seconds: int = 300) -> str:
@@ -152,5 +266,14 @@ def render_prometheus(window_seconds: int = 300) -> str:
         "# HELP aaf_uptime_seconds Process uptime in seconds",
         "# TYPE aaf_uptime_seconds counter",
         f"aaf_uptime_seconds {s['uptime_seconds']}",
+        "# HELP aaf_slo_burn_rate_short Current short-window SLO burn rate",
+        "# TYPE aaf_slo_burn_rate_short gauge",
+        f"aaf_slo_burn_rate_short {s['slo_burn_rate']['short_burn_rate']}",
+        "# HELP aaf_slo_burn_rate_long Current long-window SLO burn rate",
+        "# TYPE aaf_slo_burn_rate_long gauge",
+        f"aaf_slo_burn_rate_long {s['slo_burn_rate']['long_burn_rate']}",
+        "# HELP aaf_alert_rules_triggered Number of triggered alert rules",
+        "# TYPE aaf_alert_rules_triggered gauge",
+        f"aaf_alert_rules_triggered {sum(1 for r in s['alert_rules'] if r.get('triggered'))}",
     ]
     return "\n".join(lines) + "\n"

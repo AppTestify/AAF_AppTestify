@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from aaf.config import get_settings, validate_runtime_safety
 from app import db as db_mod
-from app.bootstrap import bootstrap_tenancy, create_tables
+from app.bootstrap import bootstrap_tenancy, create_tables, ensure_portfolio_project_link_columns
 from app.db import get_engine, init_db
 from app.routers import (
     admin_tenants,
@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
         Path("data").mkdir(parents=True, exist_ok=True)
     init_db(settings.database_url)
     create_tables()
+    ensure_portfolio_project_link_columns()
     db = db_mod.SessionLocal()
     try:
         bootstrap_tenancy(db, settings)

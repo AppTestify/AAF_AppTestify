@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from aaf.config import Settings
@@ -30,6 +30,67 @@ def create_tables() -> None:
     from app.models import user as _user  # noqa: F401
 
     Base.metadata.create_all(bind=get_engine())
+
+
+def ensure_portfolio_project_link_columns() -> None:
+    """
+    Add portfolio_project_id to governance_runs / governance_cases when missing.
+
+    SQLAlchemy create_all() only creates missing tables; it does not ALTER existing
+    ones. Legacy on-disk SQLite (and similar) DBs otherwise raise "no such column"
+    and surface as HTTP 500.
+    """
+    from sqlalchemy import inspect
+
+    engine = get_engine()
+    insp = inspect(engine)
+    if not insp.has_table("governance_runs") or not insp.has_table("governance_cases"):
+        return
+
+    run_cols = {c["name"] for c in insp.get_columns("governance_runs")}
+    case_cols = {c["name"] for c in insp.get_columns("governance_cases")}
+    need_run = "portfolio_project_id" not in run_cols
+    need_case = "portfolio_project_id" not in case_cols
+    if not need_run and not need_case:
+        return
+
+    if not insp.has_table("portfolio_projects"):
+        _log.warning(
+            "Skipping portfolio_project_id column patch: portfolio_projects table is missing "
+            "(run alembic upgrade head or reset the database)."
+        )
+        return
+
+    dialect = engine.dialect.name
+    _log.info("Adding portfolio_project_id columns to governance tables (in-place schema patch)")
+
+    ddl: list[str] = []
+    if need_run:
+        if dialect == "sqlite":
+            ddl.append("ALTER TABLE governance_runs ADD COLUMN portfolio_project_id INTEGER")
+        else:
+            ddl.append(
+                "ALTER TABLE governance_runs ADD COLUMN IF NOT EXISTS portfolio_project_id INTEGER"
+            )
+    if need_case:
+        if dialect == "sqlite":
+            ddl.append("ALTER TABLE governance_cases ADD COLUMN portfolio_project_id INTEGER")
+        else:
+            ddl.append(
+                "ALTER TABLE governance_cases ADD COLUMN IF NOT EXISTS portfolio_project_id INTEGER"
+            )
+
+    with engine.begin() as conn:
+        for stmt in ddl:
+            conn.execute(text(stmt))
+
+    index_ddl = [
+        "CREATE INDEX IF NOT EXISTS ix_governance_runs_portfolio_project_id ON governance_runs (portfolio_project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_governance_cases_portfolio_project_id ON governance_cases (portfolio_project_id)",
+    ]
+    with engine.begin() as conn:
+        for stmt in index_ddl:
+            conn.execute(text(stmt))
 
 
 def ensure_default_tenant(db: Session, settings: Settings) -> Tenant:

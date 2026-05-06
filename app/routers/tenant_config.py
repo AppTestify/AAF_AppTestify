@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
@@ -12,14 +13,16 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin
+from aaf.config import get_settings
 from app.models.config import ConfigAuditLog, TenantAIProviderConfig, TenantConnectorConfig, TenantSettings
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.security import decrypt_json, encrypt_json
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
-_CONNECTORS = {"github", "jira", "finops"}
-_PROVIDERS = {"openai", "anthropic", "azure_openai"}
+_CONNECTORS = {"github", "jira", "finops", "azure", "aws"}
+_PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
 
@@ -27,6 +30,8 @@ class TenantSettingsOut(BaseModel):
     tenant_slug: str
     default_ai_provider: Optional[str] = None
     ui_preferences: dict[str, Any] = Field(default_factory=dict)
+    rag_config_json: dict[str, Any] = Field(default_factory=dict)
+    llm_keys_configured: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,6 +39,8 @@ class TenantSettingsOut(BaseModel):
 class TenantSettingsPatch(BaseModel):
     default_ai_provider: Optional[str] = None
     ui_preferences: Optional[dict[str, Any]] = None
+    rag_config_json: Optional[dict[str, Any]] = None
+    llm_keys: Optional[dict[str, str]] = None
 
     @field_validator("default_ai_provider")
     @classmethod
@@ -49,6 +56,7 @@ class TenantSettingsPatch(BaseModel):
 class ConnectorConfigIn(BaseModel):
     enabled: bool = False
     config_json: dict[str, Any] = Field(default_factory=dict)
+    credentials_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConnectorConfigOut(ConnectorConfigIn):
@@ -56,6 +64,8 @@ class ConnectorConfigOut(ConnectorConfigIn):
     last_validation_ok: Optional[bool] = None
     last_validation_error: Optional[str] = None
     last_validated_at: Optional[datetime] = None
+    telemetry_json: dict[str, Any] = Field(default_factory=dict)
+    last_sync_at: Optional[datetime] = None
 
 
 class ConnectorSetBody(BaseModel):
@@ -69,6 +79,7 @@ class ProviderConfigIn(BaseModel):
     max_tokens: Optional[int] = None
     endpoint_url: Optional[str] = None
     api_key_ref: Optional[str] = None
+    api_key: Optional[str] = None
     timeout_seconds: Optional[int] = None
     retry_count: Optional[int] = None
     metadata_json: dict[str, Any] = Field(default_factory=dict)
@@ -194,11 +205,20 @@ def get_tenant_settings(
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     settings = db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
     if settings is None:
-        return TenantSettingsOut(tenant_slug=tenant.slug, default_ai_provider=None, ui_preferences={})
+        return TenantSettingsOut(
+            tenant_slug=tenant.slug,
+            default_ai_provider=None,
+            ui_preferences={},
+            rag_config_json={},
+            llm_keys_configured=[],
+        )
+    llm_keys = decrypt_json(settings.llm_keys_encrypted_json, secret=get_settings().app_encryption_key)
     return TenantSettingsOut(
         tenant_slug=tenant.slug,
         default_ai_provider=settings.default_ai_provider,
         ui_preferences=settings.ui_preferences or {},
+        rag_config_json=settings.rag_config_json or {},
+        llm_keys_configured=sorted([k for k, v in llm_keys.items() if v]),
     )
 
 
@@ -213,7 +233,7 @@ def patch_tenant_settings(
     row = db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
     before = None
     if row is None:
-        row = TenantSettings(tenant_id=tenant.id, default_ai_provider=None, ui_preferences={})
+        row = TenantSettings(tenant_id=tenant.id, default_ai_provider=None, ui_preferences={}, rag_config_json={})
         db.add(row)
     else:
         before = {"default_ai_provider": row.default_ai_provider, "ui_preferences": row.ui_preferences}
@@ -223,6 +243,10 @@ def patch_tenant_settings(
         row.default_ai_provider = payload["default_ai_provider"]
     if "ui_preferences" in payload and payload["ui_preferences"] is not None:
         row.ui_preferences = payload["ui_preferences"]
+    if "rag_config_json" in payload and payload["rag_config_json"] is not None:
+        row.rag_config_json = payload["rag_config_json"]
+    if "llm_keys" in payload and payload["llm_keys"] is not None:
+        row.llm_keys_encrypted_json = encrypt_json(payload["llm_keys"], secret=get_settings().app_encryption_key)
     db.flush()
     _audit(
         db,
@@ -239,6 +263,8 @@ def patch_tenant_settings(
         tenant_slug=tenant.slug,
         default_ai_provider=row.default_ai_provider,
         ui_preferences=row.ui_preferences or {},
+        rag_config_json=row.rag_config_json or {},
+        llm_keys_configured=sorted((payload.get("llm_keys") or {}).keys()) if "llm_keys" in payload else [],
     )
 
 
@@ -263,9 +289,12 @@ def get_connector_configs(
                 connector_name=name,
                 enabled=bool(r.enabled) if r else False,
                 config_json=_sanitize_connector_config(r.config_json) if r else {},
+                credentials_json={},
                 last_validation_ok=r.last_validation_ok if r else None,
                 last_validation_error=r.last_validation_error if r else None,
                 last_validated_at=r.last_validated_at if r else None,
+                telemetry_json=r.telemetry_json if r else {},
+                last_sync_at=r.last_sync_at if r else None,
             )
         )
     return out
@@ -311,6 +340,9 @@ def put_connector_configs(
                 detail=f"connector '{key}' config must use secret references, not inline secret keys",
             )
         row.config_json = cfg.config_json
+        row.encrypted_credentials_json = (
+            encrypt_json(cfg.credentials_json, secret=get_settings().app_encryption_key) if cfg.credentials_json else None
+        )
         row.last_validation_error = None
         row.last_validation_ok = None
         row.last_validated_at = None
@@ -329,9 +361,12 @@ def put_connector_configs(
                 connector_name=key,
                 enabled=row.enabled,
                 config_json=_sanitize_connector_config(row.config_json),
+                credentials_json={},
                 last_validation_ok=row.last_validation_ok,
                 last_validation_error=row.last_validation_error,
                 last_validated_at=row.last_validated_at,
+                telemetry_json=row.telemetry_json or {},
+                last_sync_at=row.last_sync_at,
             )
         )
     db.commit()
@@ -366,6 +401,10 @@ def validate_connector_config(
         err = "jira.project is required when connector is enabled"
     if key == "finops" and row.enabled and not cfg.get("cost_file"):
         err = "finops.cost_file is required when connector is enabled"
+    if key == "azure" and row.enabled and not cfg.get("subscription_id"):
+        err = "azure.subscription_id is required when connector is enabled"
+    if key == "aws" and row.enabled and not cfg.get("account_id"):
+        err = "aws.account_id is required when connector is enabled"
     row.last_validated_at = datetime.now(timezone.utc)
     row.last_validation_ok = err is None
     row.last_validation_error = err
@@ -384,9 +423,12 @@ def validate_connector_config(
         connector_name=key,
         enabled=row.enabled,
         config_json=_sanitize_connector_config(row.config_json),
+        credentials_json={},
         last_validation_ok=row.last_validation_ok,
         last_validation_error=row.last_validation_error,
         last_validated_at=row.last_validated_at,
+        telemetry_json=row.telemetry_json or {},
+        last_sync_at=row.last_sync_at,
     )
 
 
@@ -416,6 +458,7 @@ def get_ai_provider_configs(
                 max_tokens=r.max_tokens if r else None,
                 endpoint_url=r.endpoint_url if r else None,
                 api_key_ref=_mask_api_key_ref(r.api_key_ref) if r else None,
+                api_key=None,
                 timeout_seconds=r.timeout_seconds if r else None,
                 retry_count=r.retry_count if r else None,
                 metadata_json=r.metadata_json if r else {},
@@ -437,7 +480,7 @@ def put_ai_provider_configs(
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     settings_row = db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
     if settings_row is None:
-        settings_row = TenantSettings(tenant_id=tenant.id, default_ai_provider=None, ui_preferences={})
+        settings_row = TenantSettings(tenant_id=tenant.id, default_ai_provider=None, ui_preferences={}, rag_config_json={})
         db.add(settings_row)
     if body.default_provider is not None:
         settings_row.default_ai_provider = body.default_provider
@@ -473,6 +516,7 @@ def put_ai_provider_configs(
         row.max_tokens = cfg.max_tokens
         row.endpoint_url = cfg.endpoint_url
         row.api_key_ref = cfg.api_key_ref
+        row.api_key_encrypted = encrypt_json({"api_key": cfg.api_key}, secret=get_settings().app_encryption_key) if cfg.api_key else None
         row.timeout_seconds = cfg.timeout_seconds
         row.retry_count = cfg.retry_count
         row.metadata_json = cfg.metadata_json
@@ -523,8 +567,22 @@ def validate_ai_provider_config(
     err: Optional[str] = None
     if row.enabled and not row.model_name:
         err = "model_name is required when provider is enabled"
-    if row.enabled and not row.api_key_ref:
-        err = "api_key_ref is required when provider is enabled"
+    if row.enabled and not (row.api_key_ref or row.api_key_encrypted):
+        err = "api_key_ref or api_key is required when provider is enabled"
+    if row.enabled and key == "azure_openai" and not row.endpoint_url:
+        err = "endpoint_url is required for azure_openai when enabled"
+    if row.enabled and key == "aws_bedrock":
+        region = (row.metadata_json or {}).get("region")
+        if not region:
+            err = "metadata_json.region is required for aws_bedrock when enabled"
+    # Lightweight reachability test (401/403 still means endpoint is reachable)
+    if row.enabled and not err and row.endpoint_url:
+        try:
+            resp = httpx.get(row.endpoint_url, timeout=3.0)
+            if resp.status_code >= 500:
+                err = f"endpoint returned server error {resp.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            err = f"endpoint connection failed: {exc}"
     row.last_validated_at = datetime.now(timezone.utc)
     row.last_validation_ok = err is None
     row.last_validation_error = err
@@ -547,6 +605,7 @@ def validate_ai_provider_config(
         max_tokens=row.max_tokens,
         endpoint_url=row.endpoint_url,
         api_key_ref=_mask_api_key_ref(row.api_key_ref),
+        api_key=None,
         timeout_seconds=row.timeout_seconds,
         retry_count=row.retry_count,
         metadata_json=row.metadata_json,

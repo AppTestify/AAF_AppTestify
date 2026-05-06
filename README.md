@@ -78,6 +78,7 @@ Use **tenant admin** credentials from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) 
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/health` | Liveness |
+| GET | `/metrics?window_seconds=300` | Prometheus text when `METRICS_PUBLIC_ENABLED=true` (404 otherwise; **disabled in production**) |
 | POST | `/api/v1/auth/login` | JSON `{"email","password"}` → JWT + user (roles, tenant) |
 | GET | `/api/v1/auth/me` | Bearer JWT |
 | GET | `/api/v1/auth/signup-status` | Public — whether tenant self-signup is enabled |
@@ -100,6 +101,9 @@ Use **tenant admin** credentials from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) 
 | PUT | `/api/v1/governance/policies/{name}` | **settings.manage permission / admin fallback** |
 | GET | `/api/v1/reports/runs/summary?format=json|csv` | Bearer JWT — export run summaries |
 | GET | `/api/v1/reports/audit-events?format=json|csv` | **cases.manage permission / admin fallback** — export audit feed |
+| GET | `/api/v1/telemetry/summary` | Bearer JWT — dashboard KPIs + integration telemetry summary |
+| GET | `/api/v1/telemetry/observability/summary` | Bearer JWT — rolling API/worker SLI snapshot (latency/error/throughput) |
+| GET | `/api/v1/telemetry/observability/metrics` | Bearer JWT — Prometheus text metrics export |
 | GET | `/api/v1/rbac/me/permissions` | Bearer JWT — resolved RBAC permissions |
 | GET | `/api/v1/tenant/settings` | Authenticated tenant user/superadmin — tenant settings view |
 | PATCH | `/api/v1/tenant/settings` | **Tenant admin or superadmin** — update tenant settings |
@@ -119,6 +123,12 @@ Set in `.env`:
 
 See [.env.example](.env.example) for database, auth, and tenant bootstrap variables.
 
+## OpenTelemetry and metrics scraping
+
+- **OTLP export (traces + metrics):** set `OTEL_EXPORTER_OTLP_ENDPOINT` to your collector base URL (HTTP/protobuf), for example `https://otel.example.com:4318`. Optional `OTEL_EXPORTER_OTLP_HEADERS` (comma-separated `Key=Value`). Optional `OTEL_SERVICE_NAME` (defaults to `aaf-governance`). The app registers OTLP HTTP exporters for `/v1/traces` and `/v1/metrics` and instruments FastAPI when the endpoint is set.
+- **Authenticated Prometheus:** `GET /api/v1/telemetry/observability/metrics` (Bearer JWT) returns the same in-process gauges as `/metrics`.
+- **Public scrape (dev only):** `METRICS_PUBLIC_ENABLED=true` exposes `GET /metrics` without auth. Startup rejects this when `APP_ENV=prod`.
+
 ## Multi-tenancy, superadmin, and database
 
 On startup the app:
@@ -132,6 +142,15 @@ On startup the app:
 Governance **run** accepts any authenticated user. **Batch**, tenant CRUD, and tenant config writes follow the rules in the API table above.
 
 Tenant connector + AI provider settings are now available through `/api/v1/tenant/*` APIs. Runtime governance resolves tenant config first, then falls back to env defaults from `.env`.
+
+Company settings now support:
+
+- encrypted-at-rest LLM keys (`PATCH /api/v1/tenant/settings` with `llm_keys`)
+- hybrid RAG configuration (`rag_config_json`, including optional inline document set)
+- connector credentials in encrypted payloads (`credentials_json` on connector upsert)
+
+Supported connectors for telemetry + evidence: `github`, `jira`, `azure`, `aws`, `finops`.
+Supported AI providers: `openai`, `anthropic`, `azure_openai`, `aws_bedrock`.
 
 Governance Copilot V1 adds:
 
@@ -174,5 +193,20 @@ cd frontend && npm run build
 ```
 
 Serve `frontend/dist` with any static host, or mount behind the same origin as the API and set `VITE_*` / reverse-proxy so `/api` reaches FastAPI.
+
+### SPA fallback requirement
+
+If users open deep links like `/app/home` directly and see `Not Found`, your server/reverse proxy is missing SPA fallback rewrite.
+
+- Keep `/api/*`, `/health`, `/metrics` routed to FastAPI.
+- Rewrite all other unknown paths to `frontend/dist/index.html`.
+
+### Not Found troubleshooting
+
+1. Verify backend is this repo's latest build:
+   - `curl http://127.0.0.1:8000/openapi.json` should include `/api/v1/governance/runs`, `/api/v1/telemetry/summary`, `/api/v1/tenant/settings`.
+2. Ensure only one backend on port 8000:
+   - `lsof -nP -iTCP:8000 -sTCP:LISTEN`
+3. Restart via `scripts/dev.sh` (now fails fast if port 8000 is occupied).
 
 Python 3.11+ is recommended (per `pyproject.toml`). Python 3.9 may work with `pip install -r requirements.txt` and `PYTHONPATH` set as above.

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#111f39"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67b8ff"/>
+      <stop offset="55%" stop-color="#2f78f6"/>
+      <stop offset="100%" stop-color="#1f52c3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="72" y="72" width="188" height="188" rx="40" fill="#eaf3ff"/>
+  <rect x="86" y="86" width="160" height="160" rx="33" fill="none" stroke="#9ec3f8" stroke-width="2" opacity="0.8"/>
+  <path d="M206 110c-10-8-23-12-37-12-34 0-61 27-61 61s27 61 61 61c14 0 27-4 37-12v-22c-8 9-20 15-32 15-23 0-42-19-42-42s19-42 42-42c12 0 24 6 32 15v-22z" fill="url(#mark)"/>
+  <circle cx="206" cy="159" r="14" fill="#8fcbff"/>
+  <circle cx="206" cy="159" r="7" fill="#ffffff"/>
+  <text x="290" y="168" fill="#f8fbff" font-size="74" font-family="Inter, Arial, sans-serif" font-weight="700">Casantris</text>
+  <text x="76" y="340" fill="#c7d6ee" font-size="44" font-family="Inter, Arial, sans-serif">
+    Agentic Governance and Reliability Intelligence
+  </text>
+  <text x="76" y="404" fill="#9ab1d6" font-size="30" font-family="Inter, Arial, sans-serif">
+    DevOps ù SRE ù FinOps ù DevSecOps in one executive-ready platform
+  </text>
+</svg>

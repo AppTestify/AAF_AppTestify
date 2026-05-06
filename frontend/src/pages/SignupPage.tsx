@@ -51,7 +51,7 @@ export function SignupPage({ onAuthed }: SignupPageProps) {
         <div className="site-header-inner site-nav">
           <Link to="/" className="site-logo">
             <span className="site-logo-mark" aria-hidden="true" />
-            <span className="site-logo-text">AgileOps</span>
+            <span className="site-logo-text">Casantris</span>
           </Link>
           <nav className="site-nav-links">
             <Link to="/">Home</Link>

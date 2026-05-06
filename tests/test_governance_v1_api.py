@@ -126,3 +126,64 @@ def test_report_exports_json_and_csv(client: TestClient):
     audit_json = client.get("/api/v1/reports/audit-events?format=json", headers={"Authorization": f"Bearer {token}"})
     assert audit_json.status_code == 200, audit_json.text
     assert "items" in audit_json.json()
+
+
+def test_telemetry_summary_endpoint(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    run = client.post(
+        "/api/v1/governance/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"prompt": "telemetry smoke test"},
+    )
+    assert run.status_code == 202, run.text
+    _wait_for_run(client, token, run.json()["id"])
+
+    telem = client.get("/api/v1/telemetry/summary", headers={"Authorization": f"Bearer {token}"})
+    assert telem.status_code == 200, telem.text
+    body = telem.json()
+    assert "runs_total" in body
+    assert "recent_runs" in body
+    assert "connector_health" in body
+
+
+def test_observability_summary_and_metrics_endpoint(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    _ = client.get("/health")
+    summary = client.get("/api/v1/telemetry/observability/summary", headers={"Authorization": f"Bearer {token}"})
+    assert summary.status_code == 200, summary.text
+    body = summary.json()
+    assert "requests_total" in body
+    assert "latency_ms_p95" in body
+
+    metrics = client.get("/api/v1/telemetry/observability/metrics", headers={"Authorization": f"Bearer {token}"})
+    assert metrics.status_code == 200, metrics.text
+    assert "aaf_requests_window_total" in metrics.text
+
+
+def test_public_metrics_hidden_when_disabled(client: TestClient):
+    """GET /metrics returns 404 unless METRICS_PUBLIC_ENABLED=true (see .env.example)."""
+    r = client.get("/metrics")
+    assert r.status_code == 404
+
+
+def test_evidence_and_alert_acknowledge_flows(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    run = client.post(
+        "/api/v1/governance/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"prompt": "collect evidence"},
+    )
+    assert run.status_code == 202, run.text
+    _wait_for_run(client, token, run.json()["id"])
+
+    evidence = client.get("/api/v1/governance/evidence?limit=10", headers={"Authorization": f"Bearer {token}"})
+    assert evidence.status_code == 200, evidence.text
+    assert isinstance(evidence.json(), list)
+
+    audits = client.get("/api/v1/governance/audit-events?limit=10", headers={"Authorization": f"Bearer {token}"})
+    assert audits.status_code == 200, audits.text
+    assert len(audits.json()) >= 1
+    event_id = audits.json()[0]["id"]
+    ack = client.post(f"/api/v1/governance/audit-events/{event_id}/acknowledge", headers={"Authorization": f"Bearer {token}"})
+    assert ack.status_code == 200, ack.text
+    assert ack.json()["action"] == "acknowledged"

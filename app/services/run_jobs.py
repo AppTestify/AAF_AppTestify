@@ -13,9 +13,20 @@ from sqlalchemy import select
 from aaf.config import get_settings
 from app import db as db_mod
 from app.models.governance import AuditEvent, EvidenceSnapshot, GovernanceRun
+from app.models.governance import AgentFinding, CorrelatedIncident, ExecutiveSummary
+from app.models.config import TenantConnectorConfig, TenantSettings
 from app.models.tenant import Tenant
+from app.services.agentic_intelligence import (
+    build_agent_findings,
+    build_executive_summary,
+    build_incident,
+    compute_consensus,
+)
 from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings
 from app.services.governance_service import run_governance
+from app.services.integration_signals import connector_signal
+from app.services.observability import record_run, set_run_queue_depth
+from app.services.observability import snapshot as observability_snapshot
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
 _queue: "Queue[int]" = Queue()
@@ -44,11 +55,13 @@ def stop_worker() -> None:
 
 def enqueue_run(run_id: int) -> None:
     _queue.put(run_id)
+    set_run_queue_depth(_queue.qsize())
 
 
 def _worker_loop() -> None:
     while not _stop:
         run_id = _queue.get()
+        set_run_queue_depth(_queue.qsize())
         if run_id < 0:
             return
         _process_one(run_id)
@@ -56,6 +69,7 @@ def _worker_loop() -> None:
 
 def _process_one(run_id: int) -> None:
     db = db_mod.SessionLocal()
+    started_perf = datetime.now(timezone.utc)
     try:
         run = db.get(GovernanceRun, run_id)
         if run is None:
@@ -80,12 +94,46 @@ def _process_one(run_id: int) -> None:
         effective = resolve_effective_settings(db, settings, tenant)
         result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective))
         out = pipeline_result_to_jsonable(result)
+        connector_rows = (
+            db.execute(select(TenantConnectorConfig).where(TenantConnectorConfig.tenant_id == run.tenant_id))
+            .scalars()
+            .all()
+            if run.tenant_id
+            else []
+        )
+        integration_signals = {row.connector_name: connector_signal(row) for row in connector_rows}
+        for row in connector_rows:
+            row.telemetry_json = integration_signals[row.connector_name]
+            row.last_sync_at = datetime.now(timezone.utc)
+        settings_row = (
+            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
+            if run.tenant_id
+            else None
+        )
+        rag_cfg = settings_row.rag_config_json if settings_row else {}
+        rag_docs = rag_cfg.get("documents", []) if isinstance(rag_cfg, dict) else []
+        rag_context = rag_docs[:3] if isinstance(rag_docs, list) else []
         out["runtime_config"] = {
             "tenant_slug": tenant.slug if tenant else None,
             "connector_mode": effective.connector_mode.value,
             "github_repo": effective.github_repo,
             "ai": get_ai_runtime_summary(db, tenant),
+            "rag": {"enabled": bool(rag_cfg.get("enabled")) if isinstance(rag_cfg, dict) else False, "doc_count": len(rag_docs) if isinstance(rag_docs, list) else 0},
         }
+        out["integration_signals"] = integration_signals
+        out["rag_context"] = rag_context
+
+        findings = build_agent_findings(integration_signals, observability_snapshot(window_seconds=900))
+        consensus = compute_consensus(findings)
+        incident = build_incident(findings, consensus)
+        exec_summary = build_executive_summary(incident)
+        out["agentic_intelligence"] = {
+            "findings": findings,
+            "consensus": consensus,
+            "incident": incident,
+            "executive_summary": exec_summary,
+        }
+
         run.result_json = out
         run.status = "succeeded"
         run.error_message = None
@@ -112,7 +160,55 @@ def _process_one(run_id: int) -> None:
                         payload_json=payload if isinstance(payload, dict) else {"payload": payload},
                     )
                 )
+        for connector_name, payload in integration_signals.items():
+            db.add(
+                EvidenceSnapshot(
+                    run_id=run.id,
+                    connector_name=connector_name,
+                    payload_json=payload,
+                )
+            )
+        for f in findings:
+            db.add(
+                AgentFinding(
+                    run_id=run.id,
+                    tenant_id=run.tenant_id,
+                    agent_name=f["agent_name"],
+                    domain=f["domain"],
+                    severity=f["severity"],
+                    confidence=float(f["confidence"]),
+                    summary=f["summary"],
+                    evidence_json=f["evidence_json"],
+                )
+            )
+        db.add(
+            CorrelatedIncident(
+                run_id=run.id,
+                tenant_id=run.tenant_id,
+                title=incident["title"],
+                severity=incident["severity"],
+                status=incident["status"],
+                confidence=float(incident["confidence"]),
+                consensus_score=float(incident["consensus_score"]),
+                conflict_detected=bool(incident["conflict_detected"]),
+                evidence_json=incident["evidence_json"],
+                recommendation_json=incident["recommendation_json"],
+            )
+        )
+        db.add(
+            ExecutiveSummary(
+                tenant_id=run.tenant_id,
+                run_id=run.id,
+                summary_type=exec_summary["summary_type"],
+                title=exec_summary["title"],
+                content=exec_summary["content"],
+                xi_score=float(exec_summary["xi_score"]),
+                metadata_json=exec_summary["metadata_json"],
+            )
+        )
         db.commit()
+        elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+        record_run(run.status, elapsed_ms, run.retry_count)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(GovernanceRun, run_id)
@@ -125,6 +221,9 @@ def _process_one(run_id: int) -> None:
             run.status = "queued"
             db.commit()
             _queue.put(run_id)
+            set_run_queue_depth(_queue.qsize())
+            elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+            record_run("retry", elapsed_ms, run.retry_count)
             return
         run.status = "failed"
         db.add(
@@ -140,6 +239,8 @@ def _process_one(run_id: int) -> None:
             )
         )
         db.commit()
+        elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+        record_run(run.status, elapsed_ms, run.retry_count)
     finally:
         db.close()
 

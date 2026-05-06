@@ -73,6 +73,21 @@ def test_connector_config_upsert_and_validate(client: TestClient):
     assert r2.status_code == 200, r2.text
     assert r2.json()["last_validation_ok"] is True
 
+    r3 = client.put(
+        "/api/v1/tenant/connectors",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "connectors": {
+                "azure": {"enabled": True, "config_json": {"subscription_id": "sub-1"}, "credentials_json": {"client_secret": "x"}},
+                "aws": {"enabled": True, "config_json": {"account_id": "123456789012"}, "credentials_json": {"access_key_id": "y"}},
+            }
+        },
+    )
+    assert r3.status_code == 200, r3.text
+    names = [x["connector_name"] for x in r3.json()]
+    assert "azure" in names
+    assert "aws" in names
+
 
 def test_ai_provider_upsert_validate_and_masked_secret(client: TestClient):
     token = _login(client, "admin@localhost", "test-password-123")
@@ -111,11 +126,16 @@ def test_superadmin_can_target_other_tenant(client: TestClient):
     r1 = client.patch(
         "/api/v1/tenant/settings?tenant_slug=test",
         headers={"Authorization": f"Bearer {token}"},
-        json={"default_ai_provider": "azure_openai"},
+        json={
+            "default_ai_provider": "azure_openai",
+            "rag_config_json": {"enabled": True, "documents": ["Runbook A", "Runbook B"]},
+            "llm_keys": {"azure_openai": "secret-123"},
+        },
     )
     assert r1.status_code == 200, r1.text
     assert r1.json()["tenant_slug"] == "test"
     assert r1.json()["default_ai_provider"] == "azure_openai"
+    assert r1.json()["rag_config_json"]["enabled"] is True
 
 
 def test_audit_log_created_on_config_change(client: TestClient):

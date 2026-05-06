@@ -99,3 +99,81 @@ class AuditEvent(Base):
     before_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     after_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AgentFinding(Base):
+    __tablename__ = "agent_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("governance_runs.id"), nullable=False, index=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    agent_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(16), default="info", nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CorrelatedIncident(Base):
+    __tablename__ = "correlated_incidents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("governance_runs.id"), nullable=False, index=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), default="warning", nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False, index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    consensus_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    conflict_detected: Mapped[bool] = mapped_column(default=False, nullable=False)
+    evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    recommendation_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ExecutiveSummary(Base):
+    __tablename__ = "executive_summaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("governance_runs.id"), nullable=True, index=True)
+    summary_type: Mapped[str] = mapped_column(String(32), default="incident", nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    xi_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class RARIteration(Base):
+    __tablename__ = "rar_iterations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    incident_id: Mapped[int] = mapped_column(ForeignKey("correlated_incidents.id"), nullable=False, index=True)
+    iteration_index: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    trigger_reason: Mapped[str] = mapped_column(String(128), nullable=False)
+    confidence_before: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    confidence_after: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    evidence_enrichment_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class GovernanceWorkflowRun(Base):
+    __tablename__ = "governance_workflow_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    incident_id: Mapped[Optional[int]] = mapped_column(ForeignKey("correlated_incidents.id"), nullable=True, index=True)
+    workflow_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="completed", nullable=False, index=True)
+    decision: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    output_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

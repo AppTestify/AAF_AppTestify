@@ -10,6 +10,11 @@ fi
 # shellcheck disable=SC1091
 if [[ -f .venv311/bin/activate ]]; then source .venv311/bin/activate; elif [[ -f .venv/bin/activate ]]; then source .venv/bin/activate; fi
 export PYTHONPATH="$ROOT"
+if lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port 8000 is already in use. Stop stale backend process first to avoid API mismatch."
+  echo "Tip: lsof -nP -iTCP:8000 -sTCP:LISTEN"
+  exit 1
+fi
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
 API_PID=$!
 trap 'kill $API_PID 2>/dev/null || true' EXIT

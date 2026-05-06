@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { approveDecision, createCase, createDecision, fetchCases, type Decision, type GovernanceCase } from "../api";
+import { approveDecision, createCase, createDecision, fetchCasesAdvanced, type Decision, type GovernanceCase } from "../api";
 
 type WorkspaceCasesPageProps = {
   token: string;
@@ -15,16 +15,26 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [offset, setOffset] = useState(0);
+  const [query, setQuery] = useState("");
+  const [listLoading, setListLoading] = useState(false);
 
   const loadCases = async () => {
-    const rows = await fetchCases(token);
+    setListLoading(true);
+    const rows = await fetchCasesAdvanced(token, {
+      status: statusFilter === "all" ? undefined : statusFilter,
+      limit: 50,
+      offset,
+      query: query || undefined,
+    });
     setCases(rows);
+    setListLoading(false);
   };
 
   useEffect(() => {
     loadCases().catch((e) => setError(e instanceof Error ? e.message : "Failed to load cases"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, statusFilter, offset, query]);
 
   const handleCreateCase = async () => {
     if (!title.trim()) return;
@@ -69,7 +79,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header className="app-header workspace-page-head">
         <div className="brand">
           <h1>Cases & Decisions</h1>
           <span>Track governance lifecycle from case creation to approval</span>
@@ -81,8 +91,10 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
         </div>
       ) : null}
       {toast ? <div className="alert alert-success">{toast}</div> : null}
+      <div className="workspace-split">
       <div className="card">
         <h2>Create case</h2>
+        <p className="workspace-card-subtitle">Open governance cases and track decision progression.</p>
         <div className="form-row">
           <label htmlFor="case-title">Title</label>
           <input id="case-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canManage} />
@@ -93,17 +105,36 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
       </div>
       <div className="card">
         <h2>Cases</h2>
-        <div className="form-row" style={{ maxWidth: 240 }}>
-          <label htmlFor="case-status-filter">Status filter</label>
-          <select id="case-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">All</option>
-            <option value="new">New</option>
-            <option value="in_review">In review</option>
-            <option value="approved">Approved</option>
-            <option value="closed">Closed</option>
-          </select>
+        <div className="workspace-toolbar">
+          <div className="form-row">
+            <label htmlFor="case-status-filter">Status filter</label>
+            <select id="case-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="new">New</option>
+              <option value="in_review">In review</option>
+              <option value="approved">Approved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div className="form-row">
+            <label htmlFor="case-query-filter">Search title</label>
+            <input id="case-query-filter" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            onClick={() => setOffset(Math.max(0, offset - 50))}
+            disabled={offset === 0}
+          >
+            Prev
+          </button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setOffset(offset + 50)} disabled={cases.length < 50}>
+            Next
+          </button>
+          <span className="mono">offset={offset}</span>
         </div>
         <div className="table-wrap">
+          {listLoading ? <div className="table-skeleton" /> : null}
           <table className="data-table">
             <thead>
               <tr>
@@ -114,10 +145,8 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
               </tr>
             </thead>
             <tbody>
-              {cases
-                .filter((c) => (statusFilter === "all" ? true : c.status === statusFilter))
-                .map((c) => (
-                  <tr key={c.id} onClick={() => setSelectedCase(c)}>
+              {cases.map((c) => (
+                  <tr key={c.id} onClick={() => setSelectedCase(c)} className={selectedCase?.id === c.id ? "row-selected" : ""}>
                     <td>#{c.id}</td>
                     <td>{c.title}</td>
                     <td>
@@ -126,9 +155,17 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
                     <td>{new Date(c.updated_at).toLocaleString()}</td>
                   </tr>
                 ))}
+              {cases.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="table-empty">
+                    No cases found for the current filters.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
+      </div>
       </div>
       {selectedCase ? (
         <div className="card">
@@ -148,7 +185,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
             </button>
           </div>
           {decision ? (
-            <pre style={{ overflow: "auto", maxHeight: 280 }}>{JSON.stringify(decision, null, 2)}</pre>
+            <pre className="json-preview">{JSON.stringify(decision, null, 2)}</pre>
           ) : null}
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchSignupStatus } from "../api";
+import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
 
 export function MarketingPage() {
@@ -13,42 +14,23 @@ export function MarketingPage() {
   }, []);
 
   return (
-    <div className="marketing">
-      <header className="site-header">
-        <div className="site-header-inner site-nav">
-          <Link to="/" className="site-logo">
-            <span className="site-logo-mark" aria-hidden="true" />
-            <span className="site-logo-text">AgileOps</span>
-          </Link>
-          <nav className="site-nav-links" aria-label="Primary">
-            <a href="#platform">Platform</a>
-            <a href="#product">Capabilities</a>
-            <a href="#how">How it works</a>
-            <a href="#enterprise">Enterprise</a>
-          </nav>
-          <div className="site-nav-cta">
-            {signupOpen ? (
-              <Link to="/signup" className="btn btn-ghost btn-sm">
-                Create organization
-              </Link>
-            ) : null}
-            <Link to="/login" className="btn btn-primary btn-sm">
-              Sign in
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <MarketingLayout signupOpen={signupOpen}>
       <section className="hero">
         <div className="hero-inner">
           <div className="hero-copy">
-            <p className="hero-kicker">Enterprise agentic governance</p>
-            <h1 className="hero-title">Delivery decisions with evidence, consensus, and control</h1>
+            <p className="hero-kicker">Enterprise governance platform</p>
+            <h1 className="hero-title">Governed delivery intelligence for DevOps, SRE, FinOps, and security</h1>
             <p className="hero-lead">
-              Unify GitHub, JIRA, and cost signals into one governed PM workspace. Model consensus, risk-at-release loops,
-              and explainable recommendations your executives and compliance partners can stand behind.
+              Casantris gives leadership and operators one workspace for run governance, incident correlation, release
+              decisions, and executive-ready summaries with traceable evidence.
             </p>
             <div className="hero-actions">
+              <Link to="/how-it-works" className="btn btn-ghost">
+                Move to Ops
+              </Link>
+              <Link to="/request-access" className="btn btn-ghost">
+                Request access
+              </Link>
               {signupOpen ? (
                 <Link to="/signup" className="btn btn-primary">
                   Start your organization
@@ -58,9 +40,9 @@ export function MarketingPage() {
                   Sign in to workspace
                 </Link>
               )}
-              <a href="#platform" className="btn btn-ghost">
+              <Link to="/platform" className="btn btn-ghost">
                 View platform overview
-              </a>
+              </Link>
             </div>
             <p className="hero-note">
               {signupOpen === false
@@ -105,29 +87,29 @@ export function MarketingPage() {
       <div className="trust-bar">
         <div className="trust-bar-inner">
           <span className="trust-item">
-            <strong>Multi-tenant</strong> isolated organizations
+            <strong>Governed operations</strong> with role-based approvals
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>JWT</strong> session model
+            <strong>Cross-domain visibility</strong> across delivery, reliability, cost, and security
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>Explainable</strong> outputs for stakeholders
+            <strong>Executive-ready</strong> incident and release summaries
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>Simulation or live</strong> connectors
+            <strong>Audit-ready</strong> evidence trails and exportable reports
           </span>
         </div>
       </div>
 
       <section id="platform" className="section section-tight">
         <p className="section-eyebrow">Platform</p>
-        <h2 className="section-title">Built for program and engineering leadership</h2>
+        <h2 className="section-title">Built for program, engineering, and operations leadership</h2>
         <p className="section-lead">
-          AgileOps Agentic Framework orchestrates retrieval, normalization, and scoring so PMs spend less time stitching
-          spreadsheets and more time steering releases.
+          Casantris combines tenant-scoped governance runs, case workflows, audits, and observability into a single
+          control surface so teams can move from alerts to accountable decisions faster.
         </p>
       </section>
 
@@ -139,8 +121,8 @@ export function MarketingPage() {
             </div>
             <h3>Consensus &amp; RAR</h3>
             <p>
-              Tune consensus thresholds and risk-at-release loops to match your risk appetite before code reaches
-              production.
+              Multi-agent findings are scored into consensus and conflict indicators, with RAR re-analysis available when
+              confidence is low.
             </p>
           </article>
           <article className="feature-card">
@@ -149,8 +131,8 @@ export function MarketingPage() {
             </div>
             <h3>Controlled connectors</h3>
             <p>
-              Start with deterministic simulation fixtures, then graduate to live GitHub, JIRA, and FinOps-style cost
-              inputs on your timeline.
+              Start deterministic in simulation mode, then enable live GitHub/Jira/FinOps paths with tenant-level
+              validation and controls.
             </p>
           </article>
           <article className="feature-card">
@@ -159,8 +141,8 @@ export function MarketingPage() {
             </div>
             <h3>Executive-ready narrative</h3>
             <p>
-              Utility scoring and structured explanations translate agent output into briefings your leadership team can
-              consume without a PhD in ML.
+              Correlated incidents, release-governance recommendations, and executive summaries are rendered for
+              technical and non-technical stakeholders.
             </p>
           </article>
         </div>
@@ -196,14 +178,14 @@ export function MarketingPage() {
             </ol>
           </div>
           <div className="integration-card">
-            <h3 className="integration-title">Integrations</h3>
+            <h3 className="integration-title">Current integration maturity</h3>
             <ul className="integration-list">
-              <li>GitHub</li>
-              <li>JIRA Cloud</li>
-              <li>FinOps / cost signals</li>
-              <li>Custom fixtures</li>
+              <li>Live-capable: GitHub, Jira, FinOps file inputs</li>
+              <li>Simulation-ready: Azure, AWS, policy and telemetry signals</li>
+              <li>Tenant-scoped connector and provider validation</li>
+              <li>JSON/CSV exports for runs and audit events</li>
             </ul>
-            <p className="integration-note">Connector mode is configurable per deployment; tenant-scoped policies roadmap.</p>
+            <p className="integration-note">Connector mode is deployment-configurable so teams can safely move from pilot to production.</p>
           </div>
         </div>
       </section>
@@ -214,44 +196,17 @@ export function MarketingPage() {
             <p className="section-eyebrow section-eyebrow--on-dark">Enterprise</p>
             <h2 className="enterprise-title">Operate with the rigor your governance model demands</h2>
             <p className="enterprise-lead">
-              Role separation between platform superadministrators and tenant administrators, clear audit surfaces on
-              evidence and outputs, and a path from pilot tenants to organization-wide rollout.
+              Use superadmin and tenant-admin separation, auditable event trails, and lead-to-tenant onboarding workflows
+              to scale governed operations across organizations.
             </p>
           </div>
           <ul className="enterprise-bullets">
-            <li>Tenant isolation with administrator-controlled access</li>
-            <li>Structured governance API for automation and integration</li>
-            <li>Dark workspace console optimized for daily operator use</li>
+            <li>Tenant isolation with role-based access and approval workflows</li>
+            <li>Release governance, cost-spike, and security review workflow runs</li>
+            <li>Dashboard visibility across incidents, telemetry, and workflow outcomes</li>
           </ul>
         </div>
       </section>
-
-      <footer className="site-footer">
-        <div className="site-footer-grid">
-          <div className="site-footer-brand">
-            <div className="site-footer-name-row">
-              <span className="site-logo-mark site-logo-mark--footer" aria-hidden="true" />
-              <span className="site-footer-name">AgileOps</span>
-            </div>
-            <p className="site-footer-tagline">Agentic framework for governed delivery intelligence.</p>
-          </div>
-          <div className="site-footer-col">
-            <span className="site-footer-heading">Product</span>
-            <Link to="/login">Workspace</Link>
-            {signupOpen ? <Link to="/signup">Create organization</Link> : null}
-            <a href="#platform">Platform</a>
-          </div>
-          <div className="site-footer-col">
-            <span className="site-footer-heading">Company</span>
-            <a href="#enterprise">Enterprise</a>
-            <a href="#how">How it works</a>
-          </div>
-        </div>
-        <div className="site-footer-bottom">
-          <span>© {new Date().getFullYear()} AgileOps. All rights reserved.</span>
-          <Link to="/login">Sign in</Link>
-        </div>
-      </footer>
-    </div>
+    </MarketingLayout>
   );
 }

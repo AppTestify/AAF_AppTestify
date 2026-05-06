@@ -43,8 +43,20 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     api_v1_prefix: str = "/api/v1"
 
+    # OpenTelemetry OTLP (optional). Set OTEL_EXPORTER_OTLP_ENDPOINT to enable trace + metric export.
+    otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_headers: str = ""
+    otel_service_name: str = "aaf-governance"
+    otel_metric_export_interval_ms: int = 60_000
+
+    # Prometheus text at GET /metrics without auth (for scrapers). Must stay false in production.
+    metrics_public_enabled: bool = False
+
     # Database (SQLite default; use postgresql+psycopg://... for Postgres)
     database_url: str = "sqlite:///./data/aaf.db"
+
+    # App-level encryption key for at-rest secret fields
+    app_encryption_key: str = "change-me-32-char-encryption-key"
 
     # JWT auth
     jwt_secret: str = "change-me-in-production-use-long-random-string"
@@ -86,3 +98,7 @@ def validate_runtime_safety(settings: Settings) -> None:
         raise RuntimeError("Unsafe bootstrap admin password for production")
     if settings.public_tenant_signup_enabled:
         raise RuntimeError("PUBLIC_TENANT_SIGNUP_ENABLED must be false in production")
+    if settings.metrics_public_enabled:
+        raise RuntimeError("METRICS_PUBLIC_ENABLED must be false in production")
+    if settings.app_encryption_key.startswith("change-me") or len(settings.app_encryption_key) < 24:
+        raise RuntimeError("Unsafe APP_ENCRYPTION_KEY for production")

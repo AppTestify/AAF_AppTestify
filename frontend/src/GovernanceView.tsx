@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { GovernanceRunResult, PromptLibrary, TenantRow, UserPublic } from "./api";
 
@@ -61,10 +61,13 @@ export function GovernanceView(props: GovernanceViewProps) {
     if (consensusScore >= 0.45) return "warn";
     return "bad";
   }, [consensusScore]);
+  const [activeResultTab, setActiveResultTab] = useState<"executive" | "evidence" | "agents" | "explainability">(
+    "executive"
+  );
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header className="app-header workspace-page-head">
         <div className="brand">
           <h1>Governance overview</h1>
           <span>
@@ -118,8 +121,12 @@ export function GovernanceView(props: GovernanceViewProps) {
         </div>
       ) : null}
 
+      <div className="workspace-split">
       <div className="card">
-        <h2>Prompt</h2>
+        <div className="workspace-card-title">
+          <h2>Compose request</h2>
+        </div>
+        <p className="workspace-card-subtitle">Select a prompt template or write a custom governance question.</p>
         <div className="form-row">
           <label htmlFor="library">Prompt library</label>
           <select
@@ -166,6 +173,33 @@ export function GovernanceView(props: GovernanceViewProps) {
           ) : null}
         </div>
       </div>
+      {result ? (
+        <div className="card">
+          <h2>Decision snapshot</h2>
+          <p className="workspace-card-subtitle">Live result posture from the latest governance execution.</p>
+          <div className="metrics">
+            <div className="metric">
+              <div className="label">Consensus</div>
+              <div className={`value ${scoreClass}`}>{consensusScore != null ? consensusScore.toFixed(2) : "—"}</div>
+            </div>
+            <div className="metric">
+              <div className="label">RAR</div>
+              <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>
+            </div>
+            <div className="metric">
+              <div className="label">Action</div>
+              <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                {String(utility?.recommended_action ?? "—")}
+              </div>
+            </div>
+            <div className="metric">
+              <div className="label">XI</div>
+              <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      </div>
 
       {batchResult ? (
         <div className="card">
@@ -179,94 +213,72 @@ export function GovernanceView(props: GovernanceViewProps) {
       {result ? (
         <>
           <div className="card">
-            <h2>Executive view</h2>
-            {pmView ? (
+            <div className="workspace-toolbar">
+              <button className={`btn btn-ghost btn-sm ${activeResultTab === "executive" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("executive")}>Executive</button>
+              <button className={`btn btn-ghost btn-sm ${activeResultTab === "evidence" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("evidence")}>Evidence</button>
+              <button className={`btn btn-ghost btn-sm ${activeResultTab === "agents" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("agents")}>Agents</button>
+              <button className={`btn btn-ghost btn-sm ${activeResultTab === "explainability" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("explainability")}>Explainability</button>
+            </div>
+            {activeResultTab === "executive" ? (
               <>
-                <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{String(pmView.title ?? "")}</p>
-                <div className="pm-summary">
-                  <ReactMarkdown>{String(pmView.summary_markdown ?? "")}</ReactMarkdown>
+                <h2>Executive view</h2>
+                {pmView ? (
+                  <>
+                    <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{String(pmView.title ?? "")}</p>
+                    <div className="pm-summary">
+                      <ReactMarkdown>{String(pmView.summary_markdown ?? "")}</ReactMarkdown>
+                    </div>
+                  </>
+                ) : null}
+                <p className="field-hint">Connectors: {(result.connectors_used as string[] | undefined)?.join(", ") || "—"}</p>
+              </>
+            ) : null}
+            {activeResultTab === "evidence" ? (
+              <div className="workspace-split">
+                <div>
+                  <h2>Normalized evidence</h2>
+                  <ul className="list-plain">
+                    {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => (
+                      <li key={i}>
+                        <span className="mono">{String(e.source)}</span> · {String(e.kind)} — {String(e.summary)} (
+                        <strong>{Number(e.severity).toFixed(2)}</strong>)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h2>Raw evidence</h2>
+                  {Object.entries((result.raw_evidence_by_connector as Record<string, unknown>) ?? {}).map(([name, payload]) => (
+                    <details key={name} className="accordion" open={name === "github"}>
+                      <summary>{name}</summary>
+                      <pre>{JSON.stringify(payload, null, 2)}</pre>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {activeResultTab === "agents" ? (
+              <>
+                <h2>Agent opinions</h2>
+                <ul className="list-plain">
+                  {((result.agent_opinions as Record<string, unknown>[]) ?? []).map((o, i) => (
+                    <li key={i}>
+                      <strong>{String(o.agent_id)}</strong> ({String(o.risk_theme)}, conf {Number(o.confidence).toFixed(2)}):{" "}
+                      {String(o.claim)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {activeResultTab === "explainability" ? (
+              <>
+                <h2>Full explanation</h2>
+                <div className="explanation">
+                  <ReactMarkdown>{String(result.explanation ?? "")}</ReactMarkdown>
                 </div>
               </>
             ) : null}
-            <div className="metrics" style={{ marginTop: "1rem" }}>
-              <div className="metric">
-                <div className="label">Consensus</div>
-                <div className={`value ${scoreClass}`}>
-                  {consensusScore != null ? consensusScore.toFixed(2) : "—"}
-                </div>
-              </div>
-              <div className="metric">
-                <div className="label">RAR</div>
-                <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Action</div>
-                <div className="value mono" style={{ fontSize: "0.85rem" }}>
-                  {String(utility?.recommended_action ?? "—")}
-                </div>
-              </div>
-              <div className="metric">
-                <div className="label">Utility</div>
-                <div className="value">
-                  {typeof utility?.utility_score === "number" ? utility.utility_score.toFixed(2) : "—"}
-                </div>
-              </div>
-              <div className="metric">
-                <div className="label">XI (explainability)</div>
-                <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
-              </div>
             </div>
-          </div>
-
-          <div className="card">
-            <h2>Connectors used</h2>
-            <p className="mono" style={{ margin: 0 }}>
-              {(result.connectors_used as string[] | undefined)?.join(", ") || "—"}
-            </p>
-          </div>
-
-          <div className="card">
-            <h2>Raw evidence</h2>
-            {Object.entries((result.raw_evidence_by_connector as Record<string, unknown>) ?? {}).map(
-              ([name, payload]) => (
-                <details key={name} className="accordion" open={name === "github"}>
-                  <summary>{name}</summary>
-                  <pre>{JSON.stringify(payload, null, 2)}</pre>
-                </details>
-              )
-            )}
-          </div>
-
-          <div className="card">
-            <h2>Normalized evidence</h2>
-            <ul className="list-plain">
-              {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => (
-                <li key={i}>
-                  <span className="mono">{String(e.source)}</span> · {String(e.kind)} — {String(e.summary)} (
-                  <strong>{Number(e.severity).toFixed(2)}</strong>)
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="card">
-            <h2>Agent opinions</h2>
-            <ul className="list-plain">
-              {((result.agent_opinions as Record<string, unknown>[]) ?? []).map((o, i) => (
-                <li key={i}>
-                  <strong>{String(o.agent_id)}</strong> ({String(o.risk_theme)}, conf{" "}
-                  {Number(o.confidence).toFixed(2)}): {String(o.claim)}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="card">
-            <h2>Full explanation</h2>
-            <div className="explanation">
-              <ReactMarkdown>{String(result.explanation ?? "")}</ReactMarkdown>
-            </div>
-          </div>
         </>
       ) : null}
     </div>

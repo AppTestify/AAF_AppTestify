@@ -1,0 +1,262 @@
+import { useEffect, useState } from "react";
+import {
+  fetchConnectorConfigs,
+  fetchDashboardSummary,
+  fetchObservabilitySummary,
+  fetchProviderConfigs,
+  validateConnectorConfig,
+  validateProviderConfig,
+  type ConnectorConfig,
+  type DashboardSummary,
+  type ObservabilitySummary,
+  type ProviderConfig,
+} from "../api";
+
+type WorkspaceIntegrationsPageProps = {
+  token: string;
+  tenantSlug?: string | null;
+  canManage: boolean;
+};
+
+function statusChip(ok: boolean | null) {
+  if (ok == null) return "queued";
+  return ok ? "succeeded" : "failed";
+}
+
+export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: WorkspaceIntegrationsPageProps) {
+  const [connectors, setConnectors] = useState<ConnectorConfig[]>([]);
+  const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [obs, setObs] = useState<ObservabilitySummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const notify = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const load = async () => {
+    const [connectorRows, providerRows, telemetry] = await Promise.all([
+      fetchConnectorConfigs(token, tenantSlug),
+      fetchProviderConfigs(token, tenantSlug),
+      fetchDashboardSummary(token),
+    ]);
+    const obsSummary = await fetchObservabilitySummary(token);
+    setConnectors(connectorRows);
+    setProviders(providerRows.providers);
+    setSummary(telemetry);
+    setObs(obsSummary);
+  };
+
+  useEffect(() => {
+    load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load integrations telemetry"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, tenantSlug]);
+
+  const onValidateConnector = async (name: string) => {
+    try {
+      const row = await validateConnectorConfig(token, name, tenantSlug);
+      setConnectors((prev) => prev.map((x) => (x.connector_name === name ? row : x)));
+      notify(`${name} validated`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Connector validation failed");
+    }
+  };
+
+  const onValidateProvider = async (name: string) => {
+    try {
+      const row = await validateProviderConfig(token, name, tenantSlug);
+      setProviders((prev) => prev.map((x) => (x.provider_name === name ? row : x)));
+      notify(`${name} validated`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Provider validation failed");
+    }
+  };
+
+  return (
+    <div className="app">
+      <header className="app-header workspace-page-head">
+        <div className="brand">
+          <h1>Integrations & Telemetry</h1>
+          <span>Connector/provider health, validation, and runtime readiness</span>
+        </div>
+      </header>
+      {error ? (
+        <div className="alert alert-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {toast ? <div className="alert alert-success">{toast}</div> : null}
+
+      <div className="metrics">
+        <div className="metric">
+          <div className="label">Connectors enabled</div>
+          <div className="value">{summary ? `${summary.connectors_enabled}/${summary.connectors_total}` : "..."}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Providers enabled</div>
+          <div className="value">{summary ? `${summary.providers_enabled}/${summary.providers_total}` : "..."}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Runs (24h)</div>
+          <div className="value">{summary?.runs_24h ?? "..."}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Alerts (24h)</div>
+          <div className="value bad">{summary?.alerts_24h ?? "..."}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Coverage</div>
+          <div className="value">{summary ? `${summary.integration_coverage_pct}%` : "..."}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Freshness</div>
+          <div className="value">{summary ? `${summary.integration_fresh_pct}%` : "..."}</div>
+        </div>
+      </div>
+
+      <div className="workspace-split">
+      <div className="card">
+        <h2>System observability (5m)</h2>
+        <div className="settings-grid">
+          <div className="metric">
+            <div className="label">Req/min</div>
+            <div className="value">{obs?.requests_per_min ?? "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Error rate</div>
+            <div className="value bad">{obs ? `${(obs.error_rate * 100).toFixed(2)}%` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Latency p95</div>
+            <div className="value">{obs ? `${obs.latency_ms_p95} ms` : "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">In-flight req</div>
+            <div className="value">{obs?.inflight_requests ?? "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Run queue</div>
+            <div className="value warn">{obs?.run_queue_depth ?? "..."}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Run latency p95</div>
+            <div className="value">{obs ? `${obs.run_latency_ms_p95} ms` : "..."}</div>
+          </div>
+        </div>
+        <p className="field-hint">
+          Prometheus format is available at <code>/api/v1/telemetry/observability/metrics</code> (authenticated).
+        </p>
+      </div>
+
+      <div className="card">
+        <h2>Connector telemetry</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Enabled</th>
+                <th>Health</th>
+                <th>Last checked</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connectors.map((c) => (
+                <tr key={c.connector_name}>
+                  <td className="mono">{c.connector_name}</td>
+                  <td>{c.enabled ? "Yes" : "No"}</td>
+                  <td>
+                    <span className={`status-chip ${statusChip(c.last_validation_ok)}`}>
+                      {c.last_validation_ok == null ? "unknown" : c.last_validation_ok ? "healthy" : "failing"}
+                    </span>
+                  </td>
+                  <td>{c.last_validated_at ? new Date(c.last_validated_at).toLocaleString() : "-"}</td>
+                  <td>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => onValidateConnector(c.connector_name)}
+                      disabled={!canManage}
+                    >
+                      Validate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+
+      <div className="workspace-split">
+      <div className="card">
+        <h2>AI provider telemetry</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Enabled</th>
+                <th>Health</th>
+                <th>Last checked</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((p) => (
+                <tr key={p.provider_name}>
+                  <td className="mono">{p.provider_name}</td>
+                  <td>{p.enabled ? "Yes" : "No"}</td>
+                  <td>
+                    <span className={`status-chip ${statusChip(p.last_validation_ok)}`}>
+                      {p.last_validation_ok == null ? "unknown" : p.last_validation_ok ? "healthy" : "failing"}
+                    </span>
+                  </td>
+                  <td>{p.last_validated_at ? new Date(p.last_validated_at).toLocaleString() : "-"}</td>
+                  <td>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => onValidateProvider(p.provider_name)}
+                      disabled={!canManage}
+                    >
+                      Validate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <h2>Top endpoints (5m)</h2>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Requests</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(obs?.endpoints_top ?? []).map((row) => (
+                <tr key={row.endpoint}>
+                  <td className="mono">{row.endpoint}</td>
+                  <td>{row.count}</td>
+                  <td>{row.errors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}

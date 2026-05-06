@@ -4,6 +4,7 @@ import {
   fetchProviderConfigs,
   fetchTenantSettings,
   patchTenantSettings,
+  runGovernance,
   saveConnectorConfigs,
   saveProviderConfigs,
   validateConnectorConfig,
@@ -26,11 +27,13 @@ type WorkspaceSettingsPageProps = {
 type ConnectorDraft = {
   enabled: boolean;
   config_json: Record<string, unknown>;
+  credentials_json: Record<string, unknown>;
 };
 
 type ProviderDraft = {
   enabled: boolean;
   model_name: string;
+  api_key: string;
   temperature: string;
   max_tokens: string;
   endpoint_url: string;
@@ -40,7 +43,14 @@ type ProviderDraft = {
   metadata_json: Record<string, unknown>;
 };
 
-const PROVIDERS = ["openai", "anthropic", "azure_openai"];
+const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock"];
+const CONNECTOR_HELP: Record<string, string> = {
+  github: "Required when enabled: config_json.repo",
+  jira: "Required when enabled: config_json.project",
+  azure: "Required when enabled: config_json.subscription_id",
+  aws: "Required when enabled: config_json.account_id",
+  finops: "Required when enabled: config_json.cost_file",
+};
 
 export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "general" }: WorkspaceSettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
@@ -51,10 +61,13 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
   const [message, setMessage] = useState<string | null>(null);
   const [defaultProvider, setDefaultProvider] = useState<string>("");
   const [uiPrefsText, setUiPrefsText] = useState<string>("{}");
+  const [llmKeysText, setLlmKeysText] = useState<string>("{}");
+  const [ragConfigText, setRagConfigText] = useState<string>("{}");
   const [connectorRows, setConnectorRows] = useState<ConnectorConfig[]>([]);
   const [connectorDraft, setConnectorDraft] = useState<Record<string, ConnectorDraft>>({});
   const [providerRows, setProviderRows] = useState<ProviderConfig[]>([]);
   const [providerDraft, setProviderDraft] = useState<Record<string, ProviderDraft>>({});
+  const [aiTestPrompt, setAiTestPrompt] = useState("Health-check prompt: verify AI provider runtime configuration.");
 
   const canEdit = user.is_superadmin || user.is_admin;
   const targetForApi = user.is_superadmin ? targetTenantSlug : undefined;
@@ -80,10 +93,18 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       .then(([settings, connectors, providers]) => {
         setDefaultProvider(settings.default_ai_provider ?? "");
         setUiPrefsText(JSON.stringify(settings.ui_preferences ?? {}, null, 2));
+        setLlmKeysText(
+          JSON.stringify(
+            (settings.llm_keys_configured || []).reduce((acc, k) => ({ ...acc, [k]: "<configured>" }), {}),
+            null,
+            2
+          )
+        );
+        setRagConfigText(JSON.stringify(settings.rag_config_json ?? {}, null, 2));
         setConnectorRows(connectors);
         const cDraft: Record<string, ConnectorDraft> = {};
         connectors.forEach((c) => {
-          cDraft[c.connector_name] = { enabled: c.enabled, config_json: c.config_json ?? {} };
+          cDraft[c.connector_name] = { enabled: c.enabled, config_json: c.config_json ?? {}, credentials_json: {} };
         });
         setConnectorDraft(cDraft);
         setProviderRows(providers.providers);
@@ -92,6 +113,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           pDraft[p.provider_name] = {
             enabled: p.enabled,
             model_name: p.model_name ?? "",
+            api_key: "",
             temperature: p.temperature == null ? "" : String(p.temperature),
             max_tokens: p.max_tokens == null ? "" : String(p.max_tokens),
             endpoint_url: p.endpoint_url ?? "",
@@ -106,6 +128,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
             pDraft[name] = {
               enabled: false,
               model_name: "",
+              api_key: "",
               temperature: "",
               max_tokens: "",
               endpoint_url: "",
@@ -130,11 +153,15 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       setSaving(true);
       setMessage(null);
       const prefs = JSON.parse(uiPrefsText || "{}") as Record<string, unknown>;
+      const llmKeys = JSON.parse(llmKeysText || "{}") as Record<string, string>;
+      const ragConfig = JSON.parse(ragConfigText || "{}") as Record<string, unknown>;
       await patchTenantSettings(
         token,
         {
           default_ai_provider: defaultProvider || null,
           ui_preferences: prefs,
+          llm_keys: llmKeys,
+          rag_config_json: ragConfig,
         },
         targetForApi
       );
@@ -186,6 +213,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           max_tokens: d.max_tokens === "" ? null : Number(d.max_tokens),
           endpoint_url: d.endpoint_url || null,
           api_key_ref: d.api_key_ref || null,
+          api_key: d.api_key || null,
           timeout_seconds: d.timeout_seconds === "" ? null : Number(d.timeout_seconds),
           retry_count: d.retry_count === "" ? null : Number(d.retry_count),
           metadata_json: d.metadata_json || {},
@@ -228,9 +256,29 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       setProviderRows((prev) =>
         prev.map((p) => (p.provider_name === provider ? validated : p)).concat(prev.some((p) => p.provider_name === provider) ? [] : [validated])
       );
-      setMessage(`${provider} validated.`);
+      setMessage(`${provider} connection test completed.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Provider validation failed");
+    }
+  };
+
+  const handleAiRuntimeSmokeTest = async () => {
+    try {
+      setSaving(true);
+      setMessage(null);
+      const result = await runGovernance(token, aiTestPrompt, "ai-runtime-smoke", targetForApi);
+      const runtime = (result.runtime_config as Record<string, unknown>) || {};
+      const ai = (runtime.ai as Record<string, unknown>) || {};
+      const activeProvider = ai.default_provider as string | undefined;
+      setMessage(
+        activeProvider
+          ? `AI runtime smoke test succeeded. Active default provider: ${activeProvider}`
+          : "AI runtime smoke test ran. No default provider configured."
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI runtime smoke test failed");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -240,7 +288,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header className="app-header workspace-page-head">
         <div className="brand">
           <h1>Settings</h1>
           <span>Tenant configuration, connectors, and AI providers</span>
@@ -295,6 +343,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       {!loading && activeTab === "general" ? (
         <div className="card">
           <h2>General</h2>
+          <p className="workspace-card-subtitle">Core tenant defaults and structured runtime preferences.</p>
           <div className="form-row">
             <label htmlFor="default-provider">Default AI provider</label>
             <select
@@ -320,6 +369,24 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
               disabled={!canEdit || saving}
             />
           </div>
+          <div className="form-row">
+            <label htmlFor="llm-keys">LLM keys (JSON)</label>
+            <textarea
+              id="llm-keys"
+              value={llmKeysText}
+              onChange={(e) => setLlmKeysText(e.target.value)}
+              disabled={!canEdit || saving}
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor="rag-config">RAG config (JSON)</label>
+            <textarea
+              id="rag-config"
+              value={ragConfigText}
+              onChange={(e) => setRagConfigText(e.target.value)}
+              disabled={!canEdit || saving}
+            />
+          </div>
           <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveGeneral}>
             {saving ? "Saving…" : "Save general settings"}
           </button>
@@ -328,7 +395,11 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
 
       {!loading && activeTab === "connectors" ? (
         <div className="card">
-          <h2>Connectors</h2>
+          <h2>Integrate Connectors</h2>
+          <p className="field-hint" style={{ marginBottom: "0.85rem" }}>
+            Connect GitHub, Jira, Azure, AWS, and FinOps by enabling each connector, adding required config and credentials,
+            then running Validate.
+          </p>
           {Object.keys(connectorDraft)
             .sort()
             .map((name) => {
@@ -337,6 +408,9 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
               return (
                 <div key={name} className="config-block">
                   <h3>{name}</h3>
+                  <div className="field-hint" style={{ marginBottom: "0.55rem" }}>
+                    {CONNECTOR_HELP[name] ?? "Set connector config and validate."}
+                  </div>
                   <div className="form-row">
                     <label>
                       <input
@@ -365,7 +439,25 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                       disabled={!canEdit || saving}
                     />
                   </div>
+                  <div className="form-row">
+                    <label>Credentials JSON</label>
+                    <textarea
+                      value={JSON.stringify(draft.credentials_json ?? {}, null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const parsed = JSON.parse(e.target.value || "{}") as Record<string, unknown>;
+                          setConnectorDraft((prev) => ({ ...prev, [name]: { ...prev[name], credentials_json: parsed } }));
+                        } catch {
+                          // keep editable
+                        }
+                      }}
+                      disabled={!canEdit || saving}
+                    />
+                  </div>
                   <div className="actions">
+                    <span className={`status-chip ${status?.enabled ? "succeeded" : "queued"}`}>
+                      {status?.enabled ? "connected" : "not connected"}
+                    </span>
                     <button
                       className="btn btn-ghost"
                       type="button"
@@ -394,6 +486,10 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       {!loading && activeTab === "ai" ? (
         <div className="card">
           <h2>AI Providers</h2>
+          <p className="workspace-card-subtitle">Configure provider routing, validate connectivity, then verify runtime usage.</p>
+          <p className="field-hint" style={{ marginBottom: "0.85rem" }}>
+            Add provider keys, save, run Test connection for each provider, then run AI runtime smoke test to verify tenant runtime uses your configured AI.
+          </p>
           <div className="form-row">
             <label htmlFor="default-provider-ai">Default provider</label>
             <select
@@ -483,6 +579,17 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                     />
                   </div>
                   <div className="form-row">
+                    <label>API key (encrypted)</label>
+                    <input
+                      type="password"
+                      value={draft.api_key}
+                      onChange={(e) =>
+                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], api_key: e.target.value } }))
+                      }
+                      disabled={!canEdit || saving}
+                    />
+                  </div>
+                  <div className="form-row">
                     <label>Timeout seconds</label>
                     <input
                       value={draft.timeout_seconds}
@@ -504,13 +611,16 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                   </div>
                 </div>
                 <div className="actions">
+                  <span className={`status-chip ${status?.enabled ? "succeeded" : "queued"}`}>
+                    {status?.enabled ? "configured" : "not configured"}
+                  </span>
                   <button
                     className="btn btn-ghost"
                     type="button"
                     onClick={() => handleValidateProvider(name)}
                     disabled={!canEdit || saving}
                   >
-                    Validate
+                    Test connection
                   </button>
                   <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
                     {status?.last_validation_ok == null
@@ -523,6 +633,18 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
               </div>
             );
           })}
+          <div className="config-block">
+            <h3>Use AI Runtime Check</h3>
+            <div className="form-row">
+              <label>Smoke test prompt</label>
+              <textarea value={aiTestPrompt} onChange={(e) => setAiTestPrompt(e.target.value)} disabled={!canEdit || saving} />
+            </div>
+            <div className="actions">
+              <button className="btn btn-ghost" type="button" onClick={handleAiRuntimeSmokeTest} disabled={!canEdit || saving}>
+                Run AI runtime smoke test
+              </button>
+            </div>
+          </div>
           <button className="btn btn-primary" type="button" disabled={!canEdit || saving} onClick={handleSaveProviders}>
             {saving ? "Saving…" : "Save AI provider settings"}
           </button>

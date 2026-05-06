@@ -46,6 +46,19 @@ export type TenantSignupBody = {
   password: string;
 };
 
+export type AccessLead = {
+  id: number;
+  organization_name: string;
+  contact_name: string;
+  work_email: string;
+  website: string;
+  notes: string;
+  status: string;
+  converted_tenant_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function signupTenant(body: TenantSignupBody): Promise<LoginResponse> {
   const r = await fetch(`${API}/auth/signup-tenant`, {
     method: "POST",
@@ -54,6 +67,47 @@ export async function signupTenant(body: TenantSignupBody): Promise<LoginRespons
   });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<LoginResponse>;
+}
+
+export async function submitRequestAccessLead(body: {
+  organization_name: string;
+  contact_name: string;
+  work_email: string;
+  website?: string;
+  notes?: string;
+}): Promise<AccessLead> {
+  const r = await fetch(`${API}/leads/request-access`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AccessLead>;
+}
+
+export async function fetchLeads(token: string): Promise<AccessLead[]> {
+  const r = await fetch(`${API}/leads`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AccessLead[]>;
+}
+
+export async function convertLeadToTenant(
+  token: string,
+  leadId: number,
+  body: { tenant_name: string; tenant_slug: string }
+): Promise<AccessLead> {
+  const r = await fetch(`${API}/leads/${leadId}/convert`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AccessLead>;
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -150,20 +204,27 @@ export type TenantSettings = {
   tenant_slug: string;
   default_ai_provider: string | null;
   ui_preferences: Record<string, unknown>;
+  rag_config_json: Record<string, unknown>;
+  llm_keys_configured: string[];
 };
 
 export type TenantSettingsPatch = {
   default_ai_provider?: string | null;
   ui_preferences?: Record<string, unknown>;
+  rag_config_json?: Record<string, unknown>;
+  llm_keys?: Record<string, string>;
 };
 
 export type ConnectorConfig = {
   connector_name: string;
   enabled: boolean;
   config_json: Record<string, unknown>;
+  credentials_json: Record<string, unknown>;
   last_validation_ok: boolean | null;
   last_validation_error: string | null;
   last_validated_at: string | null;
+  telemetry_json: Record<string, unknown>;
+  last_sync_at: string | null;
 };
 
 export type ProviderConfig = {
@@ -174,6 +235,7 @@ export type ProviderConfig = {
   max_tokens: number | null;
   endpoint_url: string | null;
   api_key_ref: string | null;
+  api_key: string | null;
   timeout_seconds: number | null;
   retry_count: number | null;
   metadata_json: Record<string, unknown>;
@@ -227,7 +289,7 @@ export async function fetchConnectorConfigs(token: string, tenantSlug?: string |
 
 export async function saveConnectorConfigs(
   token: string,
-  connectors: Record<string, { enabled: boolean; config_json: Record<string, unknown> }>,
+  connectors: Record<string, { enabled: boolean; config_json: Record<string, unknown>; credentials_json: Record<string, unknown> }>,
   tenantSlug?: string | null
 ): Promise<ConnectorConfig[]> {
   const r = await fetch(`${API}/tenant/connectors${tenantQuery(tenantSlug)}`, {
@@ -276,6 +338,7 @@ export async function saveProviderConfigs(
         max_tokens?: number | null;
         endpoint_url?: string | null;
         api_key_ref?: string | null;
+        api_key?: string | null;
         timeout_seconds?: number | null;
         retry_count?: number | null;
         metadata_json?: Record<string, unknown>;
@@ -366,6 +429,207 @@ export type AuditEvent = {
   created_at: string;
 };
 
+export type DashboardSummary = {
+  runs_total: number;
+  runs_24h: number;
+  runs_success_24h: number;
+  cases_open: number;
+  cases_total: number;
+  alerts_24h: number;
+  connectors_enabled: number;
+  connectors_total: number;
+  providers_enabled: number;
+  providers_total: number;
+  run_status_counts: Record<string, number>;
+  case_status_counts: Record<string, number>;
+  recent_runs: { id: number; status: string; prompt: string; created_at: string }[];
+  recent_alerts: { id: number; area: string; action: string; severity: string; summary: string; created_at: string }[];
+  connector_health: {
+    connector_name: string;
+    enabled: boolean;
+    last_validation_ok: boolean | null;
+    last_validation_error: string | null;
+    last_validated_at: string | null;
+  }[];
+  provider_health: {
+    provider_name: string;
+    enabled: boolean;
+    last_validation_ok: boolean | null;
+    last_validation_error: string | null;
+    last_validated_at: string | null;
+  }[];
+  integration_coverage_pct: number;
+  integration_fresh_pct: number;
+};
+
+export async function fetchDashboardSummary(token: string): Promise<DashboardSummary> {
+  const r = await fetch(`${API}/telemetry/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<DashboardSummary>;
+}
+
+export type ObservabilitySummary = {
+  window_seconds: number;
+  uptime_seconds: number;
+  requests_total: number;
+  requests_per_min: number;
+  error_rate: number;
+  latency_ms_p50: number;
+  latency_ms_p95: number;
+  latency_ms_p99: number;
+  inflight_requests: number;
+  run_queue_depth: number;
+  runs_total: number;
+  runs_succeeded: number;
+  runs_failed: number;
+  runs_retried: number;
+  run_latency_ms_p95: number;
+  endpoints_top: { endpoint: string; count: number; errors: number }[];
+};
+
+export async function fetchObservabilitySummary(token: string, windowSeconds = 300): Promise<ObservabilitySummary> {
+  const r = await fetch(`${API}/telemetry/observability/summary?window_seconds=${windowSeconds}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ObservabilitySummary>;
+}
+
+export type IntelligenceIncident = {
+  id: number;
+  run_id: number;
+  tenant_id: number | null;
+  title: string;
+  severity: string;
+  status: string;
+  confidence: number;
+  consensus_score: number;
+  conflict_detected: boolean;
+  evidence_json: Record<string, unknown>;
+  recommendation_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConsensusSummary = {
+  incidents_total: number;
+  avg_consensus_score: number;
+  avg_confidence: number;
+  conflict_rate: number;
+  high_risk_open: number;
+};
+
+export type ExecutiveSummary = {
+  id: number;
+  tenant_id: number | null;
+  run_id: number | null;
+  summary_type: string;
+  title: string;
+  content: string;
+  xi_score: number;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ReleaseGovernance = {
+  decision: string;
+  reason: string;
+  consensus_score: number;
+  confidence: number;
+  risk_level: string;
+};
+
+export type RARIteration = {
+  id: number;
+  tenant_id: number | null;
+  incident_id: number;
+  iteration_index: number;
+  trigger_reason: string;
+  confidence_before: number;
+  confidence_after: number;
+  evidence_enrichment_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type WorkflowRun = {
+  id: number;
+  tenant_id: number | null;
+  incident_id: number | null;
+  workflow_type: string;
+  status: string;
+  decision: string | null;
+  score: number;
+  summary: string;
+  output_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function fetchIntelligenceIncidents(token: string, limit = 10): Promise<IntelligenceIncident[]> {
+  const r = await fetch(`${API}/intelligence/incidents?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<IntelligenceIncident[]>;
+}
+
+export async function fetchConsensusSummary(token: string): Promise<ConsensusSummary> {
+  const r = await fetch(`${API}/intelligence/consensus/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ConsensusSummary>;
+}
+
+export async function fetchExecutiveSummaries(token: string, limit = 5): Promise<ExecutiveSummary[]> {
+  const r = await fetch(`${API}/intelligence/executive-summaries?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ExecutiveSummary[]>;
+}
+
+export async function fetchReleaseGovernance(token: string): Promise<ReleaseGovernance> {
+  const r = await fetch(`${API}/intelligence/release-governance`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ReleaseGovernance>;
+}
+
+export async function runRarIteration(token: string, incidentId: number): Promise<RARIteration> {
+  const r = await fetch(`${API}/intelligence/incidents/${incidentId}/rar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<RARIteration>;
+}
+
+export async function runGovernanceWorkflow(
+  token: string,
+  workflowType: string,
+  incidentId?: number
+): Promise<WorkflowRun> {
+  const q = typeof incidentId === "number" ? `?incident_id=${incidentId}` : "";
+  const r = await fetch(`${API}/intelligence/workflows/${encodeURIComponent(workflowType)}${q}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<WorkflowRun>;
+}
+
+export async function fetchWorkflowRuns(token: string, workflowType?: string): Promise<WorkflowRun[]> {
+  const q = workflowType ? `?workflow_type=${encodeURIComponent(workflowType)}` : "";
+  const r = await fetch(`${API}/intelligence/workflows${q}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<WorkflowRun[]>;
+}
+
 export async function createGovernanceRun(
   token: string,
   body: { prompt: string; prompt_id?: string | null },
@@ -390,11 +654,13 @@ export async function fetchGovernanceRun(token: string, runId: number): Promise<
 
 export async function fetchGovernanceRuns(
   token: string,
-  params?: { status?: string; limit?: number }
+  params?: { status?: string; limit?: number; offset?: number; query?: string }
 ): Promise<GovernanceRunV1[]> {
   const search = new URLSearchParams();
   if (params?.status) search.set("status", params.status);
   if (params?.limit) search.set("limit", String(params.limit));
+  if (typeof params?.offset === "number") search.set("offset", String(params.offset));
+  if (params?.query) search.set("prompt_contains", params.query);
   const suffix = search.toString() ? `?${search.toString()}` : "";
   const r = await fetch(`${API}/governance/runs${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -419,6 +685,23 @@ export async function createCase(
 
 export async function fetchCases(token: string, limit = 100): Promise<GovernanceCase[]> {
   const r = await fetch(`${API}/governance/cases?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<GovernanceCase[]>;
+}
+
+export async function fetchCasesAdvanced(
+  token: string,
+  params?: { status?: string; limit?: number; offset?: number; query?: string }
+): Promise<GovernanceCase[]> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+  if (typeof params?.offset === "number") q.set("offset", String(params.offset));
+  if (params?.query) q.set("title_contains", params.query);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  const r = await fetch(`${API}/governance/cases${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) throw new Error(await parseError(r));
@@ -467,21 +750,67 @@ export async function approveDecision(
   return r.json() as Promise<Decision>;
 }
 
-export async function fetchAuditEvents(token: string, area?: string): Promise<AuditEvent[]> {
-  const q = area ? `?area=${encodeURIComponent(area)}` : "";
-  const r = await fetch(`${API}/governance/audit-events${q}`, {
+export async function fetchAuditEvents(
+  token: string,
+  params?: { area?: string; severity?: string; limit?: number }
+): Promise<AuditEvent[]> {
+  const q = new URLSearchParams();
+  if (params?.area) q.set("area", params.area);
+  if (params?.severity) q.set("severity", params.severity);
+  if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  const r = await fetch(`${API}/governance/audit-events${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AuditEvent[]>;
 }
 
+export type EvidenceRow = {
+  id: number;
+  run_id: number;
+  connector_name: string;
+  payload_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function fetchEvidence(
+  token: string,
+  params?: { connector?: string; run_id?: number; limit?: number; offset?: number }
+): Promise<EvidenceRow[]> {
+  const q = new URLSearchParams();
+  if (params?.connector) q.set("connector", params.connector);
+  if (typeof params?.run_id === "number") q.set("run_id", String(params.run_id));
+  if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+  if (typeof params?.offset === "number") q.set("offset", String(params.offset));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  const r = await fetch(`${API}/governance/evidence${suffix}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<EvidenceRow[]>;
+}
+
+export async function acknowledgeAlert(token: string, eventId: number): Promise<AuditEvent> {
+  const r = await fetch(`${API}/governance/audit-events/${eventId}/acknowledge`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AuditEvent>;
+}
+
 export async function fetchRunSummaryReport(
   token: string,
   format: "json" | "csv",
-  limit = 200
+  limit = 200,
+  status?: string
 ): Promise<{ count: number; items: Record<string, unknown>[] } | Blob> {
-  const r = await fetch(`${API}/reports/runs/summary?format=${format}&limit=${limit}`, {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  q.set("limit", String(limit));
+  if (status) q.set("status", status);
+  const r = await fetch(`${API}/reports/runs/summary?${q.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) throw new Error(await parseError(r));

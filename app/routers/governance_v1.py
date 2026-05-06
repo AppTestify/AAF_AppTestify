@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
-from app.models.governance import AuditEvent, Decision, GovernanceCase, GovernanceRun
+from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun
 from app.models.user import User
 from app.services.config_resolver import resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
@@ -102,6 +102,14 @@ class AuditOut(BaseModel):
     created_at: datetime
 
 
+class EvidenceOut(BaseModel):
+    id: int
+    run_id: int
+    connector_name: str
+    payload_json: dict
+    created_at: datetime
+
+
 def _run_out(row: GovernanceRun) -> RunOut:
     return RunOut(
         id=row.id,
@@ -171,15 +179,19 @@ def get_run_v1(
 @router.get("/runs", response_model=list[RunOut])
 def list_runs_v1(
     status_filter: Optional[str] = Query(default=None, alias="status"),
+    prompt_contains: Optional[str] = Query(default=None),
+    offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_active_user),
 ):
-    q = select(GovernanceRun).order_by(GovernanceRun.created_at.desc()).limit(limit)
+    q = select(GovernanceRun).order_by(GovernanceRun.created_at.desc()).offset(offset).limit(limit)
     if not current.is_superadmin:
         q = q.where(GovernanceRun.tenant_id == current.tenant_id)
     if status_filter:
         q = q.where(GovernanceRun.status == status_filter)
+    if prompt_contains:
+        q = q.where(GovernanceRun.prompt.ilike(f"%{prompt_contains.strip()}%"))
     rows = db.execute(q).scalars().all()
     return [_run_out(r) for r in rows]
 
@@ -220,15 +232,48 @@ def create_case(
 
 @router.get("/cases", response_model=list[CaseOut])
 def list_cases(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    title_contains: Optional[str] = Query(default=None),
+    offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_active_user),
 ):
-    q = select(GovernanceCase).order_by(GovernanceCase.updated_at.desc()).limit(limit)
+    q = select(GovernanceCase).order_by(GovernanceCase.updated_at.desc()).offset(offset).limit(limit)
     if not current.is_superadmin:
         q = q.where(GovernanceCase.tenant_id == current.tenant_id)
+    if status_filter:
+        q = q.where(GovernanceCase.status == status_filter)
+    if title_contains:
+        q = q.where(GovernanceCase.title.ilike(f"%{title_contains.strip()}%"))
     rows = db.execute(q).scalars().all()
     return [CaseOut(**r.__dict__) for r in rows]
+
+
+@router.get("/evidence", response_model=list[EvidenceOut])
+def list_evidence(
+    connector: Optional[str] = Query(default=None),
+    run_id: Optional[int] = Query(default=None),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    q = (
+        select(EvidenceSnapshot)
+        .join(GovernanceRun, GovernanceRun.id == EvidenceSnapshot.run_id)
+        .order_by(EvidenceSnapshot.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    if not current.is_superadmin:
+        q = q.where(GovernanceRun.tenant_id == current.tenant_id)
+    if connector:
+        q = q.where(EvidenceSnapshot.connector_name == connector)
+    if run_id is not None:
+        q = q.where(EvidenceSnapshot.run_id == run_id)
+    rows = db.execute(q).scalars().all()
+    return [EvidenceOut(**r.__dict__) for r in rows]
 
 
 @router.patch("/cases/{case_id}", response_model=CaseOut)
@@ -343,6 +388,7 @@ def approve_decision(
 @router.get("/audit-events", response_model=list[AuditOut])
 def list_audit_events(
     area: Optional[str] = Query(default=None),
+    severity: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     current: User = Depends(require_permission("cases.manage")),
@@ -350,7 +396,36 @@ def list_audit_events(
     q = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)
     if area:
         q = q.where(AuditEvent.area == area)
+    if severity:
+        q = q.where(AuditEvent.severity == severity)
     if not current.is_superadmin:
         q = q.where(AuditEvent.tenant_id == current.tenant_id)
     rows = db.execute(q).scalars().all()
     return [AuditOut(**r.__dict__) for r in rows]
+
+
+@router.post("/audit-events/{event_id}/acknowledge", response_model=AuditOut)
+def acknowledge_audit_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("cases.manage")),
+):
+    row = db.get(AuditEvent, event_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audit event not found")
+    if not current.is_superadmin and current.tenant_id != row.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this audit event")
+    ack = AuditEvent(
+        tenant_id=row.tenant_id,
+        actor_user_id=current.id,
+        area="alerts",
+        action="acknowledged",
+        entity_type="audit_event",
+        entity_id=row.id,
+        severity="info",
+        summary=f"Alert {row.id} acknowledged",
+    )
+    db.add(ack)
+    db.commit()
+    db.refresh(ack)
+    return AuditOut(**ack.__dict__)

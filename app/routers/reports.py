@@ -38,11 +38,15 @@ def _scoped_audit_query(current: User):
 @router.get("/runs/summary")
 def runs_summary(
     format: str = Query(default="json", pattern="^(json|csv)$"),
+    status: Optional[str] = Query(default=None),
     limit: int = Query(default=200, ge=1, le=5000),
     db: Session = Depends(get_db),
     current: User = Depends(require_permission("runs.create")),
 ):
-    rows = db.execute(_scoped_runs_query(current).limit(limit)).scalars().all()
+    q = _scoped_runs_query(current)
+    if status:
+        q = q.where(GovernanceRun.status == status)
+    rows = db.execute(q.limit(limit)).scalars().all()
     payload = []
     for r in rows:
         result = r.result_json or {}

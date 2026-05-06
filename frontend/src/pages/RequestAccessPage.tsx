@@ -55,9 +55,9 @@ export function RequestAccessPage() {
       <div className="auth-panel">
         <div className="auth-surface">
           <div className="card auth-card-main">
-            <div className="auth-badge">Enterprise Onboarding</div>
+            <div className="auth-badge">Enterprise Onboarding Intake</div>
             <h1 className="auth-heading">Request access</h1>
-            <p className="auth-sub">Submit your details to initiate tenant provisioning and enterprise readiness review.</p>
+            <p className="auth-sub">Submit your details to initiate tenant provisioning, governance scoping, and enterprise readiness review.</p>
             {submitted ? <div className="alert alert-success">Request submitted successfully. We will contact you soon.</div> : null}
             {error ? (
               <div className="alert alert-error" role="alert">
@@ -93,8 +93,7 @@ export function RequestAccessPage() {
           <div className="card auth-card-side">
             <h2>What happens next</h2>
             <p>
-              Your lead is reviewed by superadmin, then converted into a tenant from the Leads console with full governance
-              controls.
+              Your request is reviewed by the platform owner and converted into a governed tenant with role and policy controls.
             </p>
             <div className="auth-kpis">
               <div className="auth-kpi">

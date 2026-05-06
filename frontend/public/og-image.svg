@@ -1,26 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0b1220"/>
-      <stop offset="100%" stop-color="#111f39"/>
+      <stop offset="0%" stop-color="#081023" />
+      <stop offset="100%" stop-color="#10244a" />
     </linearGradient>
-    <linearGradient id="mark" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#67b8ff"/>
-      <stop offset="55%" stop-color="#2f78f6"/>
-      <stop offset="100%" stop-color="#1f52c3"/>
+    <linearGradient id="mark" x1="12%" y1="10%" x2="92%" y2="92%">
+      <stop offset="0%" stop-color="#6eb1ff" />
+      <stop offset="60%" stop-color="#2f78f6" />
+      <stop offset="100%" stop-color="#1f4fb8" />
     </linearGradient>
   </defs>
-  <rect width="1200" height="630" fill="url(#bg)"/>
-  <rect x="72" y="72" width="188" height="188" rx="40" fill="#eaf3ff"/>
-  <rect x="86" y="86" width="160" height="160" rx="33" fill="none" stroke="#9ec3f8" stroke-width="2" opacity="0.8"/>
-  <path d="M206 110c-10-8-23-12-37-12-34 0-61 27-61 61s27 61 61 61c14 0 27-4 37-12v-22c-8 9-20 15-32 15-23 0-42-19-42-42s19-42 42-42c12 0 24 6 32 15v-22z" fill="url(#mark)"/>
-  <circle cx="206" cy="159" r="14" fill="#8fcbff"/>
-  <circle cx="206" cy="159" r="7" fill="#ffffff"/>
-  <text x="290" y="168" fill="#f8fbff" font-size="74" font-family="Inter, Arial, sans-serif" font-weight="700">Casantris</text>
-  <text x="76" y="340" fill="#c7d6ee" font-size="44" font-family="Inter, Arial, sans-serif">
-    Agentic Governance and Reliability Intelligence
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect x="72" y="72" width="198" height="198" rx="42" fill="#eaf3ff" />
+  <rect x="86" y="86" width="170" height="170" rx="36" fill="none" stroke="#9dbef6" stroke-width="2.4" opacity="0.9" />
+  <path d="M214 112c-11-9-26-14-43-14-36 0-65 29-65 65s29 65 65 65c17 0 32-5 43-14l-18-22c-6 5-13 9-25 9-21 0-38-17-38-38s17-38 38-38c12 0 19 4 25 9l18-22z" fill="url(#mark)" />
+  <path d="M205 138h40v40h-40z" fill="#dbe9ff" opacity="0.9" />
+  <text x="296" y="176" fill="#f7fbff" font-size="72" font-family="Inter, Arial, sans-serif" font-weight="700">Casantris</text>
+  <text x="76" y="338" fill="#d3e1f8" font-size="42" font-family="Inter, Arial, sans-serif" font-weight="600">
+    Enterprise Governance Intelligence You Can Defend
   </text>
-  <text x="76" y="404" fill="#9ab1d6" font-size="30" font-family="Inter, Arial, sans-serif">
-    DevOps ù SRE ù FinOps ù DevSecOps in one executive-ready platform
+  <text x="76" y="398" fill="#9fb8df" font-size="29" font-family="Inter, Arial, sans-serif">
+    Controlled release posture, explainable decisions, and auditable operational evidence.
+  </text>
+  <text x="76" y="454" fill="#88a5d2" font-size="24" font-family="Inter, Arial, sans-serif">
+    Trusted by platform, risk, and engineering leadership teams.
   </text>
 </svg>

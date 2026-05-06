@@ -49,9 +49,9 @@ export function LoginPage({ onAuthed, signupEnabled }: LoginPageProps) {
       <div className="auth-panel">
         <div className="auth-surface">
           <div className="card auth-card-main">
-            <div className="auth-badge">Secure Workspace Access</div>
-            <h1 className="auth-heading">Sign in</h1>
-            <p className="auth-sub">Access governed operations with tenant-scoped controls, decision trails, and executive visibility.</p>
+            <div className="auth-badge">Trusted Enterprise Access</div>
+            <h1 className="auth-heading">Sign in to Casantris</h1>
+            <p className="auth-sub">Access governance operations with tenant-scoped controls, policy traceability, and leadership-ready visibility.</p>
             {error ? (
               <div className="alert alert-error" role="alert">
                 {error}
@@ -88,15 +88,15 @@ export function LoginPage({ onAuthed, signupEnabled }: LoginPageProps) {
             </form>
           </div>
           <div className="card auth-card-side">
-            <h2>Enterprise Access</h2>
-            <p>Built for secure, accountable operations across multiple teams and tenants.</p>
+            <h2>Enterprise trust posture</h2>
+            <p>Built for secure, accountable operations across multiple teams, tenants, and governance owners.</p>
             <div className="auth-kpis">
               <div className="auth-kpi">
                 <span className="label">Access model</span>
                 <strong>JWT + role-aware</strong>
               </div>
               <div className="auth-kpi">
-                <span className="label">Governance</span>
+                <span className="label">Decision trail</span>
                 <strong>Audited workflows</strong>
               </div>
             </div>

@@ -18,16 +18,14 @@ export function MarketingPage() {
       <section className="hero">
         <div className="hero-inner">
           <div className="hero-copy">
-            <p className="hero-kicker">Enterprise governance platform</p>
-            <h1 className="hero-title">Governed delivery intelligence for DevOps, SRE, FinOps, and security</h1>
+            <p className="hero-kicker">Enterprise trust platform</p>
+            <h1 className="hero-title">The governance layer leadership can defend in every release review</h1>
             <p className="hero-lead">
-              Casantris gives leadership and operators one workspace for run governance, incident correlation, release
-              decisions, and executive-ready summaries with traceable evidence.
+              Casantris unifies operational evidence, release posture, and accountability controls so leadership teams can
+              make high-impact decisions with confidence, traceability, and audit readiness.
             </p>
             <div className="hero-actions">
-              <Link to="/how-it-works" className="btn btn-ghost">
-                Move to Ops
-              </Link>
+              <Link to="/enterprise" className="btn btn-ghost">Why enterprises trust Casantris</Link>
               <Link to="/request-access" className="btn btn-ghost">
                 Request access
               </Link>
@@ -40,36 +38,34 @@ export function MarketingPage() {
                   Sign in to workspace
                 </Link>
               )}
-              <Link to="/platform" className="btn btn-ghost">
-                View platform overview
-              </Link>
+              <Link to="/platform" className="btn btn-ghost">View trust architecture</Link>
             </div>
             <p className="hero-note">
               {signupOpen === false
                 ? "Self-service signup is disabled on this deployment. Sign in with credentials issued by your administrator."
                 : signupOpen === null
                   ? "Checking availability…"
-                  : "Provision a dedicated tenant and administrator in minutes — SSO-ready architecture for phased enterprise rollout."}
+                  : "Provision a dedicated tenant and administrator in minutes with governance-first controls and enterprise rollout support."}
             </p>
           </div>
           <div className="hero-visual" aria-hidden="true">
             <div className="hero-panel">
               <div className="hero-panel-top">
                 <span className="hero-panel-dots" />
-                <span className="hero-panel-title">Governance run</span>
+                <span className="hero-panel-title">Trust posture snapshot</span>
               </div>
               <div className="hero-panel-metrics">
                 <div className="hero-metric">
-                  <span className="hero-metric-label">Consensus</span>
-                  <span className="hero-metric-value hero-metric-value--good">0.72</span>
+                  <span className="hero-metric-label">Release risk</span>
+                  <span className="hero-metric-value hero-metric-value--good">Low</span>
                 </div>
                 <div className="hero-metric">
-                  <span className="hero-metric-label">RAR</span>
-                  <span className="hero-metric-value">Clear</span>
+                  <span className="hero-metric-label">Control status</span>
+                  <span className="hero-metric-value">Compliant</span>
                 </div>
                 <div className="hero-metric">
-                  <span className="hero-metric-label">XI score</span>
-                  <span className="hero-metric-value">0.84</span>
+                  <span className="hero-metric-label">Audit trail</span>
+                  <span className="hero-metric-value">Complete</span>
                 </div>
               </div>
               <div className="hero-panel-chart">
@@ -78,7 +74,7 @@ export function MarketingPage() {
                 <span className="hero-bar hero-bar--c" />
                 <span className="hero-bar hero-bar--d" />
               </div>
-              <p className="hero-panel-caption">Illustrative metrics — your pipeline, your thresholds.</p>
+              <p className="hero-panel-caption">Illustrative trust posture aligned to enterprise governance standards.</p>
             </div>
           </div>
         </div>
@@ -87,29 +83,29 @@ export function MarketingPage() {
       <div className="trust-bar">
         <div className="trust-bar-inner">
           <span className="trust-item">
-            <strong>Governed operations</strong> with role-based approvals
+            <strong>Defensible release decisions</strong> with explainable evidence
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>Cross-domain visibility</strong> across delivery, reliability, cost, and security
+            <strong>Control-plane clarity</strong> across delivery, reliability, cost, and security
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>Executive-ready</strong> incident and release summaries
+            <strong>Leadership-ready narratives</strong> with operational proof
           </span>
           <span className="trust-sep" aria-hidden="true" />
           <span className="trust-item">
-            <strong>Audit-ready</strong> evidence trails and exportable reports
+            <strong>Audit continuity</strong> with exportable trails and approvals
           </span>
         </div>
       </div>
 
       <section id="platform" className="section section-tight">
         <p className="section-eyebrow">Platform</p>
-        <h2 className="section-title">Built for program, engineering, and operations leadership</h2>
+        <h2 className="section-title">Purpose-built for governance accountability</h2>
         <p className="section-lead">
-          Casantris combines tenant-scoped governance runs, case workflows, audits, and observability into a single
-          control surface so teams can move from alerts to accountable decisions faster.
+          Casantris combines tenant-scoped workflows, policy-aware review paths, and audit-ready outputs in a single trust
+          architecture so teams can move from uncertainty to accountable action quickly.
         </p>
       </section>
 
@@ -119,30 +115,29 @@ export function MarketingPage() {
             <div className="feature-icon" aria-hidden="true">
               ◇
             </div>
-            <h3>Consensus &amp; RAR</h3>
+            <h3>Evidence-backed decisioning</h3>
             <p>
-              Multi-agent findings are scored into consensus and conflict indicators, with RAR re-analysis available when
-              confidence is low.
+              Every recommendation links to source evidence and can be challenged, reviewed, and exported with full context.
             </p>
           </article>
           <article className="feature-card">
             <div className="feature-icon" aria-hidden="true">
               ⎘
             </div>
-            <h3>Controlled connectors</h3>
+            <h3>Controlled integration posture</h3>
             <p>
-              Start deterministic in simulation mode, then enable live GitHub/Jira/FinOps paths with tenant-level
-              validation and controls.
+              Connector enablement and validation are tenant-scoped, giving platform owners policy-grade control over live
+              signal ingress.
             </p>
           </article>
           <article className="feature-card">
             <div className="feature-icon" aria-hidden="true">
               ◎
             </div>
-            <h3>Executive-ready narrative</h3>
+            <h3>Executive trust reporting</h3>
             <p>
-              Correlated incidents, release-governance recommendations, and executive summaries are rendered for
-              technical and non-technical stakeholders.
+              Incident posture, release recommendations, and summary narratives are aligned to leadership governance
+              discussions.
             </p>
           </article>
         </div>
@@ -152,40 +147,40 @@ export function MarketingPage() {
         <div className="split-section">
           <div>
             <p className="section-eyebrow">Workflow</p>
-            <h2 className="section-title">How it works</h2>
+            <h2 className="section-title">A trust-first operating model</h2>
             <ol className="steps steps--enterprise">
               <li>
                 <span className="step-num">1</span>
                 <div>
-                  <strong>Ingest evidence</strong>
-                  <p>Connect delivery signals from toolchain sources you approve — simulated or production.</p>
+                  <strong>Establish controlled evidence flow</strong>
+                  <p>Enable only approved integrations and validate signal quality before governance workflows consume it.</p>
                 </div>
               </li>
               <li>
                 <span className="step-num">2</span>
                 <div>
-                  <strong>Run governance</strong>
-                  <p>Pose PM-grade questions; agents contribute perspectives and the pipeline reconciles evidence.</p>
+                  <strong>Evaluate operational risk</strong>
+                  <p>Run governance analysis to produce defensible risk, confidence, and recommendation posture.</p>
                 </div>
               </li>
               <li>
                 <span className="step-num">3</span>
                 <div>
-                  <strong>Decide with traceability</strong>
-                  <p>Review scores, RAR status, and markdown summaries suitable for audit and exec readouts.</p>
+                  <strong>Approve with audit traceability</strong>
+                  <p>Capture approvals, outcomes, and supporting rationale for internal controls and external audits.</p>
                 </div>
               </li>
             </ol>
           </div>
           <div className="integration-card">
-            <h3 className="integration-title">Current integration maturity</h3>
+            <h3 className="integration-title">Trust posture coverage</h3>
             <ul className="integration-list">
-              <li>Live-capable: GitHub, Jira, FinOps file inputs</li>
-              <li>Simulation-ready: Azure, AWS, policy and telemetry signals</li>
-              <li>Tenant-scoped connector and provider validation</li>
-              <li>JSON/CSV exports for runs and audit events</li>
+              <li>Tenant isolation and scoped controls by design</li>
+              <li>Role-aware review and decision governance workflow</li>
+              <li>Operational telemetry and alert-rule visibility</li>
+              <li>JSON/CSV export continuity for assurance reporting</li>
             </ul>
-            <p className="integration-note">Connector mode is deployment-configurable so teams can safely move from pilot to production.</p>
+            <p className="integration-note">Deployment mode can transition from controlled pilot to live production with governance controls intact.</p>
           </div>
         </div>
       </section>
@@ -194,16 +189,16 @@ export function MarketingPage() {
         <div className="enterprise-band">
           <div>
             <p className="section-eyebrow section-eyebrow--on-dark">Enterprise</p>
-            <h2 className="enterprise-title">Operate with the rigor your governance model demands</h2>
+            <h2 className="enterprise-title">Operate with policy-grade rigor and investor-level confidence</h2>
             <p className="enterprise-lead">
-              Use superadmin and tenant-admin separation, auditable event trails, and lead-to-tenant onboarding workflows
-              to scale governed operations across organizations.
+              Superadmin boundaries, auditable decision paths, and structured onboarding workflows help organizations scale
+              governance without sacrificing speed.
             </p>
           </div>
           <ul className="enterprise-bullets">
-            <li>Tenant isolation with role-based access and approval workflows</li>
-            <li>Release governance, cost-spike, and security review workflow runs</li>
-            <li>Dashboard visibility across incidents, telemetry, and workflow outcomes</li>
+            <li>Defensible release posture with traceable rationale</li>
+            <li>Governance workflows for cost, security, and reliability scenarios</li>
+            <li>Leadership-level visibility into controls, incidents, and outcomes</li>
           </ul>
         </div>
       </section>

@@ -21,6 +21,9 @@ export function MarketingLayout({ signupOpen, children }: MarketingLayoutProps) 
             <Link to="/enterprise">Enterprise</Link>
           </nav>
           <div className="site-nav-cta">
+            <Link to="/platform" className="btn btn-ghost btn-sm">
+              Trust architecture
+            </Link>
             <Link to="/request-access" className="btn btn-ghost btn-sm">
               Request access
             </Link>
@@ -55,6 +58,7 @@ export function MarketingLayout({ signupOpen, children }: MarketingLayoutProps) 
             <span className="site-footer-heading">Company</span>
             <Link to="/enterprise">Enterprise</Link>
             <Link to="/how-it-works">How it works</Link>
+            <Link to="/request-access">Request access</Link>
           </div>
         </div>
         <div className="site-footer-bottom">

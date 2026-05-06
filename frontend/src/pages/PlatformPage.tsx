@@ -15,77 +15,77 @@ export function PlatformPage() {
     <MarketingLayout signupOpen={signupOpen}>
       <section className="section">
         <p className="section-eyebrow">Platform</p>
-        <h1 className="section-title">Single control plane for governed operational intelligence</h1>
+        <h1 className="section-title">A trust architecture for enterprise operational governance</h1>
         <p className="section-lead">
-          Casantris unifies governance runs, incidents, workflows, and executive summaries in one tenant-aware operational
-          platform.
+          Casantris brings policy controls, evidence continuity, and decision accountability into one tenant-aware control
+          plane for engineering and risk leadership.
         </p>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
-            <h3>Governance Runs</h3>
-            <p>Run, queue, retry, and audit operational decisions with evidence-linked outputs.</p>
+            <h3>Defensible decision runs</h3>
+            <p>Queue, execute, and review governance runs with traceable evidence and repeatable review posture.</p>
           </article>
           <article className="feature-card">
-            <h3>Incident Intelligence</h3>
-            <p>Correlated incidents with consensus/confidence and conflict detection across domains.</p>
+            <h3>Cross-domain incident intelligence</h3>
+            <p>Correlate risk signals across reliability, delivery, security, and cost with confidence context.</p>
           </article>
           <article className="feature-card">
-            <h3>Executive Reporting</h3>
-            <p>Executive summaries, explainability index, and JSON/CSV exports for audits and leadership reviews.</p>
+            <h3>Leadership assurance reporting</h3>
+            <p>Executive narratives and structured exports support review boards, audits, and governance councils.</p>
           </article>
           <article className="feature-card">
-            <h3>Workflow Orchestration</h3>
-            <p>Run release governance, cost spike, security governance, and post-incident workflows with decision tracking.</p>
+            <h3>Policy-backed workflow orchestration</h3>
+            <p>Run release, cost, security, and post-incident workflows with formalized decisions and outcomes.</p>
           </article>
           <article className="feature-card">
-            <h3>Observability Signals</h3>
-            <p>Track request rate, latency, error rate, queue depth, retry behavior, and endpoint pressure in one dashboard.</p>
+            <h3>Operational trust telemetry</h3>
+            <p>Track burn-rate posture, queue pressure, endpoint risk, and alert-state behavior in one surface.</p>
           </article>
           <article className="feature-card">
-            <h3>Tenant Control</h3>
-            <p>Superadmin and tenant-admin boundaries keep multi-organization governance isolated and manageable.</p>
+            <h3>Enterprise tenant governance</h3>
+            <p>Superadmin and tenant-admin boundaries maintain governance isolation across organizations.</p>
           </article>
         </div>
       </section>
 
       <section className="section section-alt">
         <p className="section-eyebrow">Architecture</p>
-        <h2 className="section-title">Designed for accountable operations at scale</h2>
+        <h2 className="section-title">Designed for accountability at scale</h2>
         <p className="section-lead">
-          The platform combines API-driven governance workflows, background run processing, connector telemetry, and
-          operational observability into a deployable enterprise stack.
+          The platform combines API-governed workflows, background execution controls, connector validation, and
+          observability telemetry into a production-ready enterprise stack.
         </p>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
-            <h3>Governance API Layer</h3>
-            <p>Dedicated endpoints for runs, cases, decisions, incidents, workflows, exports, and policy controls.</p>
+            <h3>Governance API contracts</h3>
+            <p>Dedicated contracts for runs, decisions, incidents, workflows, and assurance exports.</p>
           </article>
           <article className="feature-card">
-            <h3>Background Processing</h3>
-            <p>Asynchronous run queue with retries, lifecycle audits, and evidence capture for traceability.</p>
+            <h3>Controlled async execution</h3>
+            <p>Run queues with retries, lifecycle observability, and durable evidence capture for traceability.</p>
           </article>
           <article className="feature-card">
-            <h3>Security-Ready Config</h3>
-            <p>Tenant-scoped connector/provider settings with validation and encrypted secret storage for sensitive fields.</p>
+            <h3>Policy-aware configuration layer</h3>
+            <p>Tenant-scoped connector/provider controls with validation and encrypted secret handling for key material.</p>
           </article>
         </div>
       </section>
 
       <section className="section">
         <p className="section-eyebrow">Business Value</p>
-        <h2 className="section-title">What leadership teams get from day one</h2>
+        <h2 className="section-title">Leadership outcomes from day one</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
-            <h3>Faster Decision Cycles</h3>
-            <p>Move from signal overload to governed recommendations with confidence and conflict indicators.</p>
+            <h3>Faster decision confidence</h3>
+            <p>Move from fragmented signals to governed recommendations with confidence and conflict indicators.</p>
           </article>
           <article className="feature-card">
-            <h3>Lower Operational Ambiguity</h3>
-            <p>RAR iteration and cross-agent synthesis help reduce uncertainty before high-impact releases.</p>
+            <h3>Reduced release ambiguity</h3>
+            <p>Cross-agent synthesis and confidence workflows reduce uncertainty before high-impact releases.</p>
           </article>
           <article className="feature-card">
-            <h3>Audit and Compliance Readiness</h3>
-            <p>Exportable reports and event trails support internal reviews, audits, and stakeholder communication.</p>
+            <h3>Audit continuity</h3>
+            <p>Exportable reports and event trails support internal controls, external audits, and board communication.</p>
           </article>
         </div>
       </section>

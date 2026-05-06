@@ -89,7 +89,7 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
       ) : null}
       {toast ? <div className="alert alert-success">{toast}</div> : null}
 
-      <div className="metrics">
+      <div className="workspace-kpi-strip">
         <div className="metric">
           <div className="label">Connectors enabled</div>
           <div className="value">{summary ? `${summary.connectors_enabled}/${summary.connectors_total}` : "..."}</div>
@@ -118,7 +118,12 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
 
       <div className="workspace-split">
       <div className="card">
-        <h2>System observability (5m)</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>System observability (5m)</h2>
+            <p>Live platform pressure, latency posture, and short/long-window SLO burn signals.</p>
+          </div>
+        </div>
         <div className="settings-grid">
           <div className="metric">
             <div className="label">Req/min</div>
@@ -175,7 +180,12 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
       </div>
 
       <div className="card">
-        <h2>Connector telemetry</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Connector telemetry</h2>
+            <p>Health and validation posture of configured ingestion connectors.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -210,6 +220,13 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   </td>
                 </tr>
               ))}
+              {connectors.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="table-empty">
+                    No connectors configured for this tenant scope.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -218,7 +235,12 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
 
       <div className="workspace-split">
       <div className="card">
-        <h2>AI provider telemetry</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>AI provider telemetry</h2>
+            <p>Validation readiness and runtime connectivity posture for each provider.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -253,12 +275,24 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   </td>
                 </tr>
               ))}
+              {providers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="table-empty">
+                    No providers found in the current configuration.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
       </div>
       <div className="card">
-        <h2>Top endpoints (5m)</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Top endpoints (5m)</h2>
+            <p>Most active routes and associated error pressure in current window.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -276,12 +310,24 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   <td>{row.errors}</td>
                 </tr>
               ))}
+              {(obs?.endpoints_top ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="table-empty">
+                    Endpoint telemetry appears once traffic is observed.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
       </div>
       <div className="card">
-        <h2>Alert rules</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Alert rules</h2>
+            <p>Rule evaluation outcomes over current telemetry and SLO burn posture.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -307,12 +353,24 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   <td>{rule.threshold}</td>
                 </tr>
               ))}
+              {(obs?.alert_rules ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="table-empty">
+                    No alert-rule evaluations available.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
       </div>
       <div className="card">
-        <h2>Tracing spans (recent)</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Tracing spans (recent)</h2>
+            <p>Recent request traces for latency and failure-path diagnostics.</p>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -334,6 +392,13 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
                   <td className="mono">{String(span.attributes.path ?? "-")}</td>
                 </tr>
               ))}
+              {(obs?.spans_recent ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="table-empty">
+                    No spans recorded in the current in-memory window.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

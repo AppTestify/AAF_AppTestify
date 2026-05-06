@@ -137,6 +137,12 @@
   box-shadow: 0 6px 16px -14px rgba(37, 109, 244, 0.6);
 }
 
+.btn-ghost.active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border) 48%);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface2) 86%);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -1381,6 +1387,18 @@
   color: var(--muted);
   background: color-mix(in srgb, var(--surface2) 88%, transparent);
   font-size: 0.84rem;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.detail-header h2 {
+  margin: 0;
 }
 
 .field-label-required::after {

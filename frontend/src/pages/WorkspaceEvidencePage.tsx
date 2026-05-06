@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchEvidence, type EvidenceRow } from "../api";
 
 type WorkspaceEvidencePageProps = {
@@ -12,6 +12,17 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
   const [selected, setSelected] = useState<EvidenceRow | null>(null);
   const [error, setError] = useState<string>("");
   const [listLoading, setListLoading] = useState(false);
+  const evidenceStats = useMemo(() => {
+    const byConnector = rows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.connector_name] = (acc[row.connector_name] ?? 0) + 1;
+      return acc;
+    }, {});
+    return {
+      total: rows.length,
+      connectors: Object.keys(byConnector).length,
+      topConnector: Object.entries(byConnector).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-",
+    };
+  }, [rows]);
 
   useEffect(() => {
     setListLoading(true);
@@ -30,8 +41,28 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
         </div>
       </header>
       {error ? <div className="alert alert-error">{error}</div> : null}
+      <div className="workspace-kpi-strip">
+        <div className="metric">
+          <div className="label">Rows</div>
+          <div className="value">{evidenceStats.total}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Connectors</div>
+          <div className="value">{evidenceStats.connectors}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Top connector</div>
+          <div className="value mono">{evidenceStats.topConnector}</div>
+        </div>
+      </div>
       <div className="card">
-        <h2>Evidence & History</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Evidence & history</h2>
+            <p>Filter by connector/run and inspect normalized payload snapshots.</p>
+          </div>
+          <div className="workspace-meta">Use row selection to inspect full payload</div>
+        </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="connector-filter">Connector filter</label>
@@ -84,10 +115,15 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
       </div>
       {selected ? (
         <div className="card">
-          <h2>Evidence detail #{selected.id}</h2>
-          <p className="workspace-card-subtitle">
-            Connector <span className="mono">{selected.connector_name}</span> · run #{selected.run_id}
-          </p>
+          <div className="detail-header">
+            <div>
+              <h2>Evidence detail #{selected.id}</h2>
+              <p className="workspace-card-subtitle">
+                Connector <span className="mono">{selected.connector_name}</span> · run #{selected.run_id}
+              </p>
+            </div>
+            <span className="status-chip queued">{selected.connector_name}</span>
+          </div>
           <pre className="json-preview">{JSON.stringify(selected.payload_json, null, 2)}</pre>
         </div>
       ) : null}

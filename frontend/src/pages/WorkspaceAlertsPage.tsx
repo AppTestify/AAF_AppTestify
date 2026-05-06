@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { acknowledgeAlert, fetchAuditEvents, type AuditEvent } from "../api";
 
 type WorkspaceAlertsPageProps = {
@@ -14,6 +14,12 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [ackLoadingId, setAckLoadingId] = useState<number | null>(null);
+  const alertStats = useMemo(() => {
+    const info = events.filter((e) => e.severity === "info").length;
+    const warning = events.filter((e) => e.severity === "warning").length;
+    const critical = events.filter((e) => e.severity === "critical").length;
+    return { info, warning, critical };
+  }, [events]);
 
   useEffect(() => {
     setListLoading(true);
@@ -64,8 +70,32 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
           {error}
         </div>
       ) : null}
+      <div className="workspace-kpi-strip">
+        <div className="metric">
+          <div className="label">Visible alerts</div>
+          <div className="value">{events.length}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Critical</div>
+          <div className="value bad">{alertStats.critical}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Warning</div>
+          <div className="value warn">{alertStats.warning}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Info</div>
+          <div className="value">{alertStats.info}</div>
+        </div>
+      </div>
       <div className="card">
-        <h2>Recent events</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Recent events</h2>
+            <p>Triage audit and governance signals with bulk or individual acknowledge actions.</p>
+          </div>
+          <div className="workspace-meta">Last {events.length} events shown</div>
+        </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="area-filter">Area filter</label>
@@ -130,7 +160,15 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
       </div>
       {selected ? (
         <div className="card">
-          <h2>Alert detail #{selected.id}</h2>
+          <div className="detail-header">
+            <div>
+              <h2>Alert detail #{selected.id}</h2>
+              <p className="workspace-card-subtitle">Expanded event payload for forensic traceability.</p>
+            </div>
+            <span className={`status-chip ${selected.severity === "critical" ? "failed" : selected.severity === "warning" ? "running" : "queued"}`}>
+              {selected.severity}
+            </span>
+          </div>
           <pre className="json-preview">{JSON.stringify(selected, null, 2)}</pre>
         </div>
       ) : null}

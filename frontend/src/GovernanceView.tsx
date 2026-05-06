@@ -123,10 +123,13 @@ export function GovernanceView(props: GovernanceViewProps) {
 
       <div className="workspace-split">
       <div className="card">
-        <div className="workspace-card-title">
-          <h2>Compose request</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Compose request</h2>
+            <p>Select a prompt template or write a custom governance question.</p>
+          </div>
+          <div className="workspace-meta">Prompt routing follows tenant AI config defaults</div>
         </div>
-        <p className="workspace-card-subtitle">Select a prompt template or write a custom governance question.</p>
         <div className="form-row">
           <label htmlFor="library">Prompt library</label>
           <select
@@ -149,7 +152,7 @@ export function GovernanceView(props: GovernanceViewProps) {
           </select>
         </div>
         <div className="form-row">
-          <label htmlFor="prompt">Question</label>
+          <label htmlFor="prompt" className="field-label-required">Question</label>
           <textarea
             id="prompt"
             value={prompt}
@@ -175,8 +178,12 @@ export function GovernanceView(props: GovernanceViewProps) {
       </div>
       {result ? (
         <div className="card">
-          <h2>Decision snapshot</h2>
-          <p className="workspace-card-subtitle">Live result posture from the latest governance execution.</p>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Decision snapshot</h2>
+              <p>Live result posture from the latest governance execution.</p>
+            </div>
+          </div>
           <div className="metrics">
             <div className="metric">
               <div className="label">Consensus</div>
@@ -203,7 +210,12 @@ export function GovernanceView(props: GovernanceViewProps) {
 
       {batchResult ? (
         <div className="card">
-          <h2>Batch results</h2>
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Batch results</h2>
+              <p>Execution output from library-scale governance runs.</p>
+            </div>
+          </div>
           <pre className="mono" style={{ fontSize: "0.8rem", overflow: "auto" }}>
             {JSON.stringify(batchResult, null, 2)}
           </pre>
@@ -221,7 +233,12 @@ export function GovernanceView(props: GovernanceViewProps) {
             </div>
             {activeResultTab === "executive" ? (
               <>
-                <h2>Executive view</h2>
+                <div className="workspace-section-intro">
+                  <div>
+                    <h2>Executive view</h2>
+                    <p>Business-facing summary and decision narrative for stakeholder communication.</p>
+                  </div>
+                </div>
                 {pmView ? (
                   <>
                     <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{String(pmView.title ?? "")}</p>
@@ -237,14 +254,18 @@ export function GovernanceView(props: GovernanceViewProps) {
               <div className="workspace-split">
                 <div>
                   <h2>Normalized evidence</h2>
-                  <ul className="list-plain">
-                    {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => (
-                      <li key={i}>
-                        <span className="mono">{String(e.source)}</span> · {String(e.kind)} — {String(e.summary)} (
-                        <strong>{Number(e.severity).toFixed(2)}</strong>)
-                      </li>
-                    ))}
-                  </ul>
+                  {((result.normalized_evidence as Record<string, unknown>[]) ?? []).length ? (
+                    <ul className="list-plain">
+                      {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => (
+                        <li key={i}>
+                          <span className="mono">{String(e.source)}</span> · {String(e.kind)} — {String(e.summary)} (
+                          <strong>{Number(e.severity).toFixed(2)}</strong>)
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="empty-state">No normalized evidence returned in this run.</div>
+                  )}
                 </div>
                 <div>
                   <h2>Raw evidence</h2>
@@ -260,14 +281,18 @@ export function GovernanceView(props: GovernanceViewProps) {
             {activeResultTab === "agents" ? (
               <>
                 <h2>Agent opinions</h2>
-                <ul className="list-plain">
-                  {((result.agent_opinions as Record<string, unknown>[]) ?? []).map((o, i) => (
-                    <li key={i}>
-                      <strong>{String(o.agent_id)}</strong> ({String(o.risk_theme)}, conf {Number(o.confidence).toFixed(2)}):{" "}
-                      {String(o.claim)}
-                    </li>
-                  ))}
-                </ul>
+                {((result.agent_opinions as Record<string, unknown>[]) ?? []).length ? (
+                  <ul className="list-plain">
+                    {((result.agent_opinions as Record<string, unknown>[]) ?? []).map((o, i) => (
+                      <li key={i}>
+                        <strong>{String(o.agent_id)}</strong> ({String(o.risk_theme)}, conf {Number(o.confidence).toFixed(2)}):{" "}
+                        {String(o.claim)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="empty-state">No agent opinions available for this run.</div>
+                )}
               </>
             ) : null}
             {activeResultTab === "explainability" ? (

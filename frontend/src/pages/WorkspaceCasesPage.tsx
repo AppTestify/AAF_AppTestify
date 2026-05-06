@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { approveDecision, createCase, createDecision, fetchCasesAdvanced, type Decision, type GovernanceCase } from "../api";
 
 type WorkspaceCasesPageProps = {
@@ -19,6 +19,13 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   const [query, setQuery] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(false);
+  const caseStats = useMemo(() => {
+    const draft = cases.filter((c) => c.status === "new").length;
+    const review = cases.filter((c) => c.status === "in_review").length;
+    const approved = cases.filter((c) => c.status === "approved").length;
+    const closed = cases.filter((c) => c.status === "closed").length;
+    return { draft, review, approved, closed };
+  }, [cases]);
 
   const loadCases = async () => {
     try {
@@ -101,12 +108,39 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
         </div>
       ) : null}
       {toast ? <div className="alert alert-success">{toast}</div> : null}
+      <div className="workspace-kpi-strip">
+        <div className="metric">
+          <div className="label">Visible cases</div>
+          <div className="value">{cases.length}</div>
+        </div>
+        <div className="metric">
+          <div className="label">New</div>
+          <div className="value">{caseStats.draft}</div>
+        </div>
+        <div className="metric">
+          <div className="label">In review</div>
+          <div className="value warn">{caseStats.review}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Approved</div>
+          <div className="value good">{caseStats.approved}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Closed</div>
+          <div className="value">{caseStats.closed}</div>
+        </div>
+      </div>
       <div className="workspace-split">
       <div className="card">
-        <h2>Create case</h2>
-        <p className="workspace-card-subtitle">Open governance cases and track decision progression.</p>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Create case</h2>
+            <p>Open governance cases and track decision progression.</p>
+          </div>
+          <div className="workspace-meta">Case creation is tenant-scoped</div>
+        </div>
         <div className="form-row">
-          <label htmlFor="case-title">Title</label>
+          <label htmlFor="case-title" className="field-label-required">Title</label>
           <input id="case-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canManage} />
         </div>
         <button className="btn btn-primary" type="button" disabled={!canManage || !title.trim()} onClick={handleCreateCase}>
@@ -114,7 +148,13 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
         </button>
       </div>
       <div className="card">
-        <h2>Cases</h2>
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Cases</h2>
+            <p>Filter and triage cases before creating or approving decisions.</p>
+          </div>
+          <div className="workspace-meta">Offset: {offset}</div>
+        </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="case-status-filter">Status filter</label>
@@ -141,7 +181,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => setOffset(offset + 50)} disabled={cases.length < 50}>
             Next
           </button>
-          <span className="mono">offset={offset}</span>
+          <span className="workspace-meta">Showing {cases.length} records</span>
         </div>
         <div className="table-wrap">
           {listLoading ? <div className="table-skeleton" /> : null}
@@ -179,7 +219,13 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
       </div>
       {selectedCase ? (
         <div className="card">
-          <h2>Selected case #{selectedCase.id}</h2>
+          <div className="detail-header">
+            <div>
+              <h2>Selected case #{selectedCase.id}</h2>
+              <p className="workspace-card-subtitle">Create a recommendation and finalize approval when ready.</p>
+            </div>
+            <span className={`status-chip ${selectedCase.status}`}>{selectedCase.status}</span>
+          </div>
           <p className="mono">{selectedCase.title}</p>
           <div className="actions">
             <button className="btn btn-ghost" type="button" onClick={handleCreateDecision} disabled={!canManage || decisionLoading}>
@@ -194,9 +240,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
               {decisionLoading ? "Processing…" : "Approve decision"}
             </button>
           </div>
-          {decision ? (
-            <pre className="json-preview">{JSON.stringify(decision, null, 2)}</pre>
-          ) : null}
+          {decision ? <pre className="json-preview">{JSON.stringify(decision, null, 2)}</pre> : <div className="empty-state">No decision attached yet. Create a decision to continue approval workflow.</div>}
         </div>
       ) : null}
     </div>

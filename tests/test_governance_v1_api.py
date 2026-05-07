@@ -120,7 +120,17 @@ def test_report_exports_json_and_csv(client: TestClient):
 
     runs_json = client.get("/api/v1/reports/runs/summary?format=json", headers={"Authorization": f"Bearer {token}"})
     assert runs_json.status_code == 200, runs_json.text
-    assert runs_json.json()["count"] >= 1
+    body = runs_json.json()
+    assert body["count"] >= 1
+    assert "orchestration_consensus_score" in body["items"][0]
+
+    one = client.get(
+        f"/api/v1/reports/runs/{run_id}/export?format=json",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert one.status_code == 200, one.text
+    assert one.json().get("format_version") == 1
+    assert "executive_bundle" in one.json()
 
     runs_csv = client.get("/api/v1/reports/runs/summary?format=csv", headers={"Authorization": f"Bearer {token}"})
     assert runs_csv.status_code == 200, runs_csv.text

@@ -5,6 +5,7 @@ import {
   fetchGovernanceRun,
   fetchGovernanceRuns,
   fetchPortfolioProjects,
+  fetchSingleRunExport,
   type GovernanceRunV1,
   type PortfolioProject,
 } from "../api";
@@ -16,11 +17,19 @@ type WorkspaceRunsPageProps = {
 
 export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const runIdFromUrl = searchParams.get("run_id") ?? "";
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
   const setListProjectFilter = (v: string) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set("portfolio_project_id", v);
     else next.delete("portfolio_project_id");
+    setSearchParams(next, { replace: true });
+  };
+
+  const syncRunIdToUrl = (runId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (runId != null) next.set("run_id", String(runId));
+    else next.delete("run_id");
     setSearchParams(next, { replace: true });
   };
 
@@ -61,6 +70,15 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
   }, [token]);
+
+  useEffect(() => {
+    const id = Number(runIdFromUrl);
+    if (!token || !runIdFromUrl.trim() || !Number.isFinite(id)) return;
+    fetchGovernanceRun(token, id)
+      .then(setSelectedRun)
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load run from link"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, runIdFromUrl]);
 
   const loadRuns = async () => {
     try {
@@ -125,11 +143,56 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   };
 
   const handleSelectRun = async (runId: number) => {
+    syncRunIdToUrl(runId);
     try {
       const row = await fetchGovernanceRun(token, runId);
       setSelectedRun(row);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load run");
+    }
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyShareLink = () => {
+    if (!selectedRun) return;
+    const url = `${window.location.origin}/app/runs?run_id=${selectedRun.id}`;
+    void navigator.clipboard.writeText(url);
+    setToast("Workspace link copied (sign-in required)");
+    setTimeout(() => setToast(""), 2500);
+  };
+
+  const exportSelectedRunJson = async () => {
+    if (!selectedRun) return;
+    try {
+      setError(null);
+      const data = await fetchSingleRunExport(token, selectedRun.id, "json");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      downloadBlob(blob, `governance_run_${selectedRun.id}.json`);
+      setToast("Executive export downloaded");
+      setTimeout(() => setToast(""), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    }
+  };
+
+  const exportSelectedRunCsv = async () => {
+    if (!selectedRun) return;
+    try {
+      setError(null);
+      const blob = (await fetchSingleRunExport(token, selectedRun.id, "csv")) as Blob;
+      downloadBlob(blob, `governance_run_${selectedRun.id}.csv`);
+      setToast("CSV export downloaded");
+      setTimeout(() => setToast(""), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
     }
   };
 
@@ -312,7 +375,18 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               <h2>Run detail #{selectedRun.id}</h2>
               <p>Detailed execution payload for investigation and explainability.</p>
             </div>
-            <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
+            <div className="actions" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={copyShareLink}>
+                Copy link to this run
+              </button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={exportSelectedRunJson}>
+                Export JSON
+              </button>
+              <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunCsv}>
+                Export CSV
+              </button>
+              <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
+            </div>
           </div>
           <p className="mono" style={{ marginTop: 0 }}>
             status={selectedRun.status} · retries={selectedRun.retry_count}

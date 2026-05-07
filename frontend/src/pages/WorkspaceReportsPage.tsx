@@ -124,6 +124,12 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
     }
   };
 
+  const copyWorkspaceLink = (path: string) => {
+    const url = `${window.location.origin}${path}`;
+    void navigator.clipboard.writeText(url);
+    notify("Link copied — recipients need workspace sign-in");
+  };
+
   const exportAuditJson = async () => {
     try {
       setError("");
@@ -215,12 +221,31 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
           <div className="metric"><div className="label">Avg confidence</div><div className="value">{(((portfolioReport?.avg_confidence ?? 0) * 100)).toFixed(1)}%</div></div>
         </div>
       </div>
+      <div className="card">
+        <div className="workspace-section-intro">
+          <div>
+            <h2>Share workspace destinations</h2>
+            <p>Copy links for teammates with tenant access. Exports below remain the portable artifacts (CSV/JSON).</p>
+          </div>
+        </div>
+        <div className="actions" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+          <button className="btn btn-ghost" type="button" onClick={() => copyWorkspaceLink("/app/reports")}>
+            Copy link to Reports
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => copyWorkspaceLink("/app/runs")}>
+            Copy link to Runs
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => copyWorkspaceLink("/app/dashboard")}>
+            Copy link to Dashboard
+          </button>
+        </div>
+      </div>
       <div className="card-group">
       <div className="card">
         <div className="workspace-section-intro">
           <div>
             <h2>Run summary export</h2>
-            <p>Filter run-level outcomes, inspect JSON, or download governance summary CSV.</p>
+            <p>Filter run-level outcomes, inspect JSON, or download governance summary CSV (includes orchestration vs findings columns).</p>
           </div>
         </div>
         <div className="workspace-toolbar">

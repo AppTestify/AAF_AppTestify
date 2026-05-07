@@ -913,13 +913,37 @@ export async function fetchRunSummaryReport(
   token: string,
   format: "json" | "csv",
   limit = 200,
-  status?: string
+  status?: string,
+  portfolioProjectId?: number
 ): Promise<{ count: number; items: Record<string, unknown>[] } | Blob> {
   const q = new URLSearchParams();
   q.set("format", format);
   q.set("limit", String(limit));
   if (status) q.set("status", status);
+  if (typeof portfolioProjectId === "number") q.set("portfolio_project_id", String(portfolioProjectId));
   const r = await fetch(`${API}/reports/runs/summary?${q.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  if (format === "csv") return r.blob();
+  return r.json();
+}
+
+export async function fetchSingleRunExport(
+  token: string,
+  runId: number,
+  format: "json" | "csv"
+): Promise<
+  | {
+      format_version: number;
+      summary_columns: Record<string, unknown>;
+      executive_bundle: Record<string, unknown>;
+    }
+  | Blob
+> {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  const r = await fetch(`${API}/reports/runs/${runId}/export?${q.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) throw new Error(await parseError(r));

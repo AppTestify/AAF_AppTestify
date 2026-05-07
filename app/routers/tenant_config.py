@@ -22,7 +22,7 @@ from app.services.email_runtime import resolved_templates, send_templated_email,
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
-_CONNECTORS = {"github", "jira", "finops", "azure", "aws"}
+_CONNECTORS = {"github", "jira", "finops", "azure", "aws", "vps"}
 _PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
@@ -458,6 +458,8 @@ def validate_connector_config(
         err = "azure.organization and azure.project are required when connector is enabled"
     if key == "aws" and row.enabled and not cfg.get("account_id"):
         err = "aws.account_id is required when connector is enabled"
+    if key == "vps" and row.enabled and (not cfg.get("provider") or not cfg.get("host")):
+        err = "vps.provider and vps.host are required when connector is enabled"
     row.last_validated_at = datetime.now(timezone.utc)
     row.last_validation_ok = err is None
     row.last_validation_error = err

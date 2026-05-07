@@ -86,6 +86,70 @@ def connector_signal(connector: TenantConnectorConfig) -> dict[str, Any]:
             "error_message": "live aws connector telemetry not implemented yet",
             "captured_at": now,
         }
+    if name == "vps":
+        cfg = connector.config_json or {}
+        provider = str(cfg.get("provider") or "").strip()
+        host = str(cfg.get("host") or "").strip()
+        status_url = str(cfg.get("status_url") or "").strip()
+        creds = {}
+        try:
+            creds = decrypt_json(connector.encrypted_credentials_json, secret=get_settings().app_encryption_key)
+        except Exception:  # noqa: BLE001
+            creds = {}
+        if not provider or not host:
+            return {
+                "connector": "vps",
+                "enabled": True,
+                "mode": "unconfigured",
+                "freshness": "unknown",
+                "latency_ms": None,
+                "errors_24h": None,
+                "error_category": "config",
+                "error_message": "vps requires config_json.provider and config_json.host for telemetry",
+                "captured_at": now,
+            }
+        if status_url:
+            # Optional lightweight health URL check for custom VPS providers.
+            import time
+            import httpx
+
+            start = time.perf_counter()
+            headers = {}
+            token = creds.get("token") if isinstance(creds, dict) else None
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            try:
+                resp = httpx.get(status_url, headers=headers, timeout=5.0)
+                latency_ms = (time.perf_counter() - start) * 1000
+                return {
+                    "connector": "vps",
+                    "enabled": True,
+                    "mode": "live_http",
+                    "provider": provider,
+                    "host": host,
+                    "status_url": status_url,
+                    "freshness": "fresh" if resp.status_code < 400 else "degraded",
+                    "latency_ms": round(latency_ms, 2),
+                    "errors_24h": 0 if resp.status_code < 400 else 1,
+                    "http_status": resp.status_code,
+                    "captured_at": now,
+                }
+            except IntegrationFetchError as e:
+                return _fallback("vps", e.category, str(e))
+            except Exception as e:  # noqa: BLE001
+                return _fallback("vps", "unknown", str(e))
+        return {
+            "connector": "vps",
+            "enabled": True,
+            "mode": "configured",
+            "provider": provider,
+            "host": host,
+            "freshness": "unknown",
+            "latency_ms": None,
+            "errors_24h": None,
+            "summary": "VPS connector configured (add status_url for live HTTP health checks)",
+            "captured_at": now,
+        }
     if name == "github":
         cfg = connector.config_json or {}
         if cfg.get("repo"):

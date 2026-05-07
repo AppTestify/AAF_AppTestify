@@ -53,13 +53,14 @@ type ProviderDraft = {
 
 const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock"];
 /** Match live telemetry expectations and server validation. */
-const CONNECTOR_ORDER = ["github", "jira", "azure", "aws", "finops"] as const;
+const CONNECTOR_ORDER = ["github", "jira", "azure", "aws", "vps", "finops"] as const;
 
 const CONNECTOR_HELP: Record<string, string> = {
   github: "Live: repo slug + PAT. Save, then run connection test.",
   jira: "Live: Jira Cloud/DC base URL, project key, email + API token.",
   azure: "Live: Azure DevOps org + project name, PAT with build/release read.",
   aws: "Account scope only — live AWS telemetry is not available in this build.",
+  vps: "Generic custom VPS (Hostinger/others): provider + host required; optional status URL for live health checks.",
   finops: "Path to a local cost export file (JSON/CSV) when FinOps mode is used.",
 };
 
@@ -770,6 +771,49 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                         value={String(cfg.cost_file ?? "")}
                         onChange={(e) => mergeConnectorConfig(name, { cost_file: e.target.value })}
                         placeholder="/path/to/cost-export.json"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {name === "vps" ? (
+                  <div className="config-columns settings-quick-grid">
+                    <div className="form-row">
+                      <label>Provider</label>
+                      <input
+                        value={String(cfg.provider ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { provider: e.target.value })}
+                        placeholder="Hostinger"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Host</label>
+                      <input
+                        value={String(cfg.host ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { host: e.target.value })}
+                        placeholder="vps.example.com"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Status URL (optional)</label>
+                      <input
+                        value={String(cfg.status_url ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { status_url: e.target.value })}
+                        placeholder="https://vps.example.com/health"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Bearer token (optional)</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.token ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                        placeholder="Token for status URL"
                         disabled={!canEdit || saving}
                       />
                     </div>

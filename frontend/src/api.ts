@@ -742,6 +742,25 @@ export async function fetchGovernanceRun(token: string, runId: number): Promise<
   return r.json() as Promise<GovernanceRunV1>;
 }
 
+export type GovernanceShareLink = {
+  url: string;
+  expires_at: string;
+};
+
+export async function createGovernanceRunShareLink(
+  token: string,
+  runId: number,
+  body?: { expires_in_hours?: number }
+): Promise<GovernanceShareLink> {
+  const r = await fetch(`${API}/governance/runs/${runId}/share-link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ expires_in_hours: body?.expires_in_hours ?? 168 }),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<GovernanceShareLink>;
+}
+
 export async function fetchGovernanceRuns(
   token: string,
   params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
@@ -1112,6 +1131,9 @@ export type TenantNotificationConfig = {
   use_tls: boolean;
   use_ssl: boolean;
   notifications_enabled: boolean;
+  slack_webhook_configured: boolean;
+  governance_notify_on_run_complete: boolean;
+  governance_run_notify_emails: string[];
   templates: Record<string, NotificationTemplate>;
   last_test_ok: boolean | null;
   last_test_error: string | null;
@@ -1137,6 +1159,10 @@ export async function saveNotificationConfig(
     use_tls?: boolean;
     use_ssl?: boolean;
     notifications_enabled?: boolean;
+    slack_incoming_webhook?: string | null;
+    clear_slack_incoming_webhook?: boolean;
+    governance_notify_on_run_complete?: boolean;
+    governance_run_notify_emails?: string[];
     templates?: Record<string, NotificationTemplate>;
   },
   tenantSlug?: string | null

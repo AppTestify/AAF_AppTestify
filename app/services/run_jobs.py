@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from queue import Queue
 from threading import Lock, Thread
@@ -29,6 +30,7 @@ from app.services.integration_signals import connector_signal
 from app.services.observability import record_connector_call, record_dead_letter, record_llm_invocation, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
 from app.services.decision_framing import build_decision_framing, orchestration_snapshot_from_run_payload
+from app.services.governance_delivery import deliver_run_complete_notifications
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
 _queue: "Queue[int]" = Queue()
@@ -36,6 +38,7 @@ _thread: Optional[Thread] = None
 _lock = Lock()
 _stop = False
 _MAX_RETRIES = 2
+_log = logging.getLogger(__name__)
 
 
 def start_worker() -> None:
@@ -246,6 +249,10 @@ def _process_one(run_id: int) -> None:
         db.commit()
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
+        try:
+            deliver_run_complete_notifications(run.id)
+        except Exception:  # noqa: BLE001
+            _log.exception("governance_delivery_failed", extra={"run_id": run.id})
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(GovernanceRun, run_id)

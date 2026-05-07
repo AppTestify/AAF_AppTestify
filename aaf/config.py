@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
 
+    # Signed public share links (governance run snapshot). If empty, jwt_secret is used.
+    share_link_signing_secret: str = ""
+    share_link_default_ttl_hours: int = 168
+    # Absolute origin for share URLs in emails/Slack from background jobs (no Request), e.g. https://api.example.com
+    public_share_base_url: str = ""
+
     # Public marketing signup: creates tenant + tenant admin (disable in locked-down prod)
     public_tenant_signup_enabled: bool = False
 

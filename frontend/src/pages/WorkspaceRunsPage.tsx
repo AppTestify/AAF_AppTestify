@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   createGovernanceRun,
+  createGovernanceRunShareLink,
   fetchGovernanceRun,
   fetchGovernanceRuns,
   fetchPortfolioProjects,
@@ -167,6 +168,19 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     void navigator.clipboard.writeText(url);
     setToast("Workspace link copied (sign-in required)");
     setTimeout(() => setToast(""), 2500);
+  };
+
+  const copySignedShareLink = async () => {
+    if (!selectedRun || selectedRun.status !== "succeeded") return;
+    try {
+      setError(null);
+      const { url } = await createGovernanceRunShareLink(token, selectedRun.id);
+      await navigator.clipboard.writeText(url);
+      setToast("Signed public share URL copied (time-limited, no login)");
+      setTimeout(() => setToast(""), 2800);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create share link");
+    }
   };
 
   const exportSelectedRunJson = async () => {
@@ -378,6 +392,15 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
             <div className="actions" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
               <button className="btn btn-ghost btn-sm" type="button" onClick={copyShareLink}>
                 Copy link to this run
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => void copySignedShareLink()}
+                disabled={selectedRun.status !== "succeeded"}
+                title="JWT-signed URL: HTML snapshot + PDF one-pager, no sign-in until expiry"
+              >
+                Copy signed share URL
               </button>
               <button className="btn btn-ghost btn-sm" type="button" onClick={exportSelectedRunJson}>
                 Export JSON

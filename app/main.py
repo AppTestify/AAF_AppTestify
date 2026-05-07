@@ -15,7 +15,12 @@ from fastapi.staticfiles import StaticFiles
 
 from aaf.config import get_settings, validate_runtime_safety
 from app import db as db_mod
-from app.bootstrap import bootstrap_tenancy, create_tables, ensure_portfolio_project_link_columns
+from app.bootstrap import (
+    bootstrap_tenancy,
+    create_tables,
+    ensure_portfolio_project_link_columns,
+    ensure_tenant_notification_delivery_columns,
+)
 from app.db import get_engine, init_db
 from app.routers import (
     admin_tenants,
@@ -27,6 +32,7 @@ from app.routers import (
     portfolio,
     governance_v1,
     prompts,
+    public_share,
     rbac,
     reports,
     telemetry,
@@ -47,6 +53,7 @@ async def lifespan(app: FastAPI):
     init_db(settings.database_url)
     create_tables()
     ensure_portfolio_project_link_columns()
+    ensure_tenant_notification_delivery_columns()
     db = db_mod.SessionLocal()
     try:
         bootstrap_tenancy(db, settings)
@@ -127,6 +134,7 @@ app.include_router(admin_tenants.router, prefix=settings.api_v1_prefix)
 app.include_router(governance.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_intelligence.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_v1.router, prefix=settings.api_v1_prefix)
+app.include_router(public_share.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_policy.router, prefix=settings.api_v1_prefix)
 app.include_router(rbac.router, prefix=settings.api_v1_prefix)
 app.include_router(reports.router, prefix=settings.api_v1_prefix)

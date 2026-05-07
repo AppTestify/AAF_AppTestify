@@ -93,6 +93,54 @@ def ensure_portfolio_project_link_columns() -> None:
             conn.execute(text(stmt))
 
 
+def ensure_tenant_notification_delivery_columns() -> None:
+    """Add Slack + governance digest columns to tenant_notification_configs when missing."""
+    from sqlalchemy import inspect
+
+    engine = get_engine()
+    insp = inspect(engine)
+    if not insp.has_table("tenant_notification_configs"):
+        return
+    cols = {c["name"] for c in insp.get_columns("tenant_notification_configs")}
+    need_slack = "slack_incoming_webhook_encrypted" not in cols
+    need_flag = "governance_notify_on_run_complete" not in cols
+    need_emails = "governance_run_notify_emails_json" not in cols
+    if not need_slack and not need_flag and not need_emails:
+        return
+
+    dialect = engine.dialect.name
+    _log.info("Patching tenant_notification_configs for share/delivery fields (in-place schema patch)")
+    ddl: list[str] = []
+    if need_slack:
+        ddl.append(
+            "ALTER TABLE tenant_notification_configs ADD COLUMN slack_incoming_webhook_encrypted TEXT"
+            if dialect == "sqlite"
+            else "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS slack_incoming_webhook_encrypted TEXT"
+        )
+    if need_flag:
+        if dialect == "sqlite":
+            ddl.append(
+                "ALTER TABLE tenant_notification_configs ADD COLUMN governance_notify_on_run_complete INTEGER NOT NULL DEFAULT 0"
+            )
+        else:
+            ddl.append(
+                "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_notify_on_run_complete BOOLEAN NOT NULL DEFAULT false"
+            )
+    if need_emails:
+        if dialect == "sqlite":
+            ddl.append(
+                "ALTER TABLE tenant_notification_configs ADD COLUMN governance_run_notify_emails_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        else:
+            ddl.append(
+                "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_run_notify_emails_json JSONB NOT NULL DEFAULT '[]'::jsonb"
+            )
+
+    with engine.begin() as conn:
+        for stmt in ddl:
+            conn.execute(text(stmt))
+
+
 def ensure_default_tenant(db: Session, settings: Settings) -> Tenant:
     slug = settings.default_tenant_slug.strip().lower()
     t = db.execute(select(Tenant).where(Tenant.slug == slug)).scalar_one_or_none()

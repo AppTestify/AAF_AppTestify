@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from aaf.config import get_settings
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun, PortfolioProject
@@ -17,6 +19,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.config_resolver import resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
+from app.services.share_link import mint_governance_share_token
 
 router = APIRouter(prefix="/governance", tags=["governance-v1"])
 
@@ -25,6 +28,15 @@ class CreateRunBody(BaseModel):
     prompt: str = Field(min_length=1)
     prompt_id: Optional[str] = None
     portfolio_project_id: Optional[int] = None
+
+
+class ShareLinkBody(BaseModel):
+    expires_in_hours: int = Field(default=168, ge=1, le=8760)
+
+
+class ShareLinkOut(BaseModel):
+    url: str
+    expires_at: datetime
 
 
 class RunOut(BaseModel):
@@ -242,6 +254,35 @@ def get_run_v1(
     if not current.is_superadmin and current.tenant_id != run.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
     return _run_out(run)
+
+
+@router.post("/runs/{run_id}/share-link", response_model=ShareLinkOut)
+def create_run_share_link(
+    run_id: int,
+    body: ShareLinkBody,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    settings = get_settings()
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+    if run.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Run is not tenant-scoped")
+    if run.status != "succeeded":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Share links are only available for succeeded runs",
+        )
+    ttl = body.expires_in_hours * 3600
+    token = mint_governance_share_token(run_id=run.id, tenant_id=run.tenant_id, ttl_seconds=ttl)
+    base = settings.public_share_base_url.strip().rstrip("/") or str(request.base_url).rstrip("/")
+    url = f"{base}{settings.api_v1_prefix}/public/share/{token}"
+    exp = datetime.fromtimestamp(int(time.time()) + ttl, tz=timezone.utc)
+    return ShareLinkOut(url=url, expires_at=exp)
 
 
 @router.get("/runs", response_model=list[RunOut])

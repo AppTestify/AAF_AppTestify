@@ -82,6 +82,8 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
   const [notificationCfg, setNotificationCfg] = useState<TenantNotificationConfig | null>(null);
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpTestEmail, setSmtpTestEmail] = useState("");
+  const [slackWebhook, setSlackWebhook] = useState("");
+  const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState("reviewer");
@@ -163,6 +165,8 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           setDefaultProvider(providers.default_provider);
         }
         setNotificationCfg(notifications);
+        setSlackWebhook("");
+        setClearSlackWebhook(false);
         setAdminUsers(users);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
@@ -198,24 +202,29 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     if (!notificationCfg) return;
     try {
       setSaving(true);
-      const saved = await saveNotificationConfig(
-        token,
-        {
-          smtp_host: notificationCfg.smtp_host,
-          smtp_port: notificationCfg.smtp_port,
-          smtp_username: notificationCfg.smtp_username,
-          smtp_password: smtpPassword || null,
-          smtp_from_email: notificationCfg.smtp_from_email,
-          use_tls: notificationCfg.use_tls,
-          use_ssl: notificationCfg.use_ssl,
-          notifications_enabled: notificationCfg.notifications_enabled,
-          templates: notificationCfg.templates,
-        },
-        targetForApi
-      );
+      const payload: Parameters<typeof saveNotificationConfig>[1] = {
+        smtp_host: notificationCfg.smtp_host,
+        smtp_port: notificationCfg.smtp_port,
+        smtp_username: notificationCfg.smtp_username,
+        smtp_password: smtpPassword || null,
+        smtp_from_email: notificationCfg.smtp_from_email,
+        use_tls: notificationCfg.use_tls,
+        use_ssl: notificationCfg.use_ssl,
+        notifications_enabled: notificationCfg.notifications_enabled,
+        governance_notify_on_run_complete: notificationCfg.governance_notify_on_run_complete,
+        governance_run_notify_emails: notificationCfg.governance_run_notify_emails,
+        clear_slack_incoming_webhook: clearSlackWebhook,
+        templates: notificationCfg.templates,
+      };
+      if (slackWebhook.trim()) {
+        payload.slack_incoming_webhook = slackWebhook.trim();
+      }
+      const saved = await saveNotificationConfig(token, payload, targetForApi);
       setNotificationCfg(saved);
       setSmtpPassword("");
-      setMessage("SMTP and notification templates saved.");
+      setSlackWebhook("");
+      setClearSlackWebhook(false);
+      setMessage("SMTP, Slack/email hooks, and notification templates saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save notification config");
     } finally {
@@ -1088,6 +1097,67 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
               <label><input type="checkbox" checked={notificationCfg?.use_tls ?? true} onChange={(e) => setNotificationCfg((p) => p ? { ...p, use_tls: e.target.checked } : p)} /> Use TLS</label>
               <label><input type="checkbox" checked={notificationCfg?.use_ssl ?? false} onChange={(e) => setNotificationCfg((p) => p ? { ...p, use_ssl: e.target.checked } : p)} /> Use SSL</label>
               <label><input type="checkbox" checked={notificationCfg?.notifications_enabled ?? false} onChange={(e) => setNotificationCfg((p) => p ? { ...p, notifications_enabled: e.target.checked } : p)} /> Enable notifications</label>
+            </div>
+            <div className="config-block" style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border, #ddd)" }}>
+              <h3>Governance run delivery</h3>
+              <p className="workspace-meta" style={{ marginTop: 0 }}>
+                On successful run completion, post to Slack and/or email recipients a signed public link (HTML snapshot + PDF one-pager). For background jobs, set{" "}
+                <code>PUBLIC_SHARE_BASE_URL</code> on the API host.
+              </p>
+              <div className="form-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationCfg?.governance_notify_on_run_complete ?? false}
+                    onChange={(e) =>
+                      setNotificationCfg((p) => (p ? { ...p, governance_notify_on_run_complete: e.target.checked } : p))
+                    }
+                  />{" "}
+                  Notify when a governance run completes
+                </label>
+              </div>
+              <div className="form-row">
+                <label>Slack incoming webhook URL</label>
+                <input
+                  type="url"
+                  value={slackWebhook}
+                  onChange={(e) => setSlackWebhook(e.target.value)}
+                  placeholder={
+                    notificationCfg?.slack_webhook_configured
+                      ? "Configured (enter a new URL to rotate)"
+                      : "https://hooks.slack.com/services/…"
+                  }
+                />
+                <label style={{ marginTop: "0.35rem", display: "block" }}>
+                  <input
+                    type="checkbox"
+                    checked={clearSlackWebhook}
+                    onChange={(e) => setClearSlackWebhook(e.target.checked)}
+                  />{" "}
+                  Remove stored Slack webhook
+                </label>
+              </div>
+              <div className="form-row">
+                <label>Digest emails (comma or newline separated; requires SMTP + notifications enabled)</label>
+                <textarea
+                  rows={3}
+                  value={(notificationCfg?.governance_run_notify_emails ?? []).join("\n")}
+                  onChange={(e) =>
+                    setNotificationCfg((p) =>
+                      p
+                        ? {
+                            ...p,
+                            governance_run_notify_emails: e.target.value
+                              .split(/[\n,]+/)
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          }
+                        : p
+                    )
+                  }
+                  placeholder="ops@example.com"
+                />
+              </div>
             </div>
             <div className="actions">
               <button className="btn btn-ghost" type="button" onClick={handleTestSmtp} disabled={!canEdit || saving}>Test SMTP connection</button>

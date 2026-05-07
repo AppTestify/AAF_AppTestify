@@ -145,6 +145,9 @@ class NotificationConfigOut(BaseModel):
     use_tls: bool = True
     use_ssl: bool = False
     notifications_enabled: bool = False
+    slack_webhook_configured: bool = False
+    governance_notify_on_run_complete: bool = False
+    governance_run_notify_emails: list[str] = Field(default_factory=list)
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
     last_test_ok: Optional[bool] = None
     last_test_error: Optional[str] = None
@@ -160,6 +163,10 @@ class NotificationConfigIn(BaseModel):
     use_tls: bool = True
     use_ssl: bool = False
     notifications_enabled: bool = False
+    slack_incoming_webhook: Optional[str] = None
+    clear_slack_incoming_webhook: bool = False
+    governance_notify_on_run_complete: bool = False
+    governance_run_notify_emails: list[str] = Field(default_factory=list)
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
 
 
@@ -672,6 +679,11 @@ def get_notification_config(
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     row = db.execute(select(TenantNotificationConfig).where(TenantNotificationConfig.tenant_id == tenant.id)).scalar_one_or_none()
     templates = resolved_templates(row)
+    emails: list[str] = []
+    if row:
+        raw = row.governance_run_notify_emails_json
+        if isinstance(raw, list):
+            emails = [str(x).strip() for x in raw if str(x).strip()]
     return NotificationConfigOut(
         smtp_host=row.smtp_host if row else None,
         smtp_port=row.smtp_port if row else None,
@@ -681,6 +693,9 @@ def get_notification_config(
         use_tls=row.use_tls if row else True,
         use_ssl=row.use_ssl if row else False,
         notifications_enabled=row.notifications_enabled if row else False,
+        slack_webhook_configured=bool(row and row.slack_incoming_webhook_encrypted),
+        governance_notify_on_run_complete=bool(row and row.governance_notify_on_run_complete),
+        governance_run_notify_emails=emails,
         templates={k: NotificationTemplateOut(**v) for k, v in templates.items()},
         last_test_ok=row.last_test_ok if row else None,
         last_test_error=row.last_test_error if row else None,
@@ -707,6 +722,15 @@ def put_notification_config(
     row.use_ssl = body.use_ssl
     row.notifications_enabled = body.notifications_enabled
     row.templates_json = {k: v.model_dump() for k, v in body.templates.items()}
+    if body.clear_slack_incoming_webhook:
+        row.slack_incoming_webhook_encrypted = None
+    elif body.slack_incoming_webhook:
+        row.slack_incoming_webhook_encrypted = encrypt_json(
+            {"url": body.slack_incoming_webhook.strip()},
+            secret=get_settings().app_encryption_key,
+        )
+    row.governance_notify_on_run_complete = body.governance_notify_on_run_complete
+    row.governance_run_notify_emails_json = [e.strip().lower() for e in body.governance_run_notify_emails if e.strip()]
     _audit(
         db,
         tenant_id=tenant.id,

@@ -107,3 +107,35 @@ def send_templated_email(
         if config.smtp_username and password:
             server.login(config.smtp_username, password)
         server.send_message(msg)
+
+
+def send_plain_email(
+    config: TenantNotificationConfig,
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Send a simple text email using tenant SMTP (same transport as templated mail)."""
+    if not config.smtp_host or not config.smtp_port:
+        raise ValueError("smtp_host and smtp_port are required")
+    msg = EmailMessage()
+    msg["Subject"] = subject.strip() or "(no subject)"
+    msg["From"] = config.smtp_from_email or config.smtp_username or "no-reply@casantris.local"
+    msg["To"] = to_email.strip()
+    msg.set_content(body)
+
+    if config.use_ssl:
+        with smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=10) as server:
+            password = _smtp_password(config)
+            if config.smtp_username and password:
+                server.login(config.smtp_username, password)
+            server.send_message(msg)
+        return
+    with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
+        if config.use_tls:
+            server.starttls()
+        password = _smtp_password(config)
+        if config.smtp_username and password:
+            server.login(config.smtp_username, password)
+        server.send_message(msg)

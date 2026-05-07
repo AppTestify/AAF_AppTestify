@@ -64,6 +64,39 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
     return merged
 
 
+def apply_pipeline_overrides(settings: Settings, tenant_settings: Optional[TenantSettings]) -> Settings:
+    """Merge tenant UI governance_pipeline / pipeline_overrides into Settings (tau, weights, RAR)."""
+    if tenant_settings is None:
+        return settings
+    prefs = tenant_settings.ui_preferences or {}
+    ov = prefs.get("governance_pipeline") or prefs.get("pipeline_overrides")
+    if not isinstance(ov, dict) or not ov:
+        return settings
+    updates: dict[str, Any] = {}
+    for key in (
+        "tau_consensus",
+        "max_rar_loops",
+        "rar_live_refresh_enabled",
+        "w_perf",
+        "w_cost",
+        "w_risk",
+    ):
+        if key not in ov:
+            continue
+        val = ov[key]
+        if key == "rar_live_refresh_enabled":
+            updates[key] = bool(val)
+        elif key == "max_rar_loops":
+            updates[key] = int(val)
+        elif key == "tau_consensus":
+            updates[key] = float(val)
+        elif key in ("w_perf", "w_cost", "w_risk"):
+            updates[key] = float(val)
+    if not updates:
+        return settings
+    return settings.model_copy(update=updates)
+
+
 def get_ai_runtime_summary(db: Session, tenant: Optional[Tenant]) -> dict[str, Any]:
     """Return safe AI provider config summary for UI/debug responses."""
     if tenant is None:

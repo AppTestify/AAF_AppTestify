@@ -22,12 +22,13 @@ from app.services.agentic_intelligence import (
     build_incident,
     compute_consensus,
 )
-from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings
+from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
 from app.services.observability import record_connector_call, record_dead_letter, record_llm_invocation, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
+from app.services.decision_framing import build_decision_framing, orchestration_snapshot_from_run_payload
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
 _queue: "Queue[int]" = Queue()
@@ -92,7 +93,13 @@ def _process_one(run_id: int) -> None:
 
         settings = get_settings()
         tenant = db.get(Tenant, run.tenant_id) if run.tenant_id else None
+        settings_row_early = (
+            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
+            if run.tenant_id
+            else None
+        )
         effective = resolve_effective_settings(db, settings, tenant)
+        effective = apply_pipeline_overrides(effective, settings_row_early)
         provider_chain = resolve_provider_chain(db, tenant)
         result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
         out = pipeline_result_to_jsonable(result)
@@ -117,11 +124,7 @@ def _process_one(run_id: int) -> None:
         for row in connector_rows:
             row.telemetry_json = integration_signals[row.connector_name]
             row.last_sync_at = datetime.now(timezone.utc)
-        settings_row = (
-            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
-            if run.tenant_id
-            else None
-        )
+        settings_row = settings_row_early
         rag_cfg = settings_row.rag_config_json if settings_row else {}
         rag_docs = rag_cfg.get("documents", []) if isinstance(rag_cfg, dict) else []
         rag_context = rag_docs[:3] if isinstance(rag_docs, list) else []
@@ -142,7 +145,12 @@ def _process_one(run_id: int) -> None:
         )
         consensus = compute_consensus(findings)
         incident = build_incident(findings, consensus)
+        orch_snap = orchestration_snapshot_from_run_payload(out)
+        ev_json = incident.get("evidence_json") if isinstance(incident.get("evidence_json"), dict) else {}
+        incident["evidence_json"] = {**ev_json, "orchestration_snapshot": orch_snap}
         exec_summary = build_executive_summary(incident)
+        ex_md = exec_summary.get("metadata_json") if isinstance(exec_summary.get("metadata_json"), dict) else {}
+        exec_summary["metadata_json"] = {**ex_md, **orch_snap}
         explanation_meta = out.get("llm_invocation") if isinstance(out.get("llm_invocation"), dict) else {}
         out["agentic_intelligence"] = {
             "findings": findings,
@@ -160,6 +168,8 @@ def _process_one(run_id: int) -> None:
             },
         }
         record_llm_invocation(out["llm_invocation"]["status"])
+
+        out["decision_framing"] = build_decision_framing(out)
 
         run.result_json = out
         run.status = "succeeded"

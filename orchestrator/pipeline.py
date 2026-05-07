@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aaf.config import Settings
@@ -11,12 +12,12 @@ from connectors.evidence_normalizer import enrich_for_rar
 from llm.deterministic_explainer import build_explanation
 from app.services.llm_runtime import ActiveProvider, invoke_text_with_failover
 from metrics.explainability import compute_xi
-from orchestrator.rar import run_rar_loop
+from orchestrator.rar import run_rar_loop_async
 from orchestrator.utility import score_actions
 from pm_interface.decision_formatter import to_pm_decision
 
 
-def run_pipeline(
+async def run_pipeline(
     *,
     prompt: str,
     prompt_id: str | None,
@@ -25,20 +26,22 @@ def run_pipeline(
     raw_evidence_by_connector: dict[str, Any],
     connectors_used: list[str],
     llm_providers: list[ActiveProvider] | None = None,
+    live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
     def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
         return run_all_agents(ev)
 
-    opinions, rar_result, consensus_result = run_rar_loop(
+    lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
+    opinions, rar_result, consensus_result = await run_rar_loop_async(
         initial_evidence=normalized_evidence,
         initial_opinions=run_all_agents(normalized_evidence),
         tau=settings.tau_consensus,
         max_loops=settings.max_rar_loops,
-        settings=settings,
         rerun_agents=rerun_agents,
         enrich_evidence=enrich_for_rar,
+        live_refresh_evidence=lr,
     )
 
     utility_result = score_actions(normalized_evidence, settings)

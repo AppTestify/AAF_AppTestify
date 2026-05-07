@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Pipeline
     tau_consensus: float = 0.55
     max_rar_loops: int = 2
+    rar_live_refresh_enabled: bool = False
     w_perf: float = 0.4
     w_cost: float = 0.3
     w_risk: float = 0.3

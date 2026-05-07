@@ -2,26 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Awaitable, Callable
 
-from aaf.config import Settings
 from aaf.schema import AgentOpinion, ConsensusResult, EvidenceRecord, RARResult
 
 from orchestrator.consensus import compute_consensus
 
 
-def run_rar_loop(
+async def run_rar_loop_async(
     *,
     initial_evidence: list[EvidenceRecord],
     initial_opinions: list[AgentOpinion],
     tau: float,
     max_loops: int,
-    settings: Settings,
     rerun_agents: Callable[[list[EvidenceRecord], int], list[AgentOpinion]],
     enrich_evidence: Callable[[list[EvidenceRecord], int], list[EvidenceRecord]],
+    live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
 ) -> tuple[list[AgentOpinion], RARResult, ConsensusResult]:
     """
-    If consensus < tau, enrich evidence and rerun agents up to max_loops.
+    If consensus < tau, enrich evidence (or live-refresh connectors) and rerun agents up to max_loops.
     """
     consensus_before_result = compute_consensus(initial_opinions)
     consensus_before = consensus_before_result.consensus_score
@@ -44,8 +43,12 @@ def run_rar_loop(
     current = consensus_before
     while loops < max_loops and current < tau:
         loops += 1
-        evidence = enrich_evidence(evidence, loops)
-        reground_notes.append(f"RAR loop {loops}: evidence enriched, count={len(evidence)}")
+        if live_refresh_evidence is not None:
+            evidence = await live_refresh_evidence()
+            reground_notes.append(f"RAR loop {loops}: live connector refresh, count={len(evidence)}")
+        else:
+            evidence = enrich_evidence(evidence, loops)
+            reground_notes.append(f"RAR loop {loops}: evidence enriched, count={len(evidence)}")
         opinions = rerun_agents(evidence, loops)
         cr = compute_consensus(opinions)
         current = cr.consensus_score

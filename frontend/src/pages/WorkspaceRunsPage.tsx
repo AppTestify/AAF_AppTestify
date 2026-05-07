@@ -320,6 +320,55 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               ? ` · project=${projectById.get(selectedRun.portfolio_project_id)?.key ?? selectedRun.portfolio_project_id}`
               : ""}
           </p>
+          {selectedRun.result_json &&
+          typeof selectedRun.result_json === "object" &&
+          selectedRun.result_json !== null &&
+          "decision_framing" in selectedRun.result_json ? (
+            <div className="workspace-kpi-strip" style={{ marginBottom: "1rem" }}>
+              {(() => {
+                const df = selectedRun.result_json.decision_framing as {
+                  orchestration?: {
+                    consensus_score?: number;
+                    rar_triggered?: boolean;
+                    rar_loops?: number;
+                    recommended_action?: string;
+                    utility_score?: number;
+                    xi_score?: number;
+                  };
+                  findings_synthesis?: { consensus_score?: number; confidence?: number };
+                  primary_recommendation_source?: string;
+                };
+                const o = df.orchestration;
+                const f = df.findings_synthesis;
+                return (
+                  <>
+                    <div className="metric">
+                      <div className="label">Orchestration consensus</div>
+                      <div className="value">{o?.consensus_score != null ? o.consensus_score.toFixed(2) : "—"}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Findings synthesis</div>
+                      <div className="value">{f?.consensus_score != null ? f.consensus_score.toFixed(2) : "—"}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">RAR</div>
+                      <div className="value">{o?.rar_triggered ? `Yes (${o.rar_loops ?? 0})` : "No"}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Action</div>
+                      <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                        {String(o?.recommended_action ?? "—")}
+                      </div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Primary source</div>
+                      <div className="value">{df.primary_recommendation_source ?? "—"}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : null}
           <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
         </div>
       ) : null}

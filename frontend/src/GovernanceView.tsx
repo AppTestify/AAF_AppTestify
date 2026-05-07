@@ -52,15 +52,25 @@ export function GovernanceView(props: GovernanceViewProps) {
   const rar = result?.rar as Record<string, unknown> | undefined;
   const utility = result?.utility as Record<string, unknown> | undefined;
   const xi = (result?.explainability as Record<string, unknown> | undefined)?.xi_score as number | undefined;
+  const framing = result?.decision_framing as
+    | {
+        orchestration?: { consensus_score?: number };
+        findings_synthesis?: { consensus_score?: number; confidence?: number };
+        primary_recommendation_source?: string;
+      }
+    | undefined;
 
   const consensusScore = consensus?.consensus_score ?? null;
+  const orchConsensus = framing?.orchestration?.consensus_score ?? consensusScore;
+  const findingsConsensus = framing?.findings_synthesis?.consensus_score ?? null;
 
   const scoreClass = useMemo(() => {
-    if (consensusScore == null) return "";
-    if (consensusScore >= 0.65) return "good";
-    if (consensusScore >= 0.45) return "warn";
+    const v = orchConsensus;
+    if (v == null) return "";
+    if (v >= 0.65) return "good";
+    if (v >= 0.45) return "warn";
     return "bad";
-  }, [consensusScore]);
+  }, [orchConsensus]);
   const [activeResultTab, setActiveResultTab] = useState<"executive" | "evidence" | "agents" | "explainability">(
     "executive"
   );
@@ -186,9 +196,15 @@ export function GovernanceView(props: GovernanceViewProps) {
           </div>
           <div className="metrics">
             <div className="metric">
-              <div className="label">Consensus</div>
-              <div className={`value ${scoreClass}`}>{consensusScore != null ? consensusScore.toFixed(2) : "—"}</div>
+              <div className="label">Orchestration consensus</div>
+              <div className={`value ${scoreClass}`}>{orchConsensus != null ? Number(orchConsensus).toFixed(2) : "—"}</div>
             </div>
+            {findingsConsensus != null ? (
+              <div className="metric">
+                <div className="label">Findings synthesis</div>
+                <div className="value">{findingsConsensus.toFixed(2)}</div>
+              </div>
+            ) : null}
             <div className="metric">
               <div className="label">RAR</div>
               <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>

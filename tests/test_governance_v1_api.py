@@ -60,6 +60,9 @@ def test_create_and_fetch_governance_run(client: TestClient):
     done = _wait_for_run(client, token, run_id)
     assert done["status"] == "succeeded"
     assert done["result_json"] is not None
+    rj = done["result_json"]
+    assert rj.get("decision_framing", {}).get("primary_recommendation_source") == "orchestration"
+    assert "orchestration" in rj.get("decision_framing", {})
 
     listed = client.get("/api/v1/governance/runs", headers={"Authorization": f"Bearer {token}"})
     assert listed.status_code == 200

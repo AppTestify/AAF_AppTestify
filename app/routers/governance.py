@@ -8,13 +8,21 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aaf.config import Settings
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin, settings_dep
 from app.db import get_db
+from app.models.config import TenantSettings
 from app.models.user import User
-from app.services.config_resolver import get_ai_runtime_summary, resolve_effective_settings, resolve_tenant_for_user
+from app.services.config_resolver import (
+    apply_pipeline_overrides,
+    get_ai_runtime_summary,
+    resolve_effective_settings,
+    resolve_tenant_for_user,
+)
+from app.services.decision_framing import build_decision_framing
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
@@ -40,9 +48,16 @@ async def governance_run(
 ):
     tenant = resolve_tenant_for_user(db, user, tenant_slug)
     effective = resolve_effective_settings(db, settings, tenant)
+    ts_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+        if tenant
+        else None
+    )
+    effective = apply_pipeline_overrides(effective, ts_row)
     provider_chain = resolve_provider_chain(db, tenant)
     result = await run_governance(body.prompt, body.prompt_id, effective, llm_providers=provider_chain)
     out = pipeline_result_to_jsonable(result)
+    out["decision_framing"] = build_decision_framing(out)
     out["runtime_config"] = {
         "tenant_slug": tenant.slug if tenant else None,
         "connector_mode": effective.connector_mode.value,
@@ -65,6 +80,12 @@ async def governance_batch(
 ):
     tenant = resolve_tenant_for_user(db, admin, tenant_slug)
     effective = resolve_effective_settings(db, settings, tenant)
+    ts_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+        if tenant
+        else None
+    )
+    effective = apply_pipeline_overrides(effective, ts_row)
     provider_chain = resolve_provider_chain(db, tenant)
     data = json.loads(_LIBRARY_PATH.read_text(encoding="utf-8"))
     prompts = data.get("prompts") or []

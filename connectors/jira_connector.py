@@ -45,6 +45,10 @@ class JiraConnector(BaseConnector):
                 )
                 if r.status_code != 200:
                     return {"error": f"Jira API error ({r.status_code}): {r.text}", "status": r.status_code, "simulated": False}
-                return r.json()
+                
+                # Inject base URL so normalizer can construct browse links
+                data = r.json()
+                data["_base_url"] = base
+                return data
         except Exception as exc:
             return {"error": f"Jira connection failed: {str(exc)}", "simulated": False}

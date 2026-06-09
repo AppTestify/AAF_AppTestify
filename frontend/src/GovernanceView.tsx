@@ -272,12 +272,23 @@ export function GovernanceView(props: GovernanceViewProps) {
                   <h2>Normalized evidence</h2>
                   {((result.normalized_evidence as Record<string, unknown>[]) ?? []).length ? (
                     <ul className="list-plain">
-                      {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => (
-                        <li key={i}>
-                          <span className="mono">{String(e.source)}</span> · {String(e.kind)} — {String(e.summary)} (
-                          <strong>{Number(e.severity).toFixed(2)}</strong>)
-                        </li>
-                      ))}
+                      {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => {
+                        const meta = e.metadata as Record<string, string> | undefined;
+                        const url = meta?.url;
+                        return (
+                          <li key={i}>
+                            <span className="mono">{String(e.source)}</span> · {String(e.kind)} —{" "}
+                            {url ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
+                                {String(e.summary)}
+                              </a>
+                            ) : (
+                              String(e.summary)
+                            )}{" "}
+                            (<strong>{Number(e.severity).toFixed(2)}</strong>)
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : (
                     <div className="empty-state">No normalized evidence returned in this run.</div>

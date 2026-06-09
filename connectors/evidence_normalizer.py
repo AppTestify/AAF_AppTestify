@@ -78,6 +78,7 @@ def _github(p: dict[str, Any]) -> list[EvidenceRecord]:
 
 def _jira(p: dict[str, Any]) -> list[EvidenceRecord]:
     recs: list[EvidenceRecord] = []
+    base_url = p.get("_base_url", "https://jira.atlassian.net")
     for item in p.get("issues") or []:
         fields = item.get("fields") or {}
         summary = fields.get("summary") or "issue"
@@ -90,13 +91,17 @@ def _jira(p: dict[str, Any]) -> list[EvidenceRecord]:
             sev = 0.8
         if any(x in st for x in ("done", "closed", "resolved")):
             continue
+            
+        key = item.get("key", "")
+        url = f"{base_url}/browse/{key}" if key else ""
+        
         recs.append(
             EvidenceRecord(
                 source="jira",
                 kind=kind,
                 summary=f"{summary} [{status}]",
                 severity=sev,
-                metadata={"key": item.get("key")},
+                metadata={"key": key, "url": url},
             )
         )
     return recs

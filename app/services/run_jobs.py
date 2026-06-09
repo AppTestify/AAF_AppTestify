@@ -95,10 +95,14 @@ def _process_one(run_id: int) -> None:
         db.commit()
 
         settings = get_settings()
-        tenant = db.get(Tenant, run.tenant_id) if run.tenant_id else None
+        # Resolve tenant correctly
+        user_requested = db.get(User, run.requested_by_user_id)
+        tenant_slug = (run.runtime_config_json or {}).get("tenant_slug")
+        tenant = resolve_tenant_for_user(db, user_requested, tenant_slug) if user_requested else None
+        
         settings_row_early = (
-            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
-            if run.tenant_id
+            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+            if tenant
             else None
         )
         effective = resolve_effective_settings(db, settings, tenant)

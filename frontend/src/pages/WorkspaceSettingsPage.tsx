@@ -665,7 +665,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                         autoComplete="off"
                         value={String(cred.token ?? "")}
                         onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
-                        placeholder="ghp_…"
+                        placeholder={status?.credentials_keys_configured?.includes("token") ? "Configured (masked)" : "ghp_…"}
                         disabled={!canEdit || saving}
                       />
                     </div>
@@ -698,7 +698,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                         type="email"
                         value={String(cred.email ?? "")}
                         onChange={(e) => mergeConnectorCreds(name, { email: e.target.value })}
-                        placeholder="you@company.com"
+                        placeholder={status?.credentials_keys_configured?.includes("email") ? "Configured (masked)" : "you@company.com"}
                         disabled={!canEdit || saving}
                       />
                     </div>
@@ -709,6 +709,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
                         autoComplete="off"
                         value={String(cred.token ?? "")}
                         onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                        placeholder={status?.credentials_keys_configured?.includes("token") ? "Configured (masked)" : "Enter token"}
                         disabled={!canEdit || saving}
                       />
                     </div>
@@ -939,21 +940,22 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
             if (!draft) return null;
             return (
               <div key={name} className="config-block">
-                <h3>{name}</h3>
+                <div className="settings-connector-head">
+                  <h3 className="settings-connector-title">{name}</h3>
+                  <label className="settings-enable-inline">
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(e) =>
+                        setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], enabled: e.target.checked } }))
+                      }
+                      disabled={!canEdit || saving}
+                    />{" "}
+                    Enabled
+                  </label>
+                </div>
+
                 <div className="config-columns">
-                  <div className="form-row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.enabled}
-                        onChange={(e) =>
-                          setProviderDraft((prev) => ({ ...prev, [name]: { ...prev[name], enabled: e.target.checked } }))
-                        }
-                        disabled={!canEdit || saving}
-                      />{" "}
-                      Enabled
-                    </label>
-                  </div>
                   <div className="form-row">
                     <label className="field-label-required">Model</label>
                     <input

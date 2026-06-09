@@ -191,8 +191,9 @@ export async function runGovernance(
   return r.json() as Promise<GovernanceRunResult>;
 }
 
-export async function runGovernanceBatch(token: string): Promise<unknown> {
-  const r = await fetch(`${API}/governance/batch`, {
+export async function runGovernanceBatch(token: string, tenantSlug?: string | null): Promise<unknown> {
+  const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
+  const r = await fetch(`${API}/governance/batch${q}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -225,6 +226,7 @@ export type ConnectorConfig = {
   last_validated_at: string | null;
   telemetry_json: Record<string, unknown>;
   last_sync_at: string | null;
+  credentials_keys_configured: string[];
 };
 
 export type ProviderConfig = {

@@ -67,6 +67,7 @@ class ConnectorConfigOut(ConnectorConfigIn):
     last_validated_at: Optional[datetime] = None
     telemetry_json: dict[str, Any] = Field(default_factory=dict)
     last_sync_at: Optional[datetime] = None
+    credentials_keys_configured: list[str] = Field(default_factory=list)
 
 
 class ConnectorSetBody(BaseModel):
@@ -335,8 +336,10 @@ def get_connector_configs(
     )
     by_name = {r.connector_name: r for r in rows}
     out: list[ConnectorConfigOut] = []
+    encryption_key = get_settings().app_encryption_key
     for name in sorted(_CONNECTORS):
         r = by_name.get(name)
+        cred = decrypt_json(r.encrypted_credentials_json, secret=encryption_key) if r and r.encrypted_credentials_json else {}
         out.append(
             ConnectorConfigOut(
                 connector_name=name,
@@ -348,6 +351,7 @@ def get_connector_configs(
                 last_validated_at=r.last_validated_at if r else None,
                 telemetry_json=r.telemetry_json if r else {},
                 last_sync_at=r.last_sync_at if r else None,
+                credentials_keys_configured=sorted([k for k, v in cred.items() if v]),
             )
         )
     return out
@@ -362,6 +366,7 @@ def put_connector_configs(
 ):
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     out: list[ConnectorConfigOut] = []
+    encryption_key = get_settings().app_encryption_key
     for name, cfg in body.connectors.items():
         key = name.strip().lower()
         if key not in _CONNECTORS:
@@ -393,12 +398,18 @@ def put_connector_configs(
                 detail=f"connector '{key}' config must use secret references, not inline secret keys",
             )
         row.config_json = cfg.config_json
-        row.encrypted_credentials_json = (
-            encrypt_json(cfg.credentials_json, secret=get_settings().app_encryption_key) if cfg.credentials_json else None
-        )
+        if cfg.credentials_json:
+            row.encrypted_credentials_json = encrypt_json(cfg.credentials_json, secret=encryption_key)
+        
         row.last_validation_error = None
         row.last_validation_ok = None
         row.last_validated_at = None
+        
+        cred_keys = []
+        if row.encrypted_credentials_json:
+            cred_dec = decrypt_json(row.encrypted_credentials_json, secret=encryption_key)
+            cred_keys = sorted([k for k, v in cred_dec.items() if v])
+
         _audit(
             db,
             tenant_id=tenant.id,
@@ -420,6 +431,7 @@ def put_connector_configs(
                 last_validated_at=row.last_validated_at,
                 telemetry_json=row.telemetry_json or {},
                 last_sync_at=row.last_sync_at,
+                credentials_keys_configured=cred_keys,
             )
         )
     db.commit()

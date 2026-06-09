@@ -47,8 +47,8 @@ textarea:focus-visible {
   border-radius: 16px;
   padding: 1.35rem 1.45rem;
   margin-bottom: 1.1rem;
-  box-shadow: 0 18px 44px -36px rgba(15, 23, 42, 0.5), 0 2px 6px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 color-mix(in srgb, var(--surface2), white 50%);
 }
 
 .card h2 {
@@ -258,13 +258,13 @@ textarea:focus-visible {
 .alert-error {
   background: rgba(248, 113, 113, 0.12);
   border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #fecaca;
+  color: var(--danger);
 }
 
 .alert-success {
   background: rgba(52, 211, 153, 0.12);
   border: 1px solid rgba(52, 211, 153, 0.35);
-  color: #a7f3d0;
+  color: var(--success);
 }
 
 .pm-summary {
@@ -1458,7 +1458,7 @@ textarea:focus-visible {
 
 .workspace-sidebar {
   border-right: 1px solid var(--border);
-  background: linear-gradient(180deg, #09162f 0%, #102752 52%, #173770 100%);
+  background: var(--surface);
   padding: 1rem 0.9rem;
   display: flex;
   flex-direction: column;
@@ -1472,10 +1472,11 @@ textarea:focus-visible {
   margin: 0 0 0.15rem;
   font-size: 1rem;
   letter-spacing: 0.02em;
+  color: var(--text);
 }
 
 .workspace-logo span {
-  color: #9bb6e4;
+  color: var(--muted);
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1510,12 +1511,12 @@ textarea:focus-visible {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #9bb6e4;
+  color: var(--muted);
   font-weight: 700;
 }
 
 .workspace-nav a {
-  color: #d4e2fa;
+  color: var(--text);
   text-decoration: none;
   padding: 0.56rem 0.68rem;
   border-radius: 11px;
@@ -1526,16 +1527,16 @@ textarea:focus-visible {
 }
 
 .workspace-nav a.active {
-  color: #ffffff;
-  border-color: rgba(158, 196, 255, 0.52);
-  background: linear-gradient(140deg, rgba(87, 147, 245, 0.44), rgba(37, 109, 244, 0.25));
-  box-shadow: 0 10px 24px -20px rgba(65, 131, 238, 0.9);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  box-shadow: 0 4px 12px -8px rgba(37, 109, 244, 0.3);
 }
 
 .workspace-nav a:hover {
-  color: #ffffff;
-  background: rgba(156, 191, 248, 0.2);
-  border-color: rgba(156, 191, 248, 0.35);
+  color: var(--text);
+  background: var(--surface2);
+  border-color: var(--border);
 }
 
 .workspace-nav a:focus-visible {
@@ -1705,11 +1706,11 @@ textarea:focus-visible {
   gap: 0.45rem;
   width: 100%;
   margin: 0.1rem 0 0.45rem;
-  border: 1px solid #2d4b7c;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.48rem 0.6rem;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e6f0ff;
+  background: var(--surface2);
+  color: var(--text);
   font-size: 0.84rem;
   font-weight: 600;
   cursor: pointer;
@@ -1717,8 +1718,8 @@ textarea:focus-visible {
 }
 
 .workspace-theme-toggle:hover {
-  border-color: rgba(158, 196, 255, 0.62);
-  background: rgba(156, 191, 248, 0.2);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface2));
 }
 
 .workspace-theme-toggle:focus-visible {

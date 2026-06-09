@@ -30,13 +30,21 @@ class JiraConnector(BaseConnector):
             return {"error": "missing JIRA_URL, JIRA_EMAIL, or JIRA_API_TOKEN", "simulated": False}
         auth = (email, token)
         jql = 'project is not EMPTY AND status != Done ORDER BY updated DESC'
-        url = f"{base}/rest/api/3/search"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.get(
-                url,
-                auth=auth,
-                params={"jql": jql, "maxResults": 50, "fields": "summary,status,issuetype,priority,labels"},
-            )
-            if r.status_code != 200:
-                return {"error": r.text, "status": r.status_code, "simulated": False}
-            return r.json()
+        url = f"{base}/rest/api/3/search/jql"
+        payload = {
+            "jql": jql,
+            "maxResults": 50,
+            "fields": ["summary", "status", "issuetype", "priority", "labels"]
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(
+                    url,
+                    auth=auth,
+                    json=payload,
+                )
+                if r.status_code != 200:
+                    return {"error": f"Jira API error ({r.status_code}): {r.text}", "status": r.status_code, "simulated": False}
+                return r.json()
+        except Exception as exc:
+            return {"error": f"Jira connection failed: {str(exc)}", "simulated": False}

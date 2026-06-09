@@ -164,7 +164,7 @@ function AppRoutes() {
     setLoading(true);
     setResult(null);
     try {
-      const data = await runGovernance(token, prompt.trim(), promptId);
+      const data = await runGovernance(token, prompt.trim(), promptId, user?.tenant_slug);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Run failed");
@@ -179,7 +179,7 @@ function AppRoutes() {
     setLoading(true);
     setBatchResult(null);
     try {
-      const data = await runGovernanceBatch(token);
+      const data = await runGovernanceBatch(token, user?.tenant_slug);
       setBatchResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Batch failed");

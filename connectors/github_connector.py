@@ -36,23 +36,26 @@ class GitHubConnector(BaseConnector):
         }
         base = "https://api.github.com"
         out: dict[str, Any] = {"owner": owner, "repo": name, "simulated": False}
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            prs = await client.get(
-                f"{base}/repos/{owner}/{name}/pulls",
-                headers=headers,
-                params={"state": "open", "per_page": 20},
-            )
-            out["pull_requests"] = prs.json() if prs.status_code == 200 else []
-            wf = await client.get(
-                f"{base}/repos/{owner}/{name}/actions/runs",
-                headers=headers,
-                params={"per_page": 15},
-            )
-            out["workflow_runs"] = (wf.json().get("workflow_runs") or []) if wf.status_code == 200 else []
-            issues = await client.get(
-                f"{base}/repos/{owner}/{name}/issues",
-                headers=headers,
-                params={"state": "open", "per_page": 20},
-            )
-            out["issues"] = issues.json() if issues.status_code == 200 else []
-        return out
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                prs = await client.get(
+                    f"{base}/repos/{owner}/{name}/pulls",
+                    headers=headers,
+                    params={"state": "open", "per_page": 20},
+                )
+                out["pull_requests"] = prs.json() if prs.status_code == 200 else []
+                wf = await client.get(
+                    f"{base}/repos/{owner}/{name}/actions/runs",
+                    headers=headers,
+                    params={"per_page": 15},
+                )
+                out["workflow_runs"] = (wf.json().get("workflow_runs") or []) if wf.status_code == 200 else []
+                issues = await client.get(
+                    f"{base}/repos/{owner}/{name}/issues",
+                    headers=headers,
+                    params={"state": "open", "per_page": 20},
+                )
+                out["issues"] = issues.json() if issues.status_code == 200 else []
+            return out
+        except Exception as exc:
+            return {"error": f"GitHub connection failed: {str(exc)}", "simulated": False}

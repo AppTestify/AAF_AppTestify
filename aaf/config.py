@@ -62,7 +62,8 @@ class Settings(BaseSettings):
     # JWT auth
     jwt_secret: str = "change-me-in-production-use-long-random-string"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 7
     rate_limit_max_attempts: int = 8
     rate_limit_window_minutes: int = 10
 

@@ -5,11 +5,13 @@ from app.models.governance import AuditEvent, Decision, DecisionAction, Evidence
 from app.models.policy import GovernancePolicy
 from app.models.rbac import Permission, Role, RolePermission, UserRoleBinding
 from app.models.tenant import Tenant
-from app.models.user import User
+from app.models.user import User, AuthRateLimit, RefreshToken
 
 __all__ = [
     "Tenant",
     "User",
+    "AuthRateLimit",
+    "RefreshToken",
     "TenantSettings",
     "TenantConnectorConfig",
     "TenantAIProviderConfig",

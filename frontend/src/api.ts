@@ -1,5 +1,54 @@
 const API = "/api/v1";
 
+let refreshPromise: Promise<boolean> | null = null;
+
+const originalFetch = window.fetch;
+window.fetch = async function (input, init) {
+  const url = typeof input === "string" ? input : (input as Request).url;
+  const response = await originalFetch(input, init);
+  
+  const isRetry = init && (init as any)._isRetry;
+  
+  if (
+    response.status === 401 &&
+    !isRetry &&
+    !url.includes("/auth/login") &&
+    !url.includes("/auth/refresh") &&
+    !url.includes("/auth/signup-tenant") &&
+    !url.includes("/auth/signup-status") &&
+    !url.includes("/auth/logout")
+  ) {
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        try {
+          const refreshRes = await originalFetch(`${API}/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (refreshRes.ok) {
+            return true;
+          }
+        } catch (err) {
+          console.error("Token refresh failed:", err);
+        }
+        return false;
+      })();
+    }
+    
+    const isRefreshed = await refreshPromise;
+    refreshPromise = null;
+    
+    if (isRefreshed) {
+      const retryInit = { ...(init || {}), _isRetry: true } as RequestInit;
+      return originalFetch(input, retryInit);
+    }
+  }
+  
+  return response;
+};
+
+
 export type UserPublic = {
   id: number;
   email: string;

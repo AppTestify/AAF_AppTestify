@@ -7,7 +7,8 @@ from typing import Any
 
 from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PMFormattedDecision, PipelineResult
-from agents.registry import run_all_agents
+from agents.registry import run_all_agents_async
+from tools.context import ToolContext, build_tool_context
 from connectors.evidence_normalizer import enrich_for_rar
 from llm.deterministic_explainer import build_explanation
 from app.services.llm_runtime import ActiveProvider, invoke_text_with_failover
@@ -27,16 +28,30 @@ async def run_pipeline(
     connectors_used: list[str],
     llm_providers: list[ActiveProvider] | None = None,
     live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
+    tool_ctx: ToolContext | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
-    def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
-        return run_all_agents(ev, llm_providers=llm_providers)
+    ctx = tool_ctx or build_tool_context(settings)
+
+    async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
+        return await run_all_agents_async(
+            ev,
+            tool_ctx=ctx,
+            settings=settings,
+            llm_providers=llm_providers,
+        )
 
     lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
+    initial_opinions = await run_all_agents_async(
+        normalized_evidence,
+        tool_ctx=ctx,
+        settings=settings,
+        llm_providers=llm_providers,
+    )
     opinions, rar_result, consensus_result = await run_rar_loop_async(
         initial_evidence=normalized_evidence,
-        initial_opinions=run_all_agents(normalized_evidence, llm_providers=llm_providers),
+        initial_opinions=initial_opinions,
         tau=settings.tau_consensus,
         max_loops=settings.max_rar_loops,
         rerun_agents=rerun_agents,
@@ -44,7 +59,7 @@ async def run_pipeline(
         live_refresh_evidence=lr,
     )
 
-    utility_result = score_actions(normalized_evidence, settings)
+    utility_result = score_actions(normalized_evidence, settings, opinions=opinions)
     deterministic_explanation = build_explanation(
         prompt=prompt,
         opinions=opinions,

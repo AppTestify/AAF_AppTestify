@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 
 from aaf.schema import AgentOpinion, ConsensusResult, EvidenceRecord, RARResult
@@ -15,7 +16,8 @@ async def run_rar_loop_async(
     initial_opinions: list[AgentOpinion],
     tau: float,
     max_loops: int,
-    rerun_agents: Callable[[list[EvidenceRecord], int], list[AgentOpinion]],
+    rerun_agents: Callable[[list[EvidenceRecord], int], list[AgentOpinion]]
+    | Callable[[list[EvidenceRecord], int], Awaitable[list[AgentOpinion]]],
     enrich_evidence: Callable[[list[EvidenceRecord], int], list[EvidenceRecord]],
     live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
 ) -> tuple[list[AgentOpinion], RARResult, ConsensusResult]:
@@ -49,7 +51,8 @@ async def run_rar_loop_async(
         else:
             evidence = enrich_evidence(evidence, loops)
             reground_notes.append(f"RAR loop {loops}: evidence enriched, count={len(evidence)}")
-        opinions = rerun_agents(evidence, loops)
+        rerun_result = rerun_agents(evidence, loops)
+        opinions = await rerun_result if inspect.isawaitable(rerun_result) else rerun_result
         cr = compute_consensus(opinions)
         current = cr.consensus_score
 

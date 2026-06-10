@@ -47,6 +47,7 @@ class AgentOpinion(BaseModel):
     claim: str
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_refs: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list, description="Human-readable evidence strings for PM")
     risk_theme: RiskTheme = RiskTheme.UNKNOWN
     raw_signals: Dict[str, Any] = Field(default_factory=dict)
 
@@ -71,6 +72,10 @@ class UtilityResult(BaseModel):
     utility_score: float
     scores_by_action: Dict[str, float] = Field(default_factory=dict)
     weights_used: Dict[str, float] = Field(default_factory=dict)
+    perf_index: float = Field(default=0.0, ge=0.0, le=1.0, description="P performance index")
+    cost_index: float = Field(default=0.0, ge=0.0, le=1.0, description="Ci cost efficiency index")
+    risk_index: float = Field(default=0.0, ge=0.0, le=1.0, description="R risk index")
+    global_utility: float = Field(default=0.0, ge=0.0, le=1.0, description="U = w_perf*P + w_cost*Ci + w_risk*R")
 
 
 class ExplainabilityResult(BaseModel):

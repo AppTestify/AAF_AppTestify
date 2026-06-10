@@ -1,0 +1,15 @@
+{
+  "sprint": {
+    "id": 42,
+    "name": "Sprint 24",
+    "state": "active",
+    "startDate": "2026-06-01",
+    "endDate": "2026-06-14",
+    "goal": "Payment rollout"
+  },
+  "issues": [
+    {"key": "PROJ-101", "fields": {"summary": "Blocked: waiting on API contract", "status": {"name": "Blocked"}, "issuetype": {"name": "Story"}, "priority": {"name": "High"}, "customfield_10016": 5, "created": "2026-05-20T10:00:00Z"}},
+    {"key": "PROJ-88", "fields": {"summary": "Regression in checkout flow", "status": {"name": "In Progress"}, "issuetype": {"name": "Bug"}, "priority": {"name": "Critical"}, "customfield_10016": 3, "created": "2026-05-15T08:00:00Z"}},
+    {"key": "PROJ-90", "fields": {"summary": "Checkout UI polish", "status": {"name": "Done"}, "issuetype": {"name": "Story"}, "priority": {"name": "Medium"}, "customfield_10016": 2, "created": "2026-06-01T09:00:00Z"}}
+  ]
+}

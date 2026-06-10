@@ -19,6 +19,7 @@ import {
   type ReleaseGovernance,
   type WorkflowRun,
 } from "../api";
+import { IncidentFindingsPanel } from "../components/IncidentFindingsPanel";
 
 type WorkspaceReportsPageProps = {
   };
@@ -369,6 +370,15 @@ export function WorkspaceReportsPage({}: WorkspaceReportsPageProps) {
             </tbody>
           </table>
         </div>
+        {incidents.slice(0, 5).map((incident) => (
+          <details key={`findings-${incident.id}`} className="accordion" style={{ marginTop: "0.75rem" }}>
+            <summary>
+              Agent findings — {incident.title.slice(0, 72)}
+              {incident.title.length > 72 ? "…" : ""}
+            </summary>
+            <IncidentFindingsPanel incident={incident} />
+          </details>
+        ))}
       </div>
       <div className="card">
         <div className="workspace-section-intro">

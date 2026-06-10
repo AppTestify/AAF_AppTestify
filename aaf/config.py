@@ -37,7 +37,14 @@ class Settings(BaseSettings):
     jira_url: str = ""
     jira_email: str = ""
     jira_api_token: str = ""
+    jira_project: str = "PROJ"
+    jira_board_id: str = "1"
     finops_cost_file: Optional[Path] = None  # JSON/CSV path for live file-based cost
+
+    # AWS (FinOps live tools)
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
 
     # API
     app_env: str = "dev"  # dev, staging, prod

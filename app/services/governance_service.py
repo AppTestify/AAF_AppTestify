@@ -13,6 +13,7 @@ from connectors.github_connector import GitHubConnector
 from connectors.jira_connector import JiraConnector
 from orchestrator.pipeline import run_pipeline
 from pm_interface.router import route_connectors
+from tools.context import build_tool_context
 
 
 async def _fetch_raw_evidence(settings: Settings, names: list[str], ctx: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -36,7 +37,17 @@ async def run_governance(
     llm_providers: list[ActiveProvider] | None = None,
 ) -> PipelineResult:
     names = route_connectors(prompt)
-    ctx: dict[str, str] = {"prompt": prompt, "github_repo": settings.github_repo, "jira_project": "PROJ"}
+    ctx: dict[str, str] = {
+        "prompt": prompt,
+        "github_repo": settings.github_repo,
+        "jira_project": settings.jira_project,
+    }
+    tool_ctx = build_tool_context(
+        settings,
+        github_repo=settings.github_repo,
+        jira_project=settings.jira_project,
+        jira_board_id=settings.jira_board_id,
+    )
     raw = await _fetch_raw_evidence(settings, names, ctx)
     normalized = normalize_all(raw)
 
@@ -53,4 +64,5 @@ async def run_governance(
         connectors_used=names,
         llm_providers=llm_providers or [],
         live_refresh_evidence=live_refresh_evidence,
+        tool_ctx=tool_ctx,
     )

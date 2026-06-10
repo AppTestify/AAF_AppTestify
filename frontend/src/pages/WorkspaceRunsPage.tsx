@@ -417,10 +417,10 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
           {selectedRun.result_json &&
           typeof selectedRun.result_json === "object" &&
           selectedRun.result_json !== null &&
-          "decision_framing" in selectedRun.result_json ? (
+          ("decision_framing" in selectedRun.result_json || "utility" in selectedRun.result_json) ? (
             <div className="workspace-kpi-strip" style={{ marginBottom: "1rem" }}>
               {(() => {
-                const df = selectedRun.result_json.decision_framing as {
+                const df = ((selectedRun.result_json as { decision_framing?: unknown }).decision_framing ?? {}) as {
                   orchestration?: {
                     consensus_score?: number;
                     rar_triggered?: boolean;
@@ -434,6 +434,13 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
                 };
                 const o = df.orchestration;
                 const f = df.findings_synthesis;
+                const util = (selectedRun.result_json as { utility?: {
+                  global_utility?: number;
+                  perf_index?: number;
+                  cost_index?: number;
+                  risk_index?: number;
+                } }).utility;
+                const fmt = (v: number | undefined) => (v != null ? v.toFixed(2) : "—");
                 return (
                   <>
                     <div className="metric">
@@ -458,6 +465,20 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
                       <div className="label">Primary source</div>
                       <div className="value">{df.primary_recommendation_source ?? "—"}</div>
                     </div>
+                    {util ? (
+                      <>
+                        <div className="metric">
+                          <div className="label">Global U</div>
+                          <div className="value">{fmt(util.global_utility)}</div>
+                        </div>
+                        <div className="metric">
+                          <div className="label">P / Ci / R</div>
+                          <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                            {fmt(util.perf_index)} / {fmt(util.cost_index)} / {fmt(util.risk_index)}
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
                   </>
                 );
               })()}

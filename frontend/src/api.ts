@@ -205,7 +205,80 @@ export async function fetchPromptLibrary(): Promise<PromptLibrary> {
   return r.json() as Promise<PromptLibrary>;
 }
 
-export type GovernanceRunResult = Record<string, unknown>;
+export type EvidenceRecord = {
+  source: string;
+  kind: string;
+  summary: string;
+  severity: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type AgentOpinion = {
+  agent_id: string;
+  claim: string;
+  confidence: number;
+  evidence_refs: string[];
+  evidence: string[];
+  risk_theme: string;
+  raw_signals: Record<string, unknown>;
+};
+
+export type UtilityResult = {
+  recommended_action: string;
+  utility_score: number;
+  scores_by_action: Record<string, number>;
+  weights_used: Record<string, number>;
+  perf_index?: number;
+  cost_index?: number;
+  risk_index?: number;
+  global_utility?: number;
+};
+
+export type ConsensusResult = {
+  consensus_score: number;
+  theme_counts?: Record<string, number>;
+  dominant_theme?: string | null;
+  notes?: string;
+};
+
+export type RARResult = {
+  rar_triggered: boolean;
+  rar_loops: number;
+  consensus_before: number;
+  consensus_after: number;
+  reground_notes?: string[];
+};
+
+export type ExplainabilityResult = {
+  xi_score: number;
+  checks?: Record<string, boolean>;
+};
+
+export type PMFormattedDecision = {
+  title: string;
+  summary_markdown: string;
+  detail_json?: Record<string, unknown>;
+};
+
+export type GovernanceRunResult = {
+  prompt: string;
+  prompt_id?: string | null;
+  connectors_used: string[];
+  raw_evidence_by_connector: Record<string, unknown>;
+  normalized_evidence: EvidenceRecord[];
+  agent_opinions: AgentOpinion[];
+  consensus: ConsensusResult;
+  rar: RARResult;
+  utility: UtilityResult;
+  explanation: string;
+  explainability: ExplainabilityResult;
+  pm_view?: PMFormattedDecision;
+  decision_framing?: Record<string, unknown>;
+  llm_invocation?: Record<string, unknown>;
+};
+
+export { formatAgentLabel, parseIncidentFindings } from "./agentLabels";
+export type { AgentFinding } from "./agentLabels";
 
 export async function runGovernance(
   prompt: string,

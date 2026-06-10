@@ -56,11 +56,11 @@ const CONNECTOR_ORDER = ["github", "jira", "azure", "aws", "vps", "finops"] as c
 
 const CONNECTOR_HELP: Record<string, string> = {
   github: "Live: repo slug + PAT. Save, then run connection test.",
-  jira: "Live: Jira Cloud/DC base URL, project key, email + API token.",
+  jira: "Live: Jira base URL, project key, agile board ID (PM sprint tools), email + API token.",
   azure: "Live: Azure DevOps org + project name, PAT with build/release read.",
-  aws: "Account scope only — live AWS telemetry is not available in this build.",
+  aws: "Live FinOps: region + IAM access key/secret for Cost Explorer, Budgets, Auto Scaling, and CloudWatch tools.",
   vps: "Generic custom VPS (Hostinger/others): provider + host required; optional status URL for live health checks.",
-  finops: "Path to a local cost export file (JSON/CSV) when FinOps mode is used.",
+  finops: "Optional file fallback (JSON/CSV cost export). When AWS connector is configured, live boto3 tools take precedence.",
 };
 
 export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }: WorkspaceSettingsPageProps) {
@@ -686,6 +686,16 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
                       />
                     </div>
                     <div className="form-row">
+                      <label>Agile board ID</label>
+                      <input
+                        value={String(cfg.board_id ?? "")}
+                        onChange={(e) => mergeConnectorConfig(name, { board_id: e.target.value })}
+                        placeholder="1"
+                        disabled={!canEdit || saving}
+                      />
+                      <p className="field-hint">Required for PM sprint tools (active sprint, blockers, velocity).</p>
+                    </div>
+                    <div className="form-row">
                       <label>Account email</label>
                       <input
                         type="email"
@@ -751,6 +761,45 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
                         value={String(cfg.account_id ?? "")}
                         onChange={(e) => mergeConnectorConfig(name, { account_id: e.target.value })}
                         placeholder="123456789012"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Region</label>
+                      <input
+                        value={String(cfg.region ?? "us-east-1")}
+                        onChange={(e) => mergeConnectorConfig(name, { region: e.target.value })}
+                        placeholder="us-east-1"
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Access key ID</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.access_key_id ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { access_key_id: e.target.value })}
+                        placeholder={
+                          status?.credentials_keys_configured?.includes("access_key_id")
+                            ? "Configured (masked)"
+                            : "AKIA…"
+                        }
+                        disabled={!canEdit || saving}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Secret access key</label>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={String(cred.secret_access_key ?? "")}
+                        onChange={(e) => mergeConnectorCreds(name, { secret_access_key: e.target.value })}
+                        placeholder={
+                          status?.credentials_keys_configured?.includes("secret_access_key")
+                            ? "Configured (masked)"
+                            : "Enter secret key"
+                        }
                         disabled={!canEdit || saving}
                       />
                     </div>

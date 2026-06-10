@@ -1,9 +1,9 @@
-"""Utility: business-aware action selection."""
+"""Utility: business-aware action selection with U = w_perf*P + w_cost*Ci + w_risk*R."""
 
 from __future__ import annotations
 
 from aaf.config import Settings
-from aaf.schema import EvidenceRecord, GovernanceAction, UtilityResult
+from aaf.schema import AgentOpinion, EvidenceRecord, GovernanceAction, UtilityResult
 
 
 def _aggregate_signals(evidence: list[EvidenceRecord]) -> tuple[float, float, float]:
@@ -19,7 +19,7 @@ def _aggregate_signals(evidence: list[EvidenceRecord]) -> tuple[float, float, fl
             cost += sev
         elif "security" in k or "policy" in k or "vuln" in k:
             risk += sev
-        elif "pr" in k or "workflow" in k or "deploy" in k or "sre" in e.source or "incident" in k:
+        elif "pr" in k or "workflow" in k or "deploy" in k or "incident" in k:
             perf += sev
         else:
             risk += sev * 0.5
@@ -31,15 +31,50 @@ def _aggregate_signals(evidence: list[EvidenceRecord]) -> tuple[float, float, fl
     )
 
 
+def _indices_from_opinions(
+    evidence: list[EvidenceRecord],
+    opinions: list[AgentOpinion] | None,
+) -> tuple[float, float, float]:
+    """Derive P, Ci, R indices from agent opinions when available."""
+    perf_stress, cost_stress, risk_stress = _aggregate_signals(evidence)
+    p_index = 1.0 - perf_stress
+    r_index = 1.0 - risk_stress
+    ci_index = 1.0 - cost_stress
+
+    if opinions:
+        by_id = {o.agent_id: o for o in opinions}
+        devops = by_id.get("devops")
+        finops = by_id.get("finops")
+        devsecops = by_id.get("devsecops")
+        pm = by_id.get("project_management")
+
+        if devops:
+            p_index = round(1.0 - devops.confidence, 4)
+        if finops:
+            ci_raw = finops.raw_signals.get("Ci")
+            if ci_raw is not None:
+                ci_index = float(ci_raw)
+            else:
+                ci_index = round(1.0 - finops.confidence, 4)
+        if devsecops:
+            r_index = round(1.0 - devsecops.confidence, 4)
+        if pm and pm.confidence > 0.5:
+            p_index = round(min(p_index, 1.0 - pm.confidence * 0.5), 4)
+
+    return p_index, ci_index, r_index
+
+
 def score_actions(
     evidence: list[EvidenceRecord],
     settings: Settings,
+    opinions: list[AgentOpinion] | None = None,
 ) -> UtilityResult:
     perf, cost, risk = _aggregate_signals(evidence)
+    p_index, ci_index, r_index = _indices_from_opinions(evidence, opinions)
     w_p, w_c, w_r = settings.w_perf, settings.w_cost, settings.w_risk
     weights_used = {"w_perf": w_p, "w_cost": w_c, "w_risk": w_r}
+    global_u = round(w_p * p_index + w_c * ci_index + w_r * r_index, 4)
 
-    # Action affinity: how well each action matches stress profile
     def u_rollback() -> float:
         return w_p * perf + w_r * risk + w_c * 0.2 * cost
 
@@ -53,7 +88,6 @@ def score_actions(
         return w_r * risk + w_p * 0.4 * perf + w_c * 0.2 * cost
 
     def u_observe() -> float:
-        # Prefer observe when all stresses low
         inv = (perf + cost + risk) / 3.0
         return w_p * (1 - perf) * 0.3 + w_c * (1 - cost) * 0.3 + w_r * (1 - risk) * 0.3 + 0.2 * (1 - inv)
 
@@ -73,4 +107,8 @@ def score_actions(
         utility_score=utility_score,
         scores_by_action=scores,
         weights_used=weights_used,
+        perf_index=p_index,
+        cost_index=ci_index,
+        risk_index=r_index,
+        global_utility=global_u,
     )

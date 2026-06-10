@@ -91,6 +91,22 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
                 token = cred.get("token") or cfg.get("token") or cfg.get("api_token")
                 if token:
                     merged.jira_api_token = str(token)
+                project = cfg.get("project") or cfg.get("project_key")
+                if project:
+                    merged.jira_project = str(project)
+                board = cfg.get("board_id")
+                if board:
+                    merged.jira_board_id = str(board)
+            elif name == "aws":
+                region = cfg.get("region")
+                if region:
+                    merged.aws_region = str(region)
+                key = cred.get("access_key_id") or cred.get("aws_access_key_id")
+                secret = cred.get("secret_access_key") or cred.get("aws_secret_access_key")
+                if key:
+                    merged.aws_access_key_id = str(key)
+                if secret:
+                    merged.aws_secret_access_key = str(secret)
             elif name == "finops":
                 if cfg.get("cost_file"):
                     from pathlib import Path

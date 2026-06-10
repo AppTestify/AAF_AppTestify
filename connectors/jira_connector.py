@@ -29,7 +29,11 @@ class JiraConnector(BaseConnector):
         if not base or not email or not token:
             return {"error": "missing JIRA_URL, JIRA_EMAIL, or JIRA_API_TOKEN", "simulated": False}
         auth = (email, token)
-        jql = 'project is not EMPTY AND status != Done ORDER BY updated DESC'
+        project = (ctx.get("jira_project") or "").strip()
+        if project:
+            jql = f'project = "{project}" AND status != Done ORDER BY updated DESC'
+        else:
+            jql = "project is not EMPTY AND status != Done ORDER BY updated DESC"
         url = f"{base}/rest/api/3/search/jql"
         payload = {
             "jql": jql,

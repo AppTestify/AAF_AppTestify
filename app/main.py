@@ -37,6 +37,7 @@ from app.routers import (
     reports,
     telemetry,
     tenant_config,
+    webhooks,
 )
 from app.services.observability import record_request, record_span, render_prometheus, request_started
 from app.services.otel import configure_otel, instrument_fastapi, shutdown_otel
@@ -131,6 +132,7 @@ async def request_logging_middleware(request: Request, call_next):
 
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(admin_tenants.router, prefix=settings.api_v1_prefix)
+app.include_router(webhooks.router, prefix=settings.api_v1_prefix)
 app.include_router(governance.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_intelligence.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_v1.router, prefix=settings.api_v1_prefix)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchSignupStatus } from "../api";
+import { INTEGRATIONS, WORKSPACE_FEATURES } from "../marketing/content";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
 
@@ -17,74 +18,111 @@ export function EnterprisePage() {
       <section className="marketing-subhero">
         <div className="marketing-subhero-inner">
           <p className="section-eyebrow">Enterprise</p>
-          <h1 className="section-title">Enterprise controls, trust posture, and governance continuity</h1>
-          <p className="section-lead">Governance-ready control boundaries and rollout confidence for multi-organization operations.</p>
+          <h1 className="section-title">Multi-tenant governance with production-grade controls</h1>
+          <p className="section-lead">
+            Tenant isolation, encrypted connector secrets, RBAC, audit events, and signed share links — so your release
+            governance model scales across organizations without losing traceability.
+          </p>
         </div>
       </section>
 
       <section className="section subpage-band subpage-band-dark">
         <p className="section-eyebrow">Controls</p>
-        <h2 className="section-title">Built for multi-organization governance at scale</h2>
+        <h2 className="section-title">Built for regulated and high-velocity teams alike</h2>
         <div className="enterprise-band" style={{ marginTop: "1rem" }}>
           <div>
             <p className="section-eyebrow section-eyebrow--on-dark">Assurance model</p>
-            <h2 className="enterprise-title">Defensible operational governance from intake to action</h2>
+            <h2 className="enterprise-title">Every decision links to tool evidence</h2>
             <p className="enterprise-lead">
-              Superadmin boundaries, tenant-admin operations, request-access onboarding, and audit-ready workflows deliver a
-              defensible enterprise operating model.
+              Agent opinions ship with human-readable evidence strings and expandable raw_signals — not black-box scores.
+              Cases, approvals, and exports preserve the full chain for internal controls and external audits.
             </p>
           </div>
           <ul className="enterprise-bullets">
-            <li>Superadmin tenant control and lead-to-tenant conversion workflow</li>
-            <li>Tenant-scoped settings, connectors, providers, and policy boundaries</li>
-            <li>Auditable runs, decisions, acknowledgements, and export continuity</li>
-            <li>Role-aware controls for superadmin, tenant admin, and reviewers</li>
+            <li>Superadmin tenant provisioning and request-access lead conversion</li>
+            <li>Tenant-scoped GitHub, Jira, AWS, Azure, FinOps connector config with validation</li>
+            <li>httpOnly session cookies, refresh tokens, DB-backed rate limiting</li>
+            <li>Fernet-encrypted credentials at rest for connector and LLM keys</li>
           </ul>
         </div>
       </section>
 
       <section className="section subpage-band">
-        <p className="section-eyebrow">Security & Governance</p>
-        <h2 className="section-title">Controls that support enterprise assurance models</h2>
-        <div className="feature-grid" style={{ marginTop: "1rem" }}>
-          <article className="feature-card">
-            <h3>Tenant isolation</h3>
-            <p>Configuration, governance outputs, and workflow records remain tenant-scoped for strict operational boundaries.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Session and role controls</h3>
-            <p>JWT session model with role-constrained access keeps platform and tenant operations separated.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Audit-first actions</h3>
-            <p>Run events, approvals, acknowledgements, and status transitions remain preserved for accountability.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Explainable decisioning</h3>
-            <p>Executive summaries, confidence values, and rationale outputs keep decisions reviewable by business and technical teams.</p>
-          </article>
+        <p className="section-eyebrow">Integrations at scale</p>
+        <h2 className="section-title">Connect the systems your agents already read</h2>
+        <div className="integration-pill-grid" style={{ marginTop: "1rem" }}>
+          {INTEGRATIONS.map((item) => (
+            <article key={item.name} className="integration-pill-card">
+              <h3>{item.name}</h3>
+              <p>{item.detail}</p>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="section subpage-band subpage-band-dark">
-        <p className="section-eyebrow">Rollout Model</p>
-        <h2 className="section-title">How enterprises roll out Casantris across teams</h2>
+        <p className="section-eyebrow">Security & governance</p>
+        <h2 className="section-title">Enterprise assurance features</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
-            <h3>Phase 1: Controlled pilot</h3>
-            <p>Start with one tenant, baseline telemetry, and governance runs to establish decision standards.</p>
+            <h3>Tenant isolation</h3>
+            <p>Runs, cases, evidence snapshots, and connector config remain strictly tenant-scoped.</p>
           </article>
           <article className="feature-card">
-            <h3>Phase 2: Cross-team expansion</h3>
-            <p>Onboard additional org units with tenant templates and shared governance reporting conventions.</p>
+            <h3>RBAC</h3>
+            <p>Superadmin, tenant admin, approver, and reviewer roles with permission-gated API routes.</p>
           </article>
           <article className="feature-card">
-            <h3>Phase 3: Executive governance</h3>
-            <p>Use workflow outcomes and executive summaries to standardize portfolio-level release governance.</p>
+            <h3>Audit-first actions</h3>
+            <p>Governance audit events capture config changes, decisions, and acknowledgements.</p>
           </article>
           <article className="feature-card">
-            <h3>Phase 4: Continuous optimization</h3>
-            <p>Iterate on policies, confidence triggers, and connector coverage to reduce operational risk over time.</p>
+            <h3>Signed share links</h3>
+            <p>JWT-signed run snapshots with optional PDF one-pager for external stakeholder review.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Policy thresholds</h3>
+            <p>Tenant governance policies for consensus and XI minimums before release approval.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Observability</h3>
+            <p>Prometheus metrics, OTLP tracing hooks, SLO error-budget signals in the decision lifecycle view.</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="section subpage-band">
+        <p className="section-eyebrow">Workspace depth</p>
+        <h2 className="section-title">What enterprises get in the product</h2>
+        <div className="feature-grid" style={{ marginTop: "1rem" }}>
+          {WORKSPACE_FEATURES.map((f) => (
+            <article key={f.title} className="feature-card">
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="section subpage-band subpage-band-dark">
+        <p className="section-eyebrow">Rollout model</p>
+        <h2 className="section-title">Four phases to production governance</h2>
+        <div className="feature-grid" style={{ marginTop: "1rem" }}>
+          <article className="feature-card">
+            <h3>Phase 1: Sim pilot</h3>
+            <p>Run governance with fixtures — validate agent evidence and PM workflow without live credentials.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Phase 2: Live connectors</h3>
+            <p>Wire GitHub, Jira board ID, and AWS keys. Enable workflow_run webhooks for CI freshness.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Phase 3: Case governance</h3>
+            <p>Formalize go/no-go with cases, approvers, and portfolio-linked release tracking.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Phase 4: Executive reporting</h3>
+            <p>Standardize incident intelligence, executive summaries, and CSV exports for leadership forums.</p>
           </article>
         </div>
       </section>
@@ -92,12 +130,16 @@ export function EnterprisePage() {
       <section className="subpage-cta">
         <div className="subpage-cta-inner">
           <div className="subpage-cta-copy">
-            <strong>Align your governance rollout with an enterprise trust model.</strong>
-            <span>Start with controlled onboarding, then scale with confidence across teams.</span>
+            <strong>Plan your enterprise rollout with the Casantris team.</strong>
+            <span>Request access or explore the platform architecture first.</span>
           </div>
           <div className="subpage-cta-actions">
-            <Link to="/platform" className="btn btn-ghost">View platform</Link>
-            <Link to="/request-access" className="btn btn-primary">Talk to sales</Link>
+            <Link to="/request-access" className="btn btn-primary">
+              Talk to sales
+            </Link>
+            <Link to="/platform" className="btn btn-ghost">
+              Platform architecture
+            </Link>
           </div>
         </div>
       </section>

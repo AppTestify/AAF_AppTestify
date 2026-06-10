@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { GovernanceRunResult, PromptLibrary, TenantRow, UserPublic } from "./api";
+import type {
+  AgentOpinion,
+  GovernanceRunResult,
+  PromptLibrary,
+  TenantRow,
+  UserPublic,
+  UtilityResult,
+} from "./api";
+import { formatAgentLabel } from "./api";
 
 export type GovernanceViewProps = {
   user: UserPublic;
@@ -23,6 +31,35 @@ export type GovernanceViewProps = {
   result: GovernanceRunResult | null;
   batchResult: unknown;
 };
+
+function AgentOpinionCard({ opinion }: { opinion: AgentOpinion }) {
+  const evidence = opinion.evidence ?? [];
+  const hasSignals = opinion.raw_signals && Object.keys(opinion.raw_signals).length > 0;
+
+  return (
+    <li className="agent-opinion-card">
+      <div className="agent-opinion-head">
+        <strong>{formatAgentLabel(opinion.agent_id)}</strong>
+        <span className="status-chip running">{opinion.risk_theme.replace(/_/g, " ")}</span>
+        <span className="field-hint">confidence {opinion.confidence.toFixed(2)}</span>
+      </div>
+      <p style={{ margin: "0.35rem 0 0.5rem" }}>{opinion.claim}</p>
+      {evidence.length > 0 ? (
+        <ul className="list-plain agent-evidence-list">
+          {evidence.map((line, idx) => (
+            <li key={idx}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      {hasSignals ? (
+        <details className="accordion agent-signals-accordion">
+          <summary>Tool signals</summary>
+          <pre className="json-preview">{JSON.stringify(opinion.raw_signals, null, 2)}</pre>
+        </details>
+      ) : null}
+    </li>
+  );
+}
 
 export function GovernanceView(props: GovernanceViewProps) {
   const {
@@ -47,11 +84,11 @@ export function GovernanceView(props: GovernanceViewProps) {
     batchResult,
   } = props;
 
-  const pmView = result?.pm_view as Record<string, unknown> | undefined;
-  const consensus = result?.consensus as Record<string, number> | undefined;
-  const rar = result?.rar as Record<string, unknown> | undefined;
-  const utility = result?.utility as Record<string, unknown> | undefined;
-  const xi = (result?.explainability as Record<string, unknown> | undefined)?.xi_score as number | undefined;
+  const pmView = result?.pm_view;
+  const consensus = result?.consensus;
+  const rar = result?.rar;
+  const utility: UtilityResult | undefined = result?.utility;
+  const xi = result?.explainability?.xi_score;
   const framing = result?.decision_framing as
     | {
         orchestration?: { consensus_score?: number };
@@ -71,9 +108,12 @@ export function GovernanceView(props: GovernanceViewProps) {
     if (v >= 0.45) return "warn";
     return "bad";
   }, [orchConsensus]);
+
   const [activeResultTab, setActiveResultTab] = useState<"executive" | "evidence" | "agents" | "explainability">(
     "executive"
   );
+
+  const formatIndex = (v: number | undefined) => (v != null && !Number.isNaN(v) ? v.toFixed(2) : "—");
 
   return (
     <div className="app">
@@ -132,96 +172,111 @@ export function GovernanceView(props: GovernanceViewProps) {
       ) : null}
 
       <div className="workspace-split">
-      <div className="card">
-        <div className="workspace-section-intro">
-          <div>
-            <h2>Compose request</h2>
-            <p>Select a prompt template or write a custom governance question.</p>
-          </div>
-          <div className="workspace-meta">Prompt routing follows tenant AI config defaults</div>
-        </div>
-        <div className="form-row">
-          <label htmlFor="library">Prompt library</label>
-          <select
-            id="library"
-            value={promptId ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v) applyLibraryPrompt(v);
-              else {
-                setPromptId(null);
-              }
-            }}
-          >
-            <option value="">— Custom prompt —</option>
-            {(library?.prompts ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-row">
-          <label htmlFor="prompt" className="field-label-required">Question</label>
-          <textarea
-            id="prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="e.g. Are we safe to release based on GitHub activity?"
-          />
-        </div>
-        <div className="actions">
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={loading || !prompt.trim()}
-            onClick={onRunGovernance}
-          >
-            {loading ? "Running…" : "Run governance"}
-          </button>
-          {user.is_superadmin || user.is_admin ? (
-            <button className="btn btn-ghost" type="button" disabled={loading} onClick={onBatch}>
-              Run batch (library)
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {result ? (
         <div className="card">
           <div className="workspace-section-intro">
             <div>
-              <h2>Decision snapshot</h2>
-              <p>Live result posture from the latest governance execution.</p>
+              <h2>Compose request</h2>
+              <p>Select a prompt template or write a custom governance question.</p>
             </div>
+            <div className="workspace-meta">Prompt routing follows tenant AI config defaults</div>
           </div>
-          <div className="metrics">
-            <div className="metric">
-              <div className="label">Orchestration consensus</div>
-              <div className={`value ${scoreClass}`}>{orchConsensus != null ? Number(orchConsensus).toFixed(2) : "—"}</div>
-            </div>
-            {findingsConsensus != null ? (
-              <div className="metric">
-                <div className="label">Findings synthesis</div>
-                <div className="value">{findingsConsensus.toFixed(2)}</div>
-              </div>
+          <div className="form-row">
+            <label htmlFor="library">Prompt library</label>
+            <select
+              id="library"
+              value={promptId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) applyLibraryPrompt(v);
+                else {
+                  setPromptId(null);
+                }
+              }}
+            >
+              <option value="">— Custom prompt —</option>
+              {(library?.prompts ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label htmlFor="prompt" className="field-label-required">
+              Question
+            </label>
+            <textarea
+              id="prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g. Are we safe to release based on GitHub activity?"
+            />
+          </div>
+          <div className="actions">
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={loading || !prompt.trim()}
+              onClick={onRunGovernance}
+            >
+              {loading ? "Running…" : "Run governance"}
+            </button>
+            {user.is_superadmin || user.is_admin ? (
+              <button className="btn btn-ghost" type="button" disabled={loading} onClick={onBatch}>
+                Run batch (library)
+              </button>
             ) : null}
-            <div className="metric">
-              <div className="label">RAR</div>
-              <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Action</div>
-              <div className="value mono" style={{ fontSize: "0.85rem" }}>
-                {String(utility?.recommended_action ?? "—")}
-              </div>
-            </div>
-            <div className="metric">
-              <div className="label">XI</div>
-              <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
-            </div>
           </div>
         </div>
-      ) : null}
+        {result ? (
+          <div className="card">
+            <div className="workspace-section-intro">
+              <div>
+                <h2>Decision snapshot</h2>
+                <p>Live result posture from the latest governance execution.</p>
+              </div>
+            </div>
+            <div className="metrics">
+              <div className="metric">
+                <div className="label">Orchestration consensus</div>
+                <div className={`value ${scoreClass}`}>
+                  {orchConsensus != null ? Number(orchConsensus).toFixed(2) : "—"}
+                </div>
+              </div>
+              {findingsConsensus != null ? (
+                <div className="metric">
+                  <div className="label">Findings synthesis</div>
+                  <div className="value">{findingsConsensus.toFixed(2)}</div>
+                </div>
+              ) : null}
+              <div className="metric">
+                <div className="label">Global U</div>
+                <div className="value">{formatIndex(utility?.global_utility)}</div>
+              </div>
+              <div className="metric">
+                <div className="label">P / Ci / R</div>
+                <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                  {formatIndex(utility?.perf_index)} / {formatIndex(utility?.cost_index)} /{" "}
+                  {formatIndex(utility?.risk_index)}
+                </div>
+              </div>
+              <div className="metric">
+                <div className="label">RAR</div>
+                <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Action</div>
+                <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                  {utility?.recommended_action ?? "—"}
+                </div>
+              </div>
+              <div className="metric">
+                <div className="label">XI</div>
+                <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {batchResult ? (
@@ -239,99 +294,122 @@ export function GovernanceView(props: GovernanceViewProps) {
       ) : null}
 
       {result ? (
-        <>
-          <div className="card">
-            <div className="workspace-toolbar">
-              <button className={`btn btn-ghost btn-sm ${activeResultTab === "executive" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("executive")}>Executive</button>
-              <button className={`btn btn-ghost btn-sm ${activeResultTab === "evidence" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("evidence")}>Evidence</button>
-              <button className={`btn btn-ghost btn-sm ${activeResultTab === "agents" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("agents")}>Agents</button>
-              <button className={`btn btn-ghost btn-sm ${activeResultTab === "explainability" ? "active" : ""}`} type="button" onClick={() => setActiveResultTab("explainability")}>Explainability</button>
-            </div>
-            {activeResultTab === "executive" ? (
-              <>
-                <div className="workspace-section-intro">
-                  <div>
-                    <h2>Executive view</h2>
-                    <p>Business-facing summary and decision narrative for stakeholder communication.</p>
-                  </div>
-                </div>
-                {pmView ? (
-                  <>
-                    <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{String(pmView.title ?? "")}</p>
-                    <div className="pm-summary">
-                      <ReactMarkdown>{String(pmView.summary_markdown ?? "")}</ReactMarkdown>
-                    </div>
-                  </>
-                ) : null}
-                <p className="field-hint">Connectors: {(result.connectors_used as string[] | undefined)?.join(", ") || "—"}</p>
-              </>
-            ) : null}
-            {activeResultTab === "evidence" ? (
-              <div className="workspace-split">
+        <div className="card">
+          <div className="workspace-toolbar">
+            <button
+              className={`btn btn-ghost btn-sm ${activeResultTab === "executive" ? "active" : ""}`}
+              type="button"
+              onClick={() => setActiveResultTab("executive")}
+            >
+              Executive
+            </button>
+            <button
+              className={`btn btn-ghost btn-sm ${activeResultTab === "evidence" ? "active" : ""}`}
+              type="button"
+              onClick={() => setActiveResultTab("evidence")}
+            >
+              Evidence
+            </button>
+            <button
+              className={`btn btn-ghost btn-sm ${activeResultTab === "agents" ? "active" : ""}`}
+              type="button"
+              onClick={() => setActiveResultTab("agents")}
+            >
+              Agents
+            </button>
+            <button
+              className={`btn btn-ghost btn-sm ${activeResultTab === "explainability" ? "active" : ""}`}
+              type="button"
+              onClick={() => setActiveResultTab("explainability")}
+            >
+              Explainability
+            </button>
+          </div>
+          {activeResultTab === "executive" ? (
+            <>
+              <div className="workspace-section-intro">
                 <div>
-                  <h2>Normalized evidence</h2>
-                  {((result.normalized_evidence as Record<string, unknown>[]) ?? []).length ? (
-                    <ul className="list-plain">
-                      {((result.normalized_evidence as Record<string, unknown>[]) ?? []).map((e, i) => {
-                        const meta = e.metadata as Record<string, string> | undefined;
-                        const url = meta?.url;
-                        return (
-                          <li key={i}>
-                            <span className="mono">{String(e.source)}</span> · {String(e.kind)} —{" "}
-                            {url ? (
-                              <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
-                                {String(e.summary)}
-                              </a>
-                            ) : (
-                              String(e.summary)
-                            )}{" "}
-                            (<strong>{Number(e.severity).toFixed(2)}</strong>)
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <div className="empty-state">No normalized evidence returned in this run.</div>
-                  )}
-                </div>
-                <div>
-                  <h2>Raw evidence</h2>
-                  {Object.entries((result.raw_evidence_by_connector as Record<string, unknown>) ?? {}).map(([name, payload]) => (
-                    <details key={name} className="accordion" open={name === "github"}>
-                      <summary>{name}</summary>
-                      <pre>{JSON.stringify(payload, null, 2)}</pre>
-                    </details>
-                  ))}
+                  <h2>Executive view</h2>
+                  <p>Business-facing summary and decision narrative for stakeholder communication.</p>
                 </div>
               </div>
-            ) : null}
-            {activeResultTab === "agents" ? (
-              <>
-                <h2>Agent opinions</h2>
-                {((result.agent_opinions as Record<string, unknown>[]) ?? []).length ? (
+              {pmView ? (
+                <>
+                  <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{pmView.title}</p>
+                  <div className="pm-summary">
+                    <ReactMarkdown>{pmView.summary_markdown}</ReactMarkdown>
+                  </div>
+                </>
+              ) : null}
+              <p className="field-hint">Connectors: {result.connectors_used?.join(", ") || "—"}</p>
+            </>
+          ) : null}
+          {activeResultTab === "evidence" ? (
+            <div className="workspace-split">
+              <div>
+                <h2>Normalized evidence</h2>
+                {result.normalized_evidence?.length ? (
                   <ul className="list-plain">
-                    {((result.agent_opinions as Record<string, unknown>[]) ?? []).map((o, i) => (
-                      <li key={i}>
-                        <strong>{String(o.agent_id)}</strong> ({String(o.risk_theme)}, conf {Number(o.confidence).toFixed(2)}):{" "}
-                        {String(o.claim)}
-                      </li>
-                    ))}
+                    {result.normalized_evidence.map((e, i) => {
+                      const url = e.metadata?.url as string | undefined;
+                      return (
+                        <li key={i}>
+                          <span className="mono">{e.source}</span> · {e.kind} —{" "}
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}
+                            >
+                              {e.summary}
+                            </a>
+                          ) : (
+                            e.summary
+                          )}{" "}
+                          (<strong>{Number(e.severity).toFixed(2)}</strong>)
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
-                  <div className="empty-state">No agent opinions available for this run.</div>
+                  <div className="empty-state">No normalized evidence returned in this run.</div>
                 )}
-              </>
-            ) : null}
-            {activeResultTab === "explainability" ? (
-              <>
-                <h2>Full explanation</h2>
-                <div className="explanation">
-                  <ReactMarkdown>{String(result.explanation ?? "")}</ReactMarkdown>
-                </div>
-              </>
-            ) : null}
+              </div>
+              <div>
+                <h2>Raw evidence</h2>
+                {Object.entries(result.raw_evidence_by_connector ?? {}).map(([name, payload]) => (
+                  <details key={name} className="accordion" open={name === "github"}>
+                    <summary>{name}</summary>
+                    <pre>{JSON.stringify(payload, null, 2)}</pre>
+                  </details>
+                ))}
+              </div>
             </div>
-        </>
+          ) : null}
+          {activeResultTab === "agents" ? (
+            <>
+              <h2>Agent opinions</h2>
+              {result.agent_opinions?.length ? (
+                <ul className="list-plain agent-opinions-list">
+                  {result.agent_opinions.map((o, i) => (
+                    <AgentOpinionCard key={`${o.agent_id}-${i}`} opinion={o} />
+                  ))}
+                </ul>
+              ) : (
+                <div className="empty-state">No agent opinions available for this run.</div>
+              )}
+            </>
+          ) : null}
+          {activeResultTab === "explainability" ? (
+            <>
+              <h2>Full explanation</h2>
+              <div className="explanation">
+                <ReactMarkdown>{result.explanation ?? ""}</ReactMarkdown>
+              </div>
+            </>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

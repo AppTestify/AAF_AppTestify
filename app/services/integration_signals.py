@@ -7,6 +7,7 @@ from typing import Any
 
 from app.models.config import TenantConnectorConfig
 from app.security import decrypt_json
+from app.services.aws_live import fetch_aws_signal
 from app.services.azure_live import fetch_azure_signal
 from app.services.github_live import fetch_github_signal
 from app.services.http_resilience import IntegrationFetchError
@@ -74,16 +75,31 @@ def connector_signal(connector: TenantConnectorConfig) -> dict[str, Any]:
     if name == "aws":
         cfg = connector.config_json or {}
         account = str(cfg.get("account_id") or "")
+        creds = {}
+        try:
+            creds = decrypt_json(connector.encrypted_credentials_json, secret=get_settings().app_encryption_key)
+        except Exception:  # noqa: BLE001
+            creds = {}
+        region = str(cfg.get("region") or "us-east-1")
+        key = str(creds.get("access_key_id") or creds.get("aws_access_key_id") or "") if isinstance(creds, dict) else ""
+        secret = str(creds.get("secret_access_key") or creds.get("aws_secret_access_key") or "") if isinstance(creds, dict) else ""
+        if key and secret:
+            try:
+                signal = fetch_aws_signal(region=region, access_key_id=key, secret_access_key=secret)
+                signal["account_scope"] = account or None
+                return signal
+            except Exception as e:  # noqa: BLE001
+                return _fallback("aws", "unknown", str(e))
         return {
             "connector": "aws",
             "enabled": True,
-            "mode": "not_implemented",
+            "mode": "unconfigured",
             "freshness": "unknown",
             "latency_ms": None,
             "errors_24h": None,
             "account_scope": account or None,
-            "error_category": "unsupported",
-            "error_message": "live aws connector telemetry not implemented yet",
+            "error_category": "config",
+            "error_message": "aws requires encrypted credentials (access_key_id, secret_access_key)",
             "captured_at": now,
         }
     if name == "vps":

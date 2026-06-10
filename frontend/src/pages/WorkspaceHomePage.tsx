@@ -18,6 +18,7 @@ import {
   type UserPublic,
   type WorkflowRun,
 } from "../api";
+import { IncidentFindingsPanel } from "../components/IncidentFindingsPanel";
 
 type WorkspaceHomePageProps = {
   user: UserPublic;
@@ -317,6 +318,12 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
               </tbody>
             </table>
           </div>
+          {incidents[0] ? (
+            <div style={{ marginTop: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem" }}>Agent findings (latest incident)</h3>
+              <IncidentFindingsPanel incident={incidents[0]} />
+            </div>
+          ) : null}
         </div>
       </section>
 

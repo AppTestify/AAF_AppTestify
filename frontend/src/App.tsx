@@ -15,7 +15,6 @@ import {
   type TenantRow,
   type UserPublic,
 } from "./api";
-import { loadToken, saveToken } from "./authStorage";
 import { WorkspaceShell } from "./components/WorkspaceShell";
 import { GovernanceView } from "./GovernanceView";
 import { LoginPage } from "./pages/LoginPage";
@@ -52,8 +51,8 @@ function AppRoutes() {
     const saved = localStorage.getItem("workspace-theme");
     return saved === "dark" ? "dark" : "light";
   });
-  const [token, setToken] = useState<string | null>(() => loadToken());
   const [user, setUser] = useState<UserPublic | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [tenants, setTenants] = useState<TenantRow[] | null>(null);
   const [newTenantName, setNewTenantName] = useState("");
   const [newTenantSlug, setNewTenantSlug] = useState("");
@@ -79,17 +78,11 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      return;
-    }
-    fetchMe(token)
+    fetchMe()
       .then(setUser)
-      .catch(() => {
-        saveToken(null);
-        setToken(null);
-      });
-  }, [token]);
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
+  }, []);
 
   useEffect(() => {
     fetchPromptLibrary()
@@ -98,38 +91,37 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
-    if (!token || !user?.is_superadmin) {
+    if (!user?.is_superadmin) {
       setTenants(null);
       return;
     }
-    fetchTenants(token)
+    fetchTenants()
       .then(setTenants)
       .catch(() => setTenants([]));
-  }, [token, user?.is_superadmin]);
+  }, [user?.is_superadmin]);
 
   useEffect(() => {
-    if (!token) {
+    if (!user) {
       setApiCompatibilityWarning(null);
       return;
     }
-    fetchDashboardSummary(token)
+    fetchDashboardSummary()
       .then(() => setApiCompatibilityWarning(null))
       .catch(() =>
         setApiCompatibilityWarning(
           "Backend API appears outdated or mismatched. Restart backend on port 8000 from this repo."
         )
       );
-  }, [token]);
+  }, [user]);
 
   const handleAuthed = (data: LoginResponse) => {
-    saveToken(data.access_token);
-    setToken(data.access_token);
     setUser(data.user);
   };
 
-  const handleLogout = () => {
-    saveToken(null);
-    setToken(null);
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
+    } catch { }
     setUser(null);
     setTenants(null);
     setResult(null);
@@ -142,14 +134,14 @@ function AppRoutes() {
 
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !newTenantName.trim() || !newTenantSlug.trim()) return;
+    if ( !newTenantName.trim() || !newTenantSlug.trim()) return;
     setError(null);
     setLoading(true);
     try {
-      await createTenant(token, { name: newTenantName.trim(), slug: newTenantSlug.trim() });
+      await createTenant({ name: newTenantName.trim(), slug: newTenantSlug.trim() });
       setNewTenantName("");
       setNewTenantSlug("");
-      const list = await fetchTenants(token);
+      const list = await fetchTenants();
       setTenants(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create tenant");
@@ -159,12 +151,12 @@ function AppRoutes() {
   };
 
   const handleRun = async () => {
-    if (!token || !prompt.trim()) return;
+    if ( !prompt.trim()) return;
     setError(null);
     setLoading(true);
     setResult(null);
     try {
-      const data = await runGovernance(token, prompt.trim(), promptId, user?.tenant_slug);
+      const data = await runGovernance(prompt.trim(), promptId, user?.tenant_slug);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Run failed");
@@ -174,12 +166,12 @@ function AppRoutes() {
   };
 
   const handleBatch = async () => {
-    if (!token) return;
+    
     setError(null);
     setLoading(true);
     setBatchResult(null);
     try {
-      const data = await runGovernanceBatch(token, user?.tenant_slug);
+      const data = await runGovernanceBatch(user?.tenant_slug);
       setBatchResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Batch failed");
@@ -196,6 +188,8 @@ function AppRoutes() {
     }
   };
 
+  if (!authChecked) return <div className="app">Loading...</div>;
+
   return (
     <Routes>
       <Route path="/" element={<MarketingPage />} />
@@ -207,14 +201,8 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          token && user ? (
+          user ? (
             <Navigate to="/app" replace />
-          ) : token && !user ? (
-            <div className="marketing auth-page">
-              <div className="auth-panel">
-                <p style={{ color: "var(--muted)" }}>Restoring session…</p>
-              </div>
-            </div>
           ) : (
             <LoginPage onAuthed={handleAuthed} signupEnabled={signupEnabled} />
           )
@@ -223,14 +211,8 @@ function AppRoutes() {
       <Route
         path="/signup"
         element={
-          token && user ? (
+          user ? (
             <Navigate to="/app" replace />
-          ) : token && !user ? (
-            <div className="marketing auth-page">
-              <div className="auth-panel">
-                <p style={{ color: "var(--muted)" }}>Restoring session…</p>
-              </div>
-            </div>
           ) : (
             <SignupPage onAuthed={handleAuthed} />
           )
@@ -239,14 +221,10 @@ function AppRoutes() {
       <Route
         path="/app"
         element={
-          !token ? (
-            <Navigate to="/login" replace />
-          ) : !user ? (
-            <div className="app" style={{ padding: "2rem" }}>
-              <p style={{ color: "var(--muted)" }}>Loading workspace…</p>
-            </div>
-          ) : (
+          user ? (
             <WorkspaceShell user={user} onLogout={handleLogout} theme={theme} onToggleTheme={handleToggleTheme} />
+          ) : (
+            <Navigate to="/login" replace />
           )
         }
       >
@@ -262,8 +240,8 @@ function AppRoutes() {
         ) : null}
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="home" element={<Navigate to="/app/dashboard" replace />} />
-        <Route path="dashboard" element={<WorkspaceHomePage token={token} user={user as UserPublic} />} />
-        <Route path="runs" element={<WorkspaceRunsPage token={token} tenantSlug={user?.tenant_slug} />} />
+        <Route path="dashboard" element={<WorkspaceHomePage user={user as UserPublic} />} />
+        <Route path="runs" element={<WorkspaceRunsPage tenantSlug={user?.tenant_slug} />} />
         <Route
           path="overview"
           element={
@@ -290,23 +268,23 @@ function AppRoutes() {
             />
           }
         />
-        <Route path="evidence" element={<WorkspaceEvidencePage token={token} />} />
+        <Route path="evidence" element={<WorkspaceEvidencePage />} />
         <Route
           path="cases"
           element={
             <WorkspaceCasesPage
-              token={token}
+              
               tenantSlug={user?.tenant_slug}
               canManage={Boolean(user?.is_superadmin || user?.is_admin)}
             />
           }
         />
-        <Route path="alerts" element={<WorkspaceAlertsPage token={token} />} />
+        <Route path="alerts" element={<WorkspaceAlertsPage />} />
         <Route
           path="integrations"
           element={
             <WorkspaceIntegrationsPage
-              token={token}
+              
               tenantSlug={user?.tenant_slug}
               canManage={Boolean(user?.is_superadmin || user?.is_admin)}
             />
@@ -314,19 +292,19 @@ function AppRoutes() {
         />
         <Route
           path="portfolio"
-          element={<WorkspacePortfolioPage token={token} canManage={Boolean(user?.is_superadmin || user?.is_admin)} />}
+          element={<WorkspacePortfolioPage canManage={Boolean(user?.is_superadmin || user?.is_admin)} />}
         />
-        <Route path="reports" element={<WorkspaceReportsPage token={token} />} />
+        <Route path="reports" element={<WorkspaceReportsPage />} />
         <Route
           path="settings"
-          element={<WorkspaceSettingsPage token={token} user={user as UserPublic} tenants={tenants} initialTab="general" />}
+          element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="general" />}
         />
         <Route
           path="ai-config"
-          element={<WorkspaceSettingsPage token={token} user={user as UserPublic} tenants={tenants} initialTab="ai" />}
+          element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="ai" />}
         />
-        <Route path="leads" element={<WorkspaceLeadsPage token={token} />} />
-        <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage token={token} /> : <Navigate to="/app/dashboard" replace />} />
+        <Route path="leads" element={<WorkspaceLeadsPage />} />
+        <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage /> : <Navigate to="/app/dashboard" replace />} />
       </Route>
       <Route
         path="*"

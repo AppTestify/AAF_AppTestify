@@ -3,10 +3,9 @@ import { useSearchParams } from "react-router-dom";
 import { fetchEvidence, fetchPortfolioProjects, type EvidenceRow, type PortfolioProject } from "../api";
 
 type WorkspaceEvidencePageProps = {
-  token: string;
-};
+  };
 
-export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
+export function WorkspaceEvidencePage({}: WorkspaceEvidencePageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
   const setListProjectFilter = (v: string) => {
@@ -36,14 +35,14 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
   }, [rows]);
 
   useEffect(() => {
-    fetchPortfolioProjects(token)
+    fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     setListLoading(true);
-    fetchEvidence(token, {
+    fetchEvidence({
       connector: connector || undefined,
       run_id: runId ? Number(runId) : undefined,
       portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
@@ -52,7 +51,7 @@ export function WorkspaceEvidencePage({ token }: WorkspaceEvidencePageProps) {
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load evidence"))
       .finally(() => setListLoading(false));
-  }, [token, connector, runId, listProjectFilter]);
+  }, [connector, runId, listProjectFilter]);
 
   return (
     <div className="app">

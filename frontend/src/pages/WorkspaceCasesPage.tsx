@@ -12,12 +12,11 @@ import {
 } from "../api";
 
 type WorkspaceCasesPageProps = {
-  token: string;
   tenantSlug?: string | null;
   canManage: boolean;
 };
 
-export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCasesPageProps) {
+export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
   const setListProjectFilter = (v: string) => {
@@ -55,15 +54,15 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   }, [cases]);
 
   useEffect(() => {
-    fetchPortfolioProjects(token)
+    fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-  }, [token]);
+  }, []);
 
   const loadCases = async () => {
     try {
       setListLoading(true);
-      const rows = await fetchCasesAdvanced(token, {
+      const rows = await fetchCasesAdvanced({
         status: statusFilter === "all" ? undefined : statusFilter,
         limit: 50,
         offset,
@@ -79,14 +78,12 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
   useEffect(() => {
     loadCases().catch((e) => setError(e instanceof Error ? e.message : "Failed to load cases"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, statusFilter, offset, query, listProjectFilter]);
+  }, [statusFilter, offset, query, listProjectFilter]);
 
   const handleCreateCase = async () => {
     if (!title.trim()) return;
     try {
-      const row = await createCase(
-        token,
-        {
+      const row = await createCase({
           title: title.trim(),
           portfolio_project_id: createProjectId ? Number(createProjectId) : null,
         },
@@ -107,7 +104,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
     if (!selectedCase) return;
     try {
       setDecisionLoading(true);
-      const row = await createDecision(token, selectedCase.id, {
+      const row = await createDecision(selectedCase.id, {
         recommended_action: "investigate",
         rationale: "Created from UI",
       });
@@ -125,7 +122,7 @@ export function WorkspaceCasesPage({ token, tenantSlug, canManage }: WorkspaceCa
     if (!decision) return;
     try {
       setDecisionLoading(true);
-      const row = await approveDecision(token, decision.id, { final_action: "approved", rationale: "Approved in UI" });
+      const row = await approveDecision(decision.id, { final_action: "approved", rationale: "Approved in UI" });
       setDecision(row);
       setToast(`Decision #${row.id} approved`);
       setTimeout(() => setToast(null), 2200);

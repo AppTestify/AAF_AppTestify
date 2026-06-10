@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { acknowledgeAlert, fetchAuditEvents, type AuditEvent } from "../api";
 
 type WorkspaceAlertsPageProps = {
-  token: string;
-};
+  };
 
-export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
+export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [area, setArea] = useState<string>("");
@@ -23,17 +22,17 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
 
   useEffect(() => {
     setListLoading(true);
-    fetchAuditEvents(token, { area: area || undefined, severity: severity || undefined, limit: 200 })
+    fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 })
       .then(setEvents)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load audit events"))
       .finally(() => setListLoading(false));
-  }, [token, area, severity]);
+  }, [area, severity]);
 
   const onAcknowledge = async (id: number) => {
     try {
       setAckLoadingId(id);
-      await acknowledgeAlert(token, id);
-      const next = await fetchAuditEvents(token, { area: area || undefined, severity: severity || undefined, limit: 200 });
+      await acknowledgeAlert(id);
+      const next = await fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 });
       setEvents(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Acknowledge failed");
@@ -47,8 +46,8 @@ export function WorkspaceAlertsPage({ token }: WorkspaceAlertsPageProps) {
     setBulkLoading(true);
     setError(null);
     try {
-      await Promise.all(events.map((e) => acknowledgeAlert(token, e.id)));
-      const next = await fetchAuditEvents(token, { area: area || undefined, severity: severity || undefined, limit: 200 });
+      await Promise.all(events.map((e) => acknowledgeAlert(e.id)));
+      const next = await fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 });
       setEvents(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk acknowledge failed");

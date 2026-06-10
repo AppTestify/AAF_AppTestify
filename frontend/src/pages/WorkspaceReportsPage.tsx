@@ -21,8 +21,7 @@ import {
 } from "../api";
 
 type WorkspaceReportsPageProps = {
-  token: string;
-};
+  };
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -33,7 +32,7 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
+export function WorkspaceReportsPage({}: WorkspaceReportsPageProps) {
   const [loading, setLoading] = useState(false);
   const [runs, setRuns] = useState<GovernanceRunV1[]>([]);
   const [incidents, setIncidents] = useState<IntelligenceIncident[]>([]);
@@ -58,14 +57,14 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
     setLoading(true);
     setError("");
     Promise.all([
-      fetchGovernanceRuns(token, { limit: 200 }),
-      fetchIntelligenceIncidents(token, 100),
-      fetchWorkflowRuns(token),
-      fetchExecutiveSummaries(token, 25),
-      fetchAuditEvents(token, { limit: 500 }),
-      fetchConsensusSummary(token),
-      fetchReleaseGovernance(token),
-      fetchExecutivePortfolioReport(token),
+      fetchGovernanceRuns({ limit: 200 }),
+      fetchIntelligenceIncidents(100),
+      fetchWorkflowRuns(),
+      fetchExecutiveSummaries(25),
+      fetchAuditEvents({ limit: 500 }),
+      fetchConsensusSummary(),
+      fetchReleaseGovernance(),
+      fetchExecutivePortfolioReport(),
     ])
       .then(([r, i, w, e, a, c, g, p]) => {
         setRuns(r);
@@ -79,7 +78,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load reports"))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, []);
 
   const runStatusCounts = useMemo(() => {
     const out: Record<string, number> = {};
@@ -102,7 +101,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
   const exportRunsJson = async () => {
     try {
       setError("");
-      const data = (await fetchRunSummaryReport(token, "json", 200, runStatusFilter || undefined)) as {
+      const data = (await fetchRunSummaryReport("json", 200, runStatusFilter || undefined)) as {
         count: number;
         items: Record<string, unknown>[];
       };
@@ -116,7 +115,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
   const exportRunsCsv = async () => {
     try {
       setError("");
-      const blob = (await fetchRunSummaryReport(token, "csv", 200, runStatusFilter || undefined)) as Blob;
+      const blob = (await fetchRunSummaryReport("csv", 200, runStatusFilter || undefined)) as Blob;
       downloadBlob(blob, "governance_run_summary.csv");
       notify("Run summary CSV downloaded");
     } catch (e) {
@@ -133,7 +132,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
   const exportAuditJson = async () => {
     try {
       setError("");
-      const data = (await fetchAuditExport(token, "json", auditAreaFilter || undefined)) as {
+      const data = (await fetchAuditExport("json", auditAreaFilter || undefined)) as {
         count: number;
         items: Record<string, unknown>[];
       };
@@ -147,7 +146,7 @@ export function WorkspaceReportsPage({ token }: WorkspaceReportsPageProps) {
   const exportAuditCsv = async () => {
     try {
       setError("");
-      const blob = (await fetchAuditExport(token, "csv", auditAreaFilter || undefined)) as Blob;
+      const blob = (await fetchAuditExport("csv", auditAreaFilter || undefined)) as Blob;
       downloadBlob(blob, "audit_events.csv");
       notify("Audit CSV downloaded");
     } catch (e) {

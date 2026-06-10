@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated, Optional
+from typing import Optional
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,8 +13,6 @@ from app.models.rbac import Permission, Role, RolePermission, UserRoleBinding
 from app.models.user import User
 from app.security import decode_access_token
 
-security_bearer = HTTPBearer(auto_error=False)
-
 
 @lru_cache
 def settings_dep() -> Settings:
@@ -23,22 +20,22 @@ def settings_dep() -> Settings:
 
 
 def get_current_user(
-    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security_bearer)],
+    request: Request,
     db: Session = Depends(get_db),
     settings: Settings = Depends(settings_dep),
 ) -> User:
-    if creds is None or creds.scheme.lower() != "bearer":
+    token = request.cookies.get("access_token")
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
         )
-    sub = decode_access_token(creds.credentials, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        
+    sub = decode_access_token(token, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm)
     if sub is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     try:
         user_id = int(sub)

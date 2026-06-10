@@ -20,11 +20,10 @@ import {
 } from "../api";
 
 type WorkspaceHomePageProps = {
-  token: string;
   user: UserPublic;
 };
 
-export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
+export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [obs, setObs] = useState<ObservabilitySummary | null>(null);
   const [consensus, setConsensus] = useState<ConsensusSummary | null>(null);
@@ -36,13 +35,13 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
 
   useEffect(() => {
     Promise.all([
-      fetchDashboardSummary(token),
-      fetchObservabilitySummary(token),
-      fetchConsensusSummary(token),
-      fetchIntelligenceIncidents(token, 6),
-      fetchExecutiveSummaries(token, 3),
-      fetchReleaseGovernance(token),
-      fetchWorkflowRuns(token),
+      fetchDashboardSummary(),
+      fetchObservabilitySummary(),
+      fetchConsensusSummary(),
+      fetchIntelligenceIncidents(6),
+      fetchExecutiveSummaries(3),
+      fetchReleaseGovernance(),
+      fetchWorkflowRuns(),
     ])
       .then(([a, b, c, d, e, f, g]) => {
         setSummary(a);
@@ -54,12 +53,12 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
         setWorkflowRuns(g);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"));
-  }, [token]);
+  }, []);
 
   const runWorkflow = async (workflowType: string) => {
     try {
       const latestIncident = incidents[0];
-      const out = await runGovernanceWorkflow(token, workflowType, latestIncident?.id);
+      const out = await runGovernanceWorkflow(workflowType, latestIncident?.id);
       setWorkflowRuns((prev) => [out, ...prev].slice(0, 10));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Workflow execution failed");
@@ -70,7 +69,7 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
     try {
       const latestIncident = incidents[0];
       if (!latestIncident) return;
-      const rerun = await runRarIteration(token, latestIncident.id);
+      const rerun = await runRarIteration(latestIncident.id);
       setIncidents((prev) =>
         prev.map((i) => (i.id === latestIncident.id ? { ...i, confidence: rerun.confidence_after } : i))
       );

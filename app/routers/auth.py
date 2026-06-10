@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -54,9 +54,6 @@ def user_to_public(user: User) -> UserPublic:
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int  # seconds
     user: UserPublic
 
 
@@ -79,6 +76,7 @@ def signup_status(settings: Settings = Depends(settings_dep)):
 @router.post("/signup-tenant", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
 def signup_tenant(
     body: TenantSignupRequest,
+    response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(settings_dep),
 ):
@@ -124,16 +122,23 @@ def signup_tenant(
         algorithm=settings.jwt_algorithm,
         expire_minutes=expire_minutes,
     )
-    return LoginResponse(
-        access_token=token,
-        expires_in=expire_minutes * 60,
-        user=user_to_public(user),
+    
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=expire_minutes * 60,
     )
+    
+    return LoginResponse(user=user_to_public(user))
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(
     body: LoginRequest,
+    response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(settings_dep),
 ):
@@ -180,13 +185,25 @@ def login(
         )
     )
     db.commit()
-    return LoginResponse(
-        access_token=token,
-        expires_in=expire_minutes * 60,
-        user=user_to_public(user),
+    
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=expire_minutes * 60,
     )
+    
+    return LoginResponse(user=user_to_public(user))
 
 
 @router.get("/me", response_model=UserPublic)
 def me(current: User = Depends(get_current_active_user)):
     return user_to_public(current)
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="strict")
+    return {"message": "Logged out successfully"}

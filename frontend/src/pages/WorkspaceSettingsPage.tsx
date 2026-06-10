@@ -26,7 +26,6 @@ import {
 type SettingsTab = "general" | "connectors" | "ai" | "users";
 
 type WorkspaceSettingsPageProps = {
-  token: string;
   user: UserPublic;
   tenants: TenantRow[] | null;
   initialTab?: SettingsTab;
@@ -64,7 +63,7 @@ const CONNECTOR_HELP: Record<string, string> = {
   finops: "Path to a local cost export file (JSON/CSV) when FinOps mode is used.",
 };
 
-export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "general" }: WorkspaceSettingsPageProps) {
+export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }: WorkspaceSettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [targetTenantSlug, setTargetTenantSlug] = useState<string | null>(user.tenant_slug ?? null);
   const [loading, setLoading] = useState(false);
@@ -106,11 +105,11 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     setLoading(true);
     setError(null);
     Promise.all([
-      fetchTenantSettings(token, targetForApi),
-      fetchConnectorConfigs(token, targetForApi),
-      fetchProviderConfigs(token, targetForApi),
-      fetchNotificationConfig(token, targetForApi),
-      fetchRbacUsers(token, targetForApi),
+      fetchTenantSettings(targetForApi),
+      fetchConnectorConfigs(targetForApi),
+      fetchProviderConfigs(targetForApi),
+      fetchNotificationConfig(targetForApi),
+      fetchRbacUsers(targetForApi),
     ])
       .then(([settings, connectors, providers, notifications, users]) => {
         setDefaultProvider(settings.default_ai_provider ?? "");
@@ -172,7 +171,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
       .finally(() => setLoading(false));
-  }, [token, targetForApi]);
+  }, [targetForApi]);
 
   const handleSaveGeneral = async () => {
     try {
@@ -181,9 +180,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       const prefs = JSON.parse(uiPrefsText || "{}") as Record<string, unknown>;
       const llmKeys = JSON.parse(llmKeysText || "{}") as Record<string, string>;
       const ragConfig = JSON.parse(ragConfigText || "{}") as Record<string, unknown>;
-      await patchTenantSettings(
-        token,
-        {
+      await patchTenantSettings({
           default_ai_provider: defaultProvider || null,
           ui_preferences: prefs,
           llm_keys: llmKeys,
@@ -203,7 +200,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     if (!notificationCfg) return;
     try {
       setSaving(true);
-      const payload: Parameters<typeof saveNotificationConfig>[1] = {
+      const payload: Parameters<typeof saveNotificationConfig>[0] = {
         smtp_host: notificationCfg.smtp_host,
         smtp_port: notificationCfg.smtp_port,
         smtp_username: notificationCfg.smtp_username,
@@ -220,7 +217,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       if (slackWebhook.trim()) {
         payload.slack_incoming_webhook = slackWebhook.trim();
       }
-      const saved = await saveNotificationConfig(token, payload, targetForApi);
+      const saved = await saveNotificationConfig(payload, targetForApi);
       setNotificationCfg(saved);
       setSmtpPassword("");
       setSlackWebhook("");
@@ -236,9 +233,9 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
   const handleTestSmtp = async () => {
     try {
       setSaving(true);
-      const result = await testNotificationConfig(token, { to_email: smtpTestEmail || null }, targetForApi);
+      const result = await testNotificationConfig({ to_email: smtpTestEmail || null }, targetForApi);
       setMessage(result.message);
-      const refreshed = await fetchNotificationConfig(token, targetForApi);
+      const refreshed = await fetchNotificationConfig(targetForApi);
       setNotificationCfg(refreshed);
     } catch (e) {
       setError(e instanceof Error ? e.message : "SMTP test failed");
@@ -251,9 +248,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     if (!newUserEmail.trim()) return;
     try {
       setSaving(true);
-      const created = await createRbacUser(
-        token,
-        { email: newUserEmail.trim(), role_name: newUserRole, is_active: true },
+      const created = await createRbacUser({ email: newUserEmail.trim(), role_name: newUserRole, is_active: true },
         targetForApi
       );
       setNewUserEmail("");
@@ -262,7 +257,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           ? `User created. Email delivery: ${created.delivery_status}. Temporary password: ${created.temporary_password}`
           : `User created and credentials sent by email.`
       );
-      setAdminUsers(await fetchRbacUsers(token, targetForApi));
+      setAdminUsers(await fetchRbacUsers(targetForApi));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add user");
     } finally {
@@ -309,7 +304,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       setSaving(true);
       setMessage(null);
       setError(null);
-      const saved = await saveConnectorConfigs(token, connectorDraft, targetForApi);
+      const saved = await saveConnectorConfigs(connectorDraft, targetForApi);
       setConnectorRows(saved);
       syncDraftFromSavedConnectors(saved);
       setMessage("All connector settings saved.");
@@ -325,10 +320,10 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       setSaving(true);
       setMessage(null);
       setError(null);
-      const saved = await saveConnectorConfigs(token, connectorDraft, targetForApi);
+      const saved = await saveConnectorConfigs(connectorDraft, targetForApi);
       setConnectorRows(saved);
       syncDraftFromSavedConnectors(saved);
-      const validated = await validateConnectorConfig(token, name, targetForApi);
+      const validated = await validateConnectorConfig(name, targetForApi);
       setConnectorRows((prev) =>
         prev.map((c) => (c.connector_name === name ? validated : c)).concat(
           prev.some((c) => c.connector_name === name) ? [] : [validated]
@@ -351,7 +346,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
       setSaving(true);
       setMessage(null);
       setError(null);
-      const validated = await validateConnectorConfig(token, name, targetForApi);
+      const validated = await validateConnectorConfig(name, targetForApi);
       setConnectorRows((prev) =>
         prev.map((c) => (c.connector_name === name ? validated : c)).concat(prev.some((c) => c.connector_name === name) ? [] : [validated])
       );
@@ -384,9 +379,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
           metadata_json: d.metadata_json || {},
         };
       });
-      const saved = await saveProviderConfigs(
-        token,
-        {
+      const saved = await saveProviderConfigs({
           default_provider: defaultProvider || null,
           providers: payload as Record<
             string,
@@ -417,7 +410,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
   const handleValidateProvider = async (provider: string) => {
     try {
       setMessage(null);
-      const validated = await validateProviderConfig(token, provider, targetForApi);
+      const validated = await validateProviderConfig(provider, targetForApi);
       setProviderRows((prev) =>
         prev.map((p) => (p.provider_name === provider ? validated : p)).concat(prev.some((p) => p.provider_name === provider) ? [] : [validated])
       );
@@ -431,7 +424,7 @@ export function WorkspaceSettingsPage({ token, user, tenants, initialTab = "gene
     try {
       setSaving(true);
       setMessage(null);
-      const result = await runGovernance(token, aiTestPrompt, "ai-runtime-smoke", targetForApi);
+      const result = await runGovernance(aiTestPrompt, "ai-runtime-smoke", targetForApi);
       const runtime = (result.runtime_config as Record<string, unknown>) || {};
       const ai = (runtime.ai as Record<string, unknown>) || {};
       const activeProvider = ai.default_provider as string | undefined;

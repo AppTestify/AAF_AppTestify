@@ -15,7 +15,6 @@ import {
 } from "../api";
 
 type WorkspaceIntegrationsPageProps = {
-  token: string;
   tenantSlug?: string | null;
   canManage: boolean;
 };
@@ -25,7 +24,7 @@ function statusChip(ok: boolean | null) {
   return ok ? "succeeded" : "failed";
 }
 
-export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: WorkspaceIntegrationsPageProps) {
+export function WorkspaceIntegrationsPage({ tenantSlug, canManage }: WorkspaceIntegrationsPageProps) {
   const [connectors, setConnectors] = useState<ConnectorConfig[]>([]);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -41,12 +40,12 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
 
   const load = async () => {
     const [connectorRows, providerRows, telemetry, lifecycleSummary] = await Promise.all([
-      fetchConnectorConfigs(token, tenantSlug),
-      fetchProviderConfigs(token, tenantSlug),
-      fetchDashboardSummary(token),
-      fetchDecisionLifecycle(token),
+      fetchConnectorConfigs(tenantSlug),
+      fetchProviderConfigs(tenantSlug),
+      fetchDashboardSummary(),
+      fetchDecisionLifecycle(),
     ]);
-    const obsSummary = await fetchObservabilitySummary(token);
+    const obsSummary = await fetchObservabilitySummary();
     setConnectors(connectorRows);
     setProviders(providerRows.providers);
     setSummary(telemetry);
@@ -57,11 +56,11 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load integrations telemetry"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, tenantSlug]);
+  }, [tenantSlug]);
 
   const onValidateConnector = async (name: string) => {
     try {
-      const row = await validateConnectorConfig(token, name, tenantSlug);
+      const row = await validateConnectorConfig(name, tenantSlug);
       setConnectors((prev) => prev.map((x) => (x.connector_name === name ? row : x)));
       notify(`${name} validated`);
     } catch (e) {
@@ -71,7 +70,7 @@ export function WorkspaceIntegrationsPage({ token, tenantSlug, canManage }: Work
 
   const onValidateProvider = async (name: string) => {
     try {
-      const row = await validateProviderConfig(token, name, tenantSlug);
+      const row = await validateProviderConfig(name, tenantSlug);
       setProviders((prev) => prev.map((x) => (x.provider_name === name ? row : x)));
       notify(`${name} validated`);
     } catch (e) {

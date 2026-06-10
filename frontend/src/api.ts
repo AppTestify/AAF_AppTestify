@@ -10,7 +10,6 @@ export type UserPublic = {
 };
 
 export type LoginResponse = {
-  access_token: string;
   token_type: string;
   expires_in: number;
   user: UserPublic;
@@ -34,7 +33,7 @@ export type SignupStatus = {
 };
 
 export async function fetchSignupStatus(): Promise<SignupStatus> {
-  const r = await fetch(`${API}/auth/signup-status`);
+  const r = await fetch(`${API}/auth/signup-status`, { credentials: "include" });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<SignupStatus>;
 }
@@ -60,11 +59,10 @@ export type AccessLead = {
 };
 
 export async function signupTenant(body: TenantSignupBody): Promise<LoginResponse> {
-  const r = await fetch(`${API}/auth/signup-tenant`, {
+  const r = await fetch(`${API}/auth/signup-tenant`, { credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<LoginResponse>;
 }
@@ -76,54 +74,48 @@ export async function submitRequestAccessLead(body: {
   website?: string;
   notes?: string;
 }): Promise<AccessLead> {
-  const r = await fetch(`${API}/leads/request-access`, {
+  const r = await fetch(`${API}/leads/request-access`, { credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AccessLead>;
 }
 
-export async function fetchLeads(token: string): Promise<AccessLead[]> {
-  const r = await fetch(`${API}/leads`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchLeads(): Promise<AccessLead[]> {
+  const r = await fetch(`${API}/leads`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AccessLead[]>;
 }
 
 export async function convertLeadToTenant(
-  token: string,
   leadId: number,
   body: { tenant_name: string; tenant_slug: string }
 ): Promise<AccessLead> {
-  const r = await fetch(`${API}/leads/${leadId}/convert`, {
+  const r = await fetch(`${API}/leads/${leadId}/convert`, { credentials: "include",
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AccessLead>;
 }
 
+export async function logout(): Promise<void> {
+  await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  const r = await fetch(`${API}/auth/login`, {
+  const r = await fetch(`${API}/auth/login`, { credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+    body: JSON.stringify({ email, password })});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<LoginResponse>;
 }
 
-export async function fetchMe(token: string): Promise<UserPublic> {
-  const r = await fetch(`${API}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchMe(): Promise<UserPublic> {
+  const r = await fetch(`${API}/auth/me`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<UserPublic>;
 }
@@ -136,26 +128,20 @@ export type TenantRow = {
   user_count: number;
 };
 
-export async function fetchTenants(token: string): Promise<TenantRow[]> {
-  const r = await fetch(`${API}/admin/tenants`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchTenants(): Promise<TenantRow[]> {
+  const r = await fetch(`${API}/admin/tenants`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantRow[]>;
 }
 
 export async function createTenant(
-  token: string,
   body: { name: string; slug: string }
 ): Promise<TenantRow> {
-  const r = await fetch(`${API}/admin/tenants`, {
+  const r = await fetch(`${API}/admin/tenants`, { credentials: "include",
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantRow>;
 }
@@ -165,7 +151,7 @@ export type PromptLibrary = {
 };
 
 export async function fetchPromptLibrary(): Promise<PromptLibrary> {
-  const r = await fetch(`${API}/prompts/library`);
+  const r = await fetch(`${API}/prompts/library`, { credentials: "include" });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PromptLibrary>;
 }
@@ -173,30 +159,24 @@ export async function fetchPromptLibrary(): Promise<PromptLibrary> {
 export type GovernanceRunResult = Record<string, unknown>;
 
 export async function runGovernance(
-  token: string,
   prompt: string,
   promptId?: string | null,
   tenantSlug?: string | null
 ): Promise<GovernanceRunResult> {
   const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
-  const r = await fetch(`${API}/governance/run${q}`, {
+  const r = await fetch(`${API}/governance/run${q}`, { credentials: "include",
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ prompt, prompt_id: promptId ?? null }),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify({ prompt, prompt_id: promptId ?? null })});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceRunResult>;
 }
 
-export async function runGovernanceBatch(token: string, tenantSlug?: string | null): Promise<unknown> {
+export async function runGovernanceBatch(tenantSlug?: string | null): Promise<unknown> {
   const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
-  const r = await fetch(`${API}/governance/batch${q}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/governance/batch${q}`, { credentials: "include",
+    method: "POST"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json();
 }
@@ -256,79 +236,61 @@ function tenantQuery(tenantSlug?: string | null): string {
   return `?tenant_slug=${encodeURIComponent(tenantSlug)}`;
 }
 
-export async function fetchTenantSettings(token: string, tenantSlug?: string | null): Promise<TenantSettings> {
-  const r = await fetch(`${API}/tenant/settings${tenantQuery(tenantSlug)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchTenantSettings(tenantSlug?: string | null): Promise<TenantSettings> {
+  const r = await fetch(`${API}/tenant/settings${tenantQuery(tenantSlug)}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantSettings>;
 }
 
 export async function patchTenantSettings(
-  token: string,
   body: TenantSettingsPatch,
   tenantSlug?: string | null
 ): Promise<TenantSettings> {
-  const r = await fetch(`${API}/tenant/settings${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/tenant/settings${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantSettings>;
 }
 
-export async function fetchConnectorConfigs(token: string, tenantSlug?: string | null): Promise<ConnectorConfig[]> {
-  const r = await fetch(`${API}/tenant/connectors${tenantQuery(tenantSlug)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchConnectorConfigs(tenantSlug?: string | null): Promise<ConnectorConfig[]> {
+  const r = await fetch(`${API}/tenant/connectors${tenantQuery(tenantSlug)}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ConnectorConfig[]>;
 }
 
 export async function saveConnectorConfigs(
-  token: string,
   connectors: Record<string, { enabled: boolean; config_json: Record<string, unknown>; credentials_json: Record<string, unknown> }>,
   tenantSlug?: string | null
 ): Promise<ConnectorConfig[]> {
-  const r = await fetch(`${API}/tenant/connectors${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/tenant/connectors${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "PUT",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ connectors }),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify({ connectors })});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ConnectorConfig[]>;
 }
 
 export async function validateConnectorConfig(
-  token: string,
   connectorName: string,
   tenantSlug?: string | null
 ): Promise<ConnectorConfig> {
-  const r = await fetch(`${API}/tenant/connectors/${encodeURIComponent(connectorName)}/validate${tenantQuery(tenantSlug)}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/tenant/connectors/${encodeURIComponent(connectorName)}/validate${tenantQuery(tenantSlug)}`, { credentials: "include",
+    method: "POST"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ConnectorConfig>;
 }
 
-export async function fetchProviderConfigs(token: string, tenantSlug?: string | null): Promise<ProviderSetOut> {
-  const r = await fetch(`${API}/tenant/ai/providers${tenantQuery(tenantSlug)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchProviderConfigs(tenantSlug?: string | null): Promise<ProviderSetOut> {
+  const r = await fetch(`${API}/tenant/ai/providers${tenantQuery(tenantSlug)}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ProviderSetOut>;
 }
 
 export async function saveProviderConfigs(
-  token: string,
   body: {
     default_provider?: string | null;
     providers: Record<
@@ -349,29 +311,23 @@ export async function saveProviderConfigs(
   },
   tenantSlug?: string | null
 ): Promise<ProviderSetOut> {
-  const r = await fetch(`${API}/tenant/ai/providers${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/tenant/ai/providers${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "PUT",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+      "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ProviderSetOut>;
 }
 
 export async function validateProviderConfig(
-  token: string,
   providerName: string,
   tenantSlug?: string | null
 ): Promise<ProviderConfig> {
   const r = await fetch(
     `${API}/tenant/ai/providers/${encodeURIComponent(providerName)}/validate${tenantQuery(tenantSlug)}`,
     {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    }
+      method: "POST"}
   );
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ProviderConfig>;
@@ -466,10 +422,8 @@ export type DashboardSummary = {
   integration_fresh_pct: number;
 };
 
-export async function fetchDashboardSummary(token: string): Promise<DashboardSummary> {
-  const r = await fetch(`${API}/telemetry/summary`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchDashboardSummary(): Promise<DashboardSummary> {
+  const r = await fetch(`${API}/telemetry/summary`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<DashboardSummary>;
 }
@@ -532,10 +486,8 @@ export type ObservabilitySummary = {
   };
 };
 
-export async function fetchObservabilitySummary(token: string, windowSeconds = 300): Promise<ObservabilitySummary> {
-  const r = await fetch(`${API}/telemetry/observability/summary?window_seconds=${windowSeconds}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchObservabilitySummary(windowSeconds = 300): Promise<ObservabilitySummary> {
+  const r = await fetch(`${API}/telemetry/observability/summary?window_seconds=${windowSeconds}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ObservabilitySummary>;
 }
@@ -581,10 +533,8 @@ export type DecisionLifecycle = {
   };
 };
 
-export async function fetchDecisionLifecycle(token: string): Promise<DecisionLifecycle> {
-  const r = await fetch(`${API}/telemetry/decision-lifecycle`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchDecisionLifecycle(): Promise<DecisionLifecycle> {
+  const r = await fetch(`${API}/telemetry/decision-lifecycle`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<DecisionLifecycle>;
 }
@@ -658,88 +608,69 @@ export type WorkflowRun = {
   created_at: string;
 };
 
-export async function fetchIntelligenceIncidents(token: string, limit = 10): Promise<IntelligenceIncident[]> {
-  const r = await fetch(`${API}/intelligence/incidents?limit=${limit}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchIntelligenceIncidents(limit = 10): Promise<IntelligenceIncident[]> {
+  const r = await fetch(`${API}/intelligence/incidents?limit=${limit}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<IntelligenceIncident[]>;
 }
 
-export async function fetchConsensusSummary(token: string): Promise<ConsensusSummary> {
-  const r = await fetch(`${API}/intelligence/consensus/summary`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchConsensusSummary(): Promise<ConsensusSummary> {
+  const r = await fetch(`${API}/intelligence/consensus/summary`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ConsensusSummary>;
 }
 
-export async function fetchExecutiveSummaries(token: string, limit = 5): Promise<ExecutiveSummary[]> {
-  const r = await fetch(`${API}/intelligence/executive-summaries?limit=${limit}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchExecutiveSummaries(limit = 5): Promise<ExecutiveSummary[]> {
+  const r = await fetch(`${API}/intelligence/executive-summaries?limit=${limit}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ExecutiveSummary[]>;
 }
 
-export async function fetchReleaseGovernance(token: string): Promise<ReleaseGovernance> {
-  const r = await fetch(`${API}/intelligence/release-governance`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchReleaseGovernance(): Promise<ReleaseGovernance> {
+  const r = await fetch(`${API}/intelligence/release-governance`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ReleaseGovernance>;
 }
 
-export async function runRarIteration(token: string, incidentId: number): Promise<RARIteration> {
-  const r = await fetch(`${API}/intelligence/incidents/${incidentId}/rar`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function runRarIteration(incidentId: number): Promise<RARIteration> {
+  const r = await fetch(`${API}/intelligence/incidents/${incidentId}/rar`, { credentials: "include",
+    method: "POST"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<RARIteration>;
 }
 
 export async function runGovernanceWorkflow(
-  token: string,
   workflowType: string,
   incidentId?: number
 ): Promise<WorkflowRun> {
   const q = typeof incidentId === "number" ? `?incident_id=${incidentId}` : "";
-  const r = await fetch(`${API}/intelligence/workflows/${encodeURIComponent(workflowType)}${q}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/intelligence/workflows/${encodeURIComponent(workflowType)}${q}`, { credentials: "include",
+    method: "POST"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<WorkflowRun>;
 }
 
-export async function fetchWorkflowRuns(token: string, workflowType?: string): Promise<WorkflowRun[]> {
+export async function fetchWorkflowRuns(workflowType?: string): Promise<WorkflowRun[]> {
   const q = workflowType ? `?workflow_type=${encodeURIComponent(workflowType)}` : "";
-  const r = await fetch(`${API}/intelligence/workflows${q}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/intelligence/workflows${q}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<WorkflowRun[]>;
 }
 
 export async function createGovernanceRun(
-  token: string,
   body: { prompt: string; prompt_id?: string | null; portfolio_project_id?: number | null },
   tenantSlug?: string | null
 ): Promise<GovernanceRunV1> {
-  const r = await fetch(`${API}/governance/runs${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/governance/runs${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceRunV1>;
 }
 
-export async function fetchGovernanceRun(token: string, runId: number): Promise<GovernanceRunV1> {
-  const r = await fetch(`${API}/governance/runs/${runId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchGovernanceRun(runId: number): Promise<GovernanceRunV1> {
+  const r = await fetch(`${API}/governance/runs/${runId}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceRunV1>;
 }
@@ -750,21 +681,18 @@ export type GovernanceShareLink = {
 };
 
 export async function createGovernanceRunShareLink(
-  token: string,
   runId: number,
   body?: { expires_in_hours?: number }
 ): Promise<GovernanceShareLink> {
-  const r = await fetch(`${API}/governance/runs/${runId}/share-link`, {
+  const r = await fetch(`${API}/governance/runs/${runId}/share-link`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ expires_in_hours: body?.expires_in_hours ?? 168 }),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify({ expires_in_hours: body?.expires_in_hours ?? 168 })});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceShareLink>;
 }
 
 export async function fetchGovernanceRuns(
-  token: string,
   params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
 ): Promise<GovernanceRunV1[]> {
   const search = new URLSearchParams();
@@ -776,15 +704,12 @@ export async function fetchGovernanceRuns(
     search.set("portfolio_project_id", String(params.portfolio_project_id));
   }
   const suffix = search.toString() ? `?${search.toString()}` : "";
-  const r = await fetch(`${API}/governance/runs${suffix}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/governance/runs${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceRunV1[]>;
 }
 
 export async function createCase(
-  token: string,
   body: {
     title: string;
     run_id?: number | null;
@@ -793,25 +718,21 @@ export async function createCase(
   },
   tenantSlug?: string | null
 ): Promise<GovernanceCase> {
-  const r = await fetch(`${API}/governance/cases${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/governance/cases${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceCase>;
 }
 
-export async function fetchCases(token: string, limit = 100): Promise<GovernanceCase[]> {
-  const r = await fetch(`${API}/governance/cases?limit=${limit}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchCases(limit = 100): Promise<GovernanceCase[]> {
+  const r = await fetch(`${API}/governance/cases?limit=${limit}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceCase[]>;
 }
 
 export async function fetchCasesAdvanced(
-  token: string,
   params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
 ): Promise<GovernanceCase[]> {
   const q = new URLSearchParams();
@@ -823,15 +744,12 @@ export async function fetchCasesAdvanced(
     q.set("portfolio_project_id", String(params.portfolio_project_id));
   }
   const suffix = q.toString() ? `?${q.toString()}` : "";
-  const r = await fetch(`${API}/governance/cases${suffix}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/governance/cases${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceCase[]>;
 }
 
 export async function updateCase(
-  token: string,
   caseId: number,
   body: {
     status?: string;
@@ -840,45 +758,39 @@ export async function updateCase(
     portfolio_project_id?: number | null;
   }
 ): Promise<GovernanceCase> {
-  const r = await fetch(`${API}/governance/cases/${caseId}`, {
+  const r = await fetch(`${API}/governance/cases/${caseId}`, { credentials: "include",
     method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<GovernanceCase>;
 }
 
 export async function createDecision(
-  token: string,
   caseId: number,
   body: { run_id?: number | null; recommended_action?: string | null; rationale?: string | null }
 ): Promise<Decision> {
-  const r = await fetch(`${API}/governance/cases/${caseId}/decisions`, {
+  const r = await fetch(`${API}/governance/cases/${caseId}/decisions`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<Decision>;
 }
 
 export async function approveDecision(
-  token: string,
   decisionId: number,
   body: { final_action: string; rationale?: string | null }
 ): Promise<Decision> {
-  const r = await fetch(`${API}/governance/decisions/${decisionId}/approve`, {
+  const r = await fetch(`${API}/governance/decisions/${decisionId}/approve`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<Decision>;
 }
 
 export async function fetchAuditEvents(
-  token: string,
   params?: { area?: string; severity?: string; limit?: number }
 ): Promise<AuditEvent[]> {
   const q = new URLSearchParams();
@@ -886,9 +798,7 @@ export async function fetchAuditEvents(
   if (params?.severity) q.set("severity", params.severity);
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
   const suffix = q.toString() ? `?${q.toString()}` : "";
-  const r = await fetch(`${API}/governance/audit-events${suffix}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/governance/audit-events${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AuditEvent[]>;
 }
@@ -902,7 +812,6 @@ export type EvidenceRow = {
 };
 
 export async function fetchEvidence(
-  token: string,
   params?: { connector?: string; run_id?: number; portfolio_project_id?: number; limit?: number; offset?: number }
 ): Promise<EvidenceRow[]> {
   const q = new URLSearchParams();
@@ -914,24 +823,19 @@ export async function fetchEvidence(
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
   if (typeof params?.offset === "number") q.set("offset", String(params.offset));
   const suffix = q.toString() ? `?${q.toString()}` : "";
-  const r = await fetch(`${API}/governance/evidence${suffix}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/governance/evidence${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<EvidenceRow[]>;
 }
 
-export async function acknowledgeAlert(token: string, eventId: number): Promise<AuditEvent> {
-  const r = await fetch(`${API}/governance/audit-events/${eventId}/acknowledge`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function acknowledgeAlert(eventId: number): Promise<AuditEvent> {
+  const r = await fetch(`${API}/governance/audit-events/${eventId}/acknowledge`, { credentials: "include",
+    method: "POST"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AuditEvent>;
 }
 
 export async function fetchRunSummaryReport(
-  token: string,
   format: "json" | "csv",
   limit = 200,
   status?: string,
@@ -942,16 +846,13 @@ export async function fetchRunSummaryReport(
   q.set("limit", String(limit));
   if (status) q.set("status", status);
   if (typeof portfolioProjectId === "number") q.set("portfolio_project_id", String(portfolioProjectId));
-  const r = await fetch(`${API}/reports/runs/summary?${q.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/reports/runs/summary?${q.toString()}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   if (format === "csv") return r.blob();
   return r.json();
 }
 
 export async function fetchSingleRunExport(
-  token: string,
   runId: number,
   format: "json" | "csv"
 ): Promise<
@@ -964,25 +865,20 @@ export async function fetchSingleRunExport(
 > {
   const q = new URLSearchParams();
   q.set("format", format);
-  const r = await fetch(`${API}/reports/runs/${runId}/export?${q.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/reports/runs/${runId}/export?${q.toString()}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   if (format === "csv") return r.blob();
   return r.json();
 }
 
 export async function fetchAuditExport(
-  token: string,
   format: "json" | "csv",
   area?: string
 ): Promise<{ count: number; items: Record<string, unknown>[] } | Blob> {
   const q = new URLSearchParams();
   q.set("format", format);
   if (area) q.set("area", area);
-  const r = await fetch(`${API}/reports/audit-events?${q.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/reports/audit-events?${q.toString()}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   if (format === "csv") return r.blob();
   return r.json();
@@ -1051,37 +947,30 @@ export type PortfolioOperationsContext = {
   portfolio_releases_linked_to_run: number;
 };
 
-export async function fetchPortfolioProjects(token: string): Promise<PortfolioProject[]> {
-  const r = await fetch(`${API}/portfolio/projects`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchPortfolioProjects(): Promise<PortfolioProject[]> {
+  const r = await fetch(`${API}/portfolio/projects`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PortfolioProject[]>;
 }
 
 export async function createPortfolioProject(
-  token: string,
   body: { key: string; name: string; owner?: string | null; status?: string }
 ): Promise<PortfolioProject> {
-  const r = await fetch(`${API}/portfolio/projects`, {
+  const r = await fetch(`${API}/portfolio/projects`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PortfolioProject>;
 }
 
-export async function fetchPortfolioReleases(token: string): Promise<PortfolioRelease[]> {
-  const r = await fetch(`${API}/portfolio/releases`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchPortfolioReleases(): Promise<PortfolioRelease[]> {
+  const r = await fetch(`${API}/portfolio/releases`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PortfolioRelease[]>;
 }
 
 export async function createPortfolioRelease(
-  token: string,
   body: {
     project_id: number;
     version: string;
@@ -1094,27 +983,22 @@ export async function createPortfolioRelease(
     run_id?: number | null;
   }
 ): Promise<PortfolioRelease> {
-  const r = await fetch(`${API}/portfolio/releases`, {
+  const r = await fetch(`${API}/portfolio/releases`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PortfolioRelease>;
 }
 
-export async function fetchExecutivePortfolioReport(token: string): Promise<ExecutivePortfolioReport> {
-  const r = await fetch(`${API}/portfolio/reports/executive`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchExecutivePortfolioReport(): Promise<ExecutivePortfolioReport> {
+  const r = await fetch(`${API}/portfolio/reports/executive`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ExecutivePortfolioReport>;
 }
 
-export async function fetchPortfolioOperationsContext(token: string): Promise<PortfolioOperationsContext> {
-  const r = await fetch(`${API}/portfolio/reports/operations-context`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchPortfolioOperationsContext(): Promise<PortfolioOperationsContext> {
+  const r = await fetch(`${API}/portfolio/reports/operations-context`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<PortfolioOperationsContext>;
 }
@@ -1142,16 +1026,13 @@ export type TenantNotificationConfig = {
   last_tested_at: string | null;
 };
 
-export async function fetchNotificationConfig(token: string, tenantSlug?: string | null): Promise<TenantNotificationConfig> {
-  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchNotificationConfig(tenantSlug?: string | null): Promise<TenantNotificationConfig> {
+  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantNotificationConfig>;
 }
 
 export async function saveNotificationConfig(
-  token: string,
   body: {
     smtp_host?: string | null;
     smtp_port?: number | null;
@@ -1169,25 +1050,22 @@ export async function saveNotificationConfig(
   },
   tenantSlug?: string | null
 ): Promise<TenantNotificationConfig> {
-  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/tenant/notifications${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<TenantNotificationConfig>;
 }
 
 export async function testNotificationConfig(
-  token: string,
   body: { to_email?: string | null },
   tenantSlug?: string | null
 ): Promise<{ ok: boolean; message: string }> {
-  const r = await fetch(`${API}/tenant/notifications/test${tenantQuery(tenantSlug)}`, {
+  const r = await fetch(`${API}/tenant/notifications/test${tenantQuery(tenantSlug)}`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<{ ok: boolean; message: string }>;
 }
@@ -1202,26 +1080,22 @@ export type AdminUser = {
   role_names: string[];
 };
 
-export async function fetchRbacUsers(token: string, tenantSlug?: string | null): Promise<AdminUser[]> {
+export async function fetchRbacUsers(tenantSlug?: string | null): Promise<AdminUser[]> {
   const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
-  const r = await fetch(`${API}/rbac/users${q}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const r = await fetch(`${API}/rbac/users${q}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AdminUser[]>;
 }
 
 export async function createRbacUser(
-  token: string,
   body: { email: string; role_name: string; is_active?: boolean },
   tenantSlug?: string | null
 ): Promise<{ id: number; email: string; role_name: string; tenant_id: number; delivery_status: string; temporary_password: string | null }> {
   const q = tenantSlug ? `?tenant_slug=${encodeURIComponent(tenantSlug)}` : "";
-  const r = await fetch(`${API}/rbac/users${q}`, {
+  const r = await fetch(`${API}/rbac/users${q}`, { credentials: "include",
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json();
 }

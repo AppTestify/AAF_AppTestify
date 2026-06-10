@@ -16,7 +16,6 @@ import {
 } from "../api";
 
 type WorkspacePortfolioPageProps = {
-  token: string;
   canManage: boolean;
 };
 
@@ -29,7 +28,7 @@ const OPS_LINKS: { to: string; label: string; blurb: string }[] = [
   { to: "/app/alerts", label: "Alerts", blurb: "Audit-style events (24h count aligns with portfolio operations snapshot)." },
 ];
 
-export function WorkspacePortfolioPage({ token, canManage }: WorkspacePortfolioPageProps) {
+export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProps) {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [releases, setReleases] = useState<PortfolioRelease[]>([]);
   const [report, setReport] = useState<ExecutivePortfolioReport | null>(null);
@@ -59,11 +58,11 @@ export function WorkspacePortfolioPage({ token, canManage }: WorkspacePortfolioP
     setError("");
     try {
       const [p, r, summary, opCtx, lc] = await Promise.all([
-        fetchPortfolioProjects(token),
-        fetchPortfolioReleases(token),
-        fetchExecutivePortfolioReport(token),
-        fetchPortfolioOperationsContext(token),
-        fetchDecisionLifecycle(token),
+        fetchPortfolioProjects(),
+        fetchPortfolioReleases(),
+        fetchExecutivePortfolioReport(),
+        fetchPortfolioOperationsContext(),
+        fetchDecisionLifecycle(),
       ]);
       setProjects(p);
       setReleases(r);
@@ -80,7 +79,7 @@ export function WorkspacePortfolioPage({ token, canManage }: WorkspacePortfolioP
 
   useEffect(() => {
     void load();
-  }, [token]);
+  }, []);
 
   const filteredReleases = useMemo(() => {
     if (filterProjectId === "all") return releases;
@@ -110,7 +109,7 @@ export function WorkspacePortfolioPage({ token, canManage }: WorkspacePortfolioP
     if (!projectKey.trim() || !projectName.trim()) return;
     setError("");
     try {
-      await createPortfolioProject(token, {
+      await createPortfolioProject({
         key: projectKey.trim(),
         name: projectName.trim(),
         owner: projectOwner.trim() || null,
@@ -137,7 +136,7 @@ export function WorkspacePortfolioPage({ token, canManage }: WorkspacePortfolioP
       if (!Number.isNaN(d.getTime())) targetIso = d.toISOString();
     }
     try {
-      await createPortfolioRelease(token, {
+      await createPortfolioRelease({
         project_id: releaseProjectId,
         version: releaseVersion.trim(),
         status: releaseStatus,

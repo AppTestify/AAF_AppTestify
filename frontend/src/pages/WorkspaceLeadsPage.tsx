@@ -2,21 +2,20 @@ import { useEffect, useState } from "react";
 import { convertLeadToTenant, fetchLeads, type AccessLead } from "../api";
 
 type WorkspaceLeadsPageProps = {
-  token: string;
-};
+  };
 
-export function WorkspaceLeadsPage({ token }: WorkspaceLeadsPageProps) {
+export function WorkspaceLeadsPage({}: WorkspaceLeadsPageProps) {
   const [rows, setRows] = useState<AccessLead[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    fetchLeads(token)
+    fetchLeads()
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load leads"))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, []);
 
   const convert = async (row: AccessLead) => {
     try {
@@ -27,7 +26,7 @@ export function WorkspaceLeadsPage({ token }: WorkspaceLeadsPageProps) {
         .replace(/\s+/g, "-")
         .replace(/^-+/, "")
         .slice(0, 48);
-      const out = await convertLeadToTenant(token, row.id, {
+      const out = await convertLeadToTenant(row.id, {
         tenant_name: row.organization_name,
         tenant_slug: slug || `tenant-${row.id}`,
       });

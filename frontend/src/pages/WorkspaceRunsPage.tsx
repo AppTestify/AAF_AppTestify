@@ -12,11 +12,10 @@ import {
 } from "../api";
 
 type WorkspaceRunsPageProps = {
-  token: string;
   tenantSlug?: string | null;
 };
 
-export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps) {
+export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const runIdFromUrl = searchParams.get("run_id") ?? "";
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
@@ -67,24 +66,24 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   }, [runs]);
 
   useEffect(() => {
-    fetchPortfolioProjects(token)
+    fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     const id = Number(runIdFromUrl);
-    if (!token || !runIdFromUrl.trim() || !Number.isFinite(id)) return;
-    fetchGovernanceRun(token, id)
+    if (!runIdFromUrl.trim() || !Number.isFinite(id)) return;
+    fetchGovernanceRun(id)
       .then(setSelectedRun)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load run from link"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, runIdFromUrl]);
+  }, [runIdFromUrl]);
 
   const loadRuns = async () => {
     try {
       setListLoading(true);
-      const list = await fetchGovernanceRuns(token, {
+      const list = await fetchGovernanceRuns({
         limit: 50,
         offset,
         status: statusFilter === "all" ? undefined : statusFilter,
@@ -104,7 +103,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   useEffect(() => {
     loadRuns().catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, offset, statusFilter, query, listProjectFilter]);
+  }, [offset, statusFilter, query, listProjectFilter]);
 
   useEffect(() => {
     if (activeRunIds.length === 0) return;
@@ -120,9 +119,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     try {
       setLoading(true);
       setError(null);
-      const created = await createGovernanceRun(
-        token,
-        {
+      const created = await createGovernanceRun({
           prompt: prompt.trim(),
           prompt_id: promptId.trim() || null,
           portfolio_project_id: createProjectId ? Number(createProjectId) : null,
@@ -146,7 +143,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   const handleSelectRun = async (runId: number) => {
     syncRunIdToUrl(runId);
     try {
-      const row = await fetchGovernanceRun(token, runId);
+      const row = await fetchGovernanceRun(runId);
       setSelectedRun(row);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load run");
@@ -174,7 +171,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     if (!selectedRun || selectedRun.status !== "succeeded") return;
     try {
       setError(null);
-      const { url } = await createGovernanceRunShareLink(token, selectedRun.id);
+      const { url } = await createGovernanceRunShareLink(selectedRun.id);
       await navigator.clipboard.writeText(url);
       setToast("Signed public share URL copied (time-limited, no login)");
       setTimeout(() => setToast(""), 2800);
@@ -187,7 +184,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     if (!selectedRun) return;
     try {
       setError(null);
-      const data = await fetchSingleRunExport(token, selectedRun.id, "json");
+      const data = await fetchSingleRunExport(selectedRun.id, "json");
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       downloadBlob(blob, `governance_run_${selectedRun.id}.json`);
       setToast("Executive export downloaded");
@@ -201,7 +198,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     if (!selectedRun) return;
     try {
       setError(null);
-      const blob = (await fetchSingleRunExport(token, selectedRun.id, "csv")) as Blob;
+      const blob = (await fetchSingleRunExport(selectedRun.id, "csv")) as Blob;
       downloadBlob(blob, `governance_run_${selectedRun.id}.csv`);
       setToast("CSV export downloaded");
       setTimeout(() => setToast(""), 2200);

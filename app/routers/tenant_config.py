@@ -578,7 +578,7 @@ def put_ai_provider_configs(
                 "api_key_ref": _mask_api_key_ref(row.api_key_ref),
             }
         row.enabled = cfg.enabled
-        row.model_name = cfg.model_name
+        row.model_name = cfg.model_name.strip() if cfg.model_name else None
         row.temperature = cfg.temperature
         row.max_tokens = cfg.max_tokens
         row.endpoint_url = cfg.endpoint_url

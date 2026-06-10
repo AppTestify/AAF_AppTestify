@@ -31,12 +31,12 @@ async def run_pipeline(
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
     def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
-        return run_all_agents(ev)
+        return run_all_agents(ev, llm_providers=llm_providers)
 
     lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
     opinions, rar_result, consensus_result = await run_rar_loop_async(
         initial_evidence=normalized_evidence,
-        initial_opinions=run_all_agents(normalized_evidence),
+        initial_opinions=run_all_agents(normalized_evidence, llm_providers=llm_providers),
         tau=settings.tau_consensus,
         max_loops=settings.max_rar_loops,
         rerun_agents=rerun_agents,

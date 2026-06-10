@@ -368,7 +368,7 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
       Object.entries(providerDraft).forEach(([name, d]) => {
         payload[name] = {
           enabled: d.enabled,
-          model_name: d.model_name || null,
+          model_name: d.model_name?.trim() || null,
           temperature: d.temperature === "" ? null : Number(d.temperature),
           max_tokens: d.max_tokens === "" ? null : Number(d.max_tokens),
           endpoint_url: d.endpoint_url || null,

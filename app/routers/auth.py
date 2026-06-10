@@ -15,15 +15,12 @@ from app.deps import get_current_active_user, settings_dep
 from app.db import get_db
 from app.models.governance import AuditEvent
 from app.models.tenant import Tenant
-from app.models.user import User
+from app.models.user import User, AuthRateLimit
 from app.routers.admin_tenants import TenantCreate
 from app.security import create_access_token, hash_password, verify_password
 from app.validators.email import AuthEmail
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-_FAILED: dict[str, tuple[int, datetime]] = {}
-_MAX_LOGIN_ATTEMPTS = 8
-_LOGIN_WINDOW = timedelta(minutes=10)
 
 
 class LoginRequest(BaseModel):
@@ -144,23 +141,46 @@ def login(
 ):
     email = body.email.strip().lower()
     now = datetime.now(timezone.utc)
-    failed = _FAILED.get(email)
-    if failed and failed[0] >= _MAX_LOGIN_ATTEMPTS and now - failed[1] < _LOGIN_WINDOW:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed login attempts. Please try again later.",
-        )
+    
+    rate_limit = db.execute(select(AuthRateLimit).where(AuthRateLimit.email == email)).scalar_one_or_none()
+    window = timedelta(minutes=settings.rate_limit_window_minutes)
+    
+    if rate_limit:
+        last_attempt = rate_limit.last_attempt_at
+        if last_attempt.tzinfo is None:
+            last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+            
+        if rate_limit.failed_attempts >= settings.rate_limit_max_attempts and now - last_attempt < window:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Please try again later.",
+            )
+
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None or not verify_password(body.password, user.hashed_password):
-        if failed and now - failed[1] < _LOGIN_WINDOW:
-            _FAILED[email] = (failed[0] + 1, failed[1])
+        if not rate_limit:
+            rate_limit = AuthRateLimit(email=email, failed_attempts=1, last_attempt_at=now)
+            db.add(rate_limit)
         else:
-            _FAILED[email] = (1, now)
+            last_attempt = rate_limit.last_attempt_at
+            if last_attempt.tzinfo is None:
+                last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+                
+            if now - last_attempt < window:
+                rate_limit.failed_attempts += 1
+            else:
+                rate_limit.failed_attempts = 1
+            rate_limit.last_attempt_at = now
+            
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
-    _FAILED.pop(email, None)
+        
+    if rate_limit:
+        db.delete(rate_limit)
+        db.commit()
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
     if user.tenant and not user.tenant.is_active:

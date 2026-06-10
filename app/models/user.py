@@ -26,3 +26,11 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant: Mapped[Optional["Tenant"]] = relationship("Tenant", lazy="joined")
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+
+    email: Mapped[str] = mapped_column(String(255), primary_key=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

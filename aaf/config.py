@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production-use-long-random-string"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
+    rate_limit_max_attempts: int = 8
+    rate_limit_window_minutes: int = 10
 
     # Signed public share links (governance run snapshot). If empty, jwt_secret is used.
     share_link_signing_secret: str = ""

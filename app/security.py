@@ -67,6 +67,15 @@ def decrypt_json(ciphertext: Optional[str], *, secret: str) -> dict:
         raw = f.decrypt(ciphertext.encode("ascii"))
         return json.loads(raw.decode("utf-8"))
     except InvalidToken:
+        import os
+        old_secret = os.environ.get("OLD_APP_ENCRYPTION_KEY")
+        if old_secret:
+            try:
+                f_old = _get_fernet(old_secret)
+                raw = f_old.decrypt(ciphertext.encode("ascii"))
+                return json.loads(raw.decode("utf-8"))
+            except InvalidToken:
+                pass
         try:
             return decrypt_json_legacy(ciphertext, secret=secret)
         except Exception as exc:

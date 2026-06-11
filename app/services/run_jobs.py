@@ -17,13 +17,14 @@ from app.models.governance import AuditEvent, EvidenceSnapshot, GovernanceRun
 from app.models.governance import AgentFinding, CorrelatedIncident, ExecutiveSummary
 from app.models.config import TenantConnectorConfig, TenantSettings
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.services.agentic_intelligence import (
     build_agent_findings_with_llm,
     build_executive_summary,
     build_incident,
     compute_consensus,
 )
-from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings
+from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings, resolve_tenant_for_user
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
@@ -279,8 +280,7 @@ def process_run_sync(run_id: int) -> None:
         if run.retry_count <= _MAX_RETRIES:
             run.status = "queued"
             db.commit()
-            _queue.put(run_id)
-            set_run_queue_depth(_queue.qsize())
+            enqueue_run(run_id)
             elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
             record_run("retry", elapsed_ms, run.retry_count)
             return

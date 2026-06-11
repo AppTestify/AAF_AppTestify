@@ -28,4 +28,8 @@ jobs:
         run: |
           echo "Production deploy requires manual approval — image casantris/api:${{ github.sha }}"
       - name: Smoke test
-        run: bash scripts/smoke.sh || echo "smoke skipped in CI without compose stack"
+        run: |
+          docker-compose --profile prod up -d
+          sleep 10
+          bash scripts/smoke.sh
+          docker-compose --profile prod down

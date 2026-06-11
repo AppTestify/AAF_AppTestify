@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 from sqlalchemy import select
 
 from aaf.config import Settings
-from app.db import SessionLocal, init_db
+from app import db as db_mod
 from app.models.config import TenantConnectorConfig, TenantSettings
 from app.security import decrypt_json, encrypt_json
 
@@ -31,9 +31,9 @@ def main() -> int:
         return 1
 
     settings = Settings()
-    init_db(settings.database_url)
+    db_mod.init_db(settings.database_url)
     count = 0
-    with SessionLocal() as db:
+    with db_mod.SessionLocal() as db:
         for model, field in (
             (TenantConnectorConfig, "encrypted_credentials_json"),
             (TenantSettings, "llm_keys_encrypted_json"),

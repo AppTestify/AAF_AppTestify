@@ -462,8 +462,8 @@ def validate_connector_config(
     err: Optional[str] = None
     if key == "github" and row.enabled and not cfg.get("repo"):
         err = "github.repo is required when connector is enabled"
-    if key == "jira" and row.enabled and (not cfg.get("project") or not cfg.get("base_url")):
-        err = "jira.base_url and jira.project are required when connector is enabled"
+    if key == "jira" and row.enabled and ((not cfg.get("project") and not cfg.get("project_key")) or not cfg.get("base_url")):
+        err = "jira.base_url and jira.project (or project_key) are required when connector is enabled"
     if key == "finops" and row.enabled and not cfg.get("cost_file"):
         err = "finops.cost_file is required when connector is enabled"
     if key == "azure" and row.enabled and (not cfg.get("organization") or not cfg.get("project")):

@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { fetchEvidence, fetchPortfolioProjects, type EvidenceRow, type PortfolioProject } from "../api";
+import {
+  fetchDashboardSummary,
+  fetchEvidence,
+  fetchGovernanceRun,
+  fetchGovernanceRuns,
+  fetchPortfolioProjects,
+  type EvidenceRow,
+  type PortfolioProject,
+} from "../api";
+import { EvidenceSourceCards } from "../components/governance/EvidenceSourceCards";
+import { EvidenceTimelineTable } from "../components/governance/EvidenceTimelineTable";
+import {
+  deriveConnectorSummaries,
+  deriveEvidenceTimeline,
+  formatRelativeTime,
+  parseGovernanceRunResult,
+  type ParsedRunContext,
+} from "../lib/governancePresentation";
 
-type WorkspaceEvidencePageProps = {
-  };
-
-export function WorkspaceEvidencePage({}: WorkspaceEvidencePageProps) {
+export function WorkspaceEvidencePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
+  const runIdParam = searchParams.get("run_id") ?? "";
+
   const setListProjectFilter = (v: string) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set("portfolio_project_id", v);
@@ -18,27 +34,34 @@ export function WorkspaceEvidencePage({}: WorkspaceEvidencePageProps) {
   const [rows, setRows] = useState<EvidenceRow[]>([]);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [connector, setConnector] = useState<string>("");
-  const [runId, setRunId] = useState<string>("");
+  const [runId, setRunId] = useState<string>(runIdParam);
   const [selected, setSelected] = useState<EvidenceRow | null>(null);
   const [error, setError] = useState<string>("");
   const [listLoading, setListLoading] = useState(false);
-  const evidenceStats = useMemo(() => {
-    const byConnector = rows.reduce<Record<string, number>>((acc, row) => {
-      acc[row.connector_name] = (acc[row.connector_name] ?? 0) + 1;
-      return acc;
-    }, {});
-    return {
-      total: rows.length,
-      connectors: Object.keys(byConnector).length,
-      topConnector: Object.entries(byConnector).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-",
-    };
-  }, [rows]);
+  const [parsedRun, setParsedRun] = useState<ParsedRunContext | null>(null);
+  const [connectorHealth, setConnectorHealth] = useState<Awaited<ReturnType<typeof fetchDashboardSummary>>["connector_health"] | null>(null);
+
+  useEffect(() => {
+    setRunId(runIdParam);
+  }, [runIdParam]);
 
   useEffect(() => {
     fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-  }, []);
+    fetchDashboardSummary()
+      .then((s) => setConnectorHealth(s.connector_health))
+      .catch(() => setConnectorHealth(null));
+    fetchGovernanceRuns({ status: "succeeded", limit: 1 })
+      .then(async (runs) => {
+        const id = runIdParam ? Number(runIdParam) : runs[0]?.id;
+        if (id && Number.isFinite(id)) {
+          const full = await fetchGovernanceRun(id);
+          setParsedRun(parseGovernanceRunResult(full));
+        }
+      })
+      .catch(() => setParsedRun(null));
+  }, [runIdParam]);
 
   useEffect(() => {
     setListLoading(true);
@@ -53,116 +76,99 @@ export function WorkspaceEvidencePage({}: WorkspaceEvidencePageProps) {
       .finally(() => setListLoading(false));
   }, [connector, runId, listProjectFilter]);
 
+  const sourceCards = deriveConnectorSummaries(parsedRun, connectorHealth);
+  const timeline = deriveEvidenceTimeline(rows, parsedRun?.result.normalized_evidence ?? []);
+  const refreshedLabel = rows[0] ? `Refreshed ${formatRelativeTime(rows[0].created_at)}` : undefined;
+
+  const evidenceStats = useMemo(() => {
+    const byConnector = rows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.connector_name] = (acc[row.connector_name] ?? 0) + 1;
+      return acc;
+    }, {});
+    return {
+      total: rows.length,
+      connectors: Object.keys(byConnector).length,
+    };
+  }, [rows]);
+
   return (
     <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Evidence</h1>
-          <span>Connector evidence snapshots with payload inspection for triage and audits.</span>
-        </div>
+      <header className="gov-hub-header">
+        <p className="gov-hub-eyebrow">Evidence Hub</p>
+        <h1 className="gov-hub-title">Live signals from GitHub, Jira, and FinOps</h1>
+        <p className="gov-hub-lead">
+          Every governance decision is grounded in fresh evidence pulled from the systems your teams already use.
+        </p>
       </header>
-      {error ? <div className="alert alert-error">{error}</div> : null}
-      <div className="workspace-kpi-strip">
-        <div className="metric">
-          <div className="label">Rows</div>
-          <div className="value">{evidenceStats.total}</div>
+
+      {error ? (
+        <div className="alert alert-error" role="alert">
+          {error}
         </div>
-        <div className="metric">
-          <div className="label">Connectors</div>
-          <div className="value">{evidenceStats.connectors}</div>
+      ) : null}
+
+      <EvidenceSourceCards cards={sourceCards} />
+
+      <div className="workspace-toolbar">
+        <div className="form-row">
+          <label htmlFor="connector-filter">Connector</label>
+          <input id="connector-filter" value={connector} onChange={(e) => setConnector(e.target.value)} placeholder="github" />
         </div>
-        <div className="metric">
-          <div className="label">Top connector</div>
-          <div className="value mono">{evidenceStats.topConnector}</div>
+        <div className="form-row">
+          <label htmlFor="run-filter">Run ID</label>
+          <input id="run-filter" value={runId} onChange={(e) => setRunId(e.target.value)} placeholder="e.g. 12" />
         </div>
+        <div className="form-row">
+          <label htmlFor="evidence-project-filter">Project</label>
+          <select id="evidence-project-filter" value={listProjectFilter} onChange={(e) => setListProjectFilter(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={String(p.id)}>
+                {p.key} — {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span className="workspace-meta">
+          {evidenceStats.total} rows · {evidenceStats.connectors} connectors
+        </span>
       </div>
-      <div className="card">
-        <div className="workspace-section-intro">
-          <div>
-            <h2>Evidence & history</h2>
-            <p>Filter by connector, run, or portfolio project and inspect normalized payload snapshots.</p>
-          </div>
-          <div className="workspace-meta">Use row selection to inspect full payload</div>
+
+      {listLoading ? <div className="table-skeleton" /> : null}
+      <EvidenceTimelineTable rows={timeline} refreshedLabel={refreshedLabel} />
+
+      {selected ? (
+        <div className="card" style={{ marginTop: "1rem" }}>
+          <h2>Snapshot detail #{selected.id}</h2>
+          <pre className="json-preview">{JSON.stringify(selected.payload_json, null, 2)}</pre>
         </div>
-        <div className="workspace-toolbar">
-          <div className="form-row">
-            <label htmlFor="connector-filter">Connector filter</label>
-            <select id="connector-filter" value={connector} onChange={(e) => setConnector(e.target.value)}>
-              <option value="">All</option>
-              <option value="github">GitHub</option>
-              <option value="jira">Jira</option>
-              <option value="azure">Azure</option>
-              <option value="aws">AWS</option>
-              <option value="finops">FinOps</option>
-            </select>
-          </div>
-          <div className="form-row">
-            <label htmlFor="run-filter">Run ID</label>
-            <input id="run-filter" value={runId} onChange={(e) => setRunId(e.target.value)} placeholder="optional" />
-          </div>
-          <div className="form-row">
-            <label htmlFor="evidence-project-filter">Project</label>
-            <select
-              id="evidence-project-filter"
-              value={listProjectFilter}
-              onChange={(e) => setListProjectFilter(e.target.value)}
-            >
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.key} — {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+      ) : null}
+
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <h2>Raw evidence rows</h2>
         <div className="table-wrap">
-          {listLoading ? <div className="table-skeleton" /> : null}
           <table className="data-table">
             <thead>
               <tr>
-                <th>Run</th>
+                <th>ID</th>
                 <th>Connector</th>
+                <th>Run</th>
                 <th>Captured</th>
-                <th>Payload</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} onClick={() => setSelected(r)} className={selected?.id === r.id ? "row-selected" : ""}>
+                  <td>#{r.id}</td>
+                  <td>{r.connector_name}</td>
                   <td>#{r.run_id}</td>
-                  <td>
-                    <span className="status-chip queued">{r.connector_name}</span>
-                  </td>
                   <td>{new Date(r.created_at).toLocaleString()}</td>
-                  <td className="mono">{JSON.stringify(r.payload_json).slice(0, 120)}</td>
                 </tr>
               ))}
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="table-empty">
-                    No evidence rows found for the current filters.
-                  </td>
-                </tr>
-              ) : null}
             </tbody>
           </table>
         </div>
       </div>
-      {selected ? (
-        <div className="card">
-          <div className="detail-header">
-            <div>
-              <h2>Evidence detail #{selected.id}</h2>
-              <p className="workspace-card-subtitle">
-                Connector <span className="mono">{selected.connector_name}</span> · run #{selected.run_id}
-              </p>
-            </div>
-            <span className="status-chip queued">{selected.connector_name}</span>
-          </div>
-          <pre className="json-preview">{JSON.stringify(selected.payload_json, null, 2)}</pre>
-        </div>
-      ) : null}
     </div>
   );
 }

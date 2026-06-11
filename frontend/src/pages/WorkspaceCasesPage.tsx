@@ -10,6 +10,7 @@ import {
   type GovernanceCase,
   type PortfolioProject,
 } from "../api";
+import { AuditTrailPanel } from "../components/governance/AuditTrailPanel";
 
 type WorkspaceCasesPageProps = {
   tenantSlug?: string | null;
@@ -39,6 +40,7 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
   const [query, setQuery] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"decisions" | "audit">("decisions");
   const projectById = useMemo(() => {
     const m = new Map<number, PortfolioProject>();
     for (const p of projects) m.set(p.id, p);
@@ -59,7 +61,20 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
   }, []);
 
-  const loadCases = async () => {
+  useEffect(() => {
+    loadCases()
+      .then((rows) => {
+        const caseId = searchParams.get("case_id");
+        if (caseId) {
+          const match = rows.find((c) => c.id === Number(caseId));
+          if (match) setSelectedCase(match);
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load cases"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, offset, query, listProjectFilter]);
+
+  const loadCases = async (): Promise<GovernanceCase[]> => {
     try {
       setListLoading(true);
       const rows = await fetchCasesAdvanced({
@@ -70,15 +85,11 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
         portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
       });
       setCases(rows);
+      return rows;
     } finally {
       setListLoading(false);
     }
   };
-
-  useEffect(() => {
-    loadCases().catch((e) => setError(e instanceof Error ? e.message : "Failed to load cases"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, offset, query, listProjectFilter]);
 
   const handleCreateCase = async () => {
     if (!title.trim()) return;
@@ -135,18 +146,44 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
 
   return (
     <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Cases & Decisions</h1>
-          <span>Track governance lifecycle from case creation to approval</span>
-        </div>
+      <header className="gov-hub-header">
+        <p className="gov-hub-eyebrow">Decision & Audit</p>
+        <h1 className="gov-hub-title">Formal decisions with audit-ready traceability</h1>
+        <p className="gov-hub-lead">
+          Open cases, propose recommendations, approve final actions, and review the full audit trail.
+        </p>
       </header>
+
+      <div className="gov-tabs">
+        <button
+          type="button"
+          className={`btn btn-ghost btn-sm ${activeTab === "decisions" ? "active" : ""}`}
+          onClick={() => setActiveTab("decisions")}
+        >
+          Decisions
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost btn-sm ${activeTab === "audit" ? "active" : ""}`}
+          onClick={() => setActiveTab("audit")}
+        >
+          Audit trail
+        </button>
+      </div>
       {error ? (
         <div className="alert alert-error" role="alert">
           {error}
         </div>
       ) : null}
       {toast ? <div className="alert alert-success">{toast}</div> : null}
+      {activeTab === "audit" ? (
+        <div className="card">
+          <AuditTrailPanel />
+        </div>
+      ) : null}
+
+      {activeTab === "decisions" ? (
+      <>
       <div className="workspace-kpi-strip">
         <div className="metric">
           <div className="label">Visible cases</div>
@@ -324,6 +361,8 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
           </div>
           {decision ? <pre className="json-preview">{JSON.stringify(decision, null, 2)}</pre> : <div className="empty-state">No decision attached yet. Create a decision to continue approval workflow.</div>}
         </div>
+      ) : null}
+      </>
       ) : null}
     </div>
   );

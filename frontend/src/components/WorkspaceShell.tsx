@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import type { UserPublic } from "../api";
+import { GovernanceConfidenceWidget } from "./GovernanceConfidenceWidget";
+import { WorkspaceTopBar } from "./WorkspaceTopBar";
 
 type WorkspaceShellProps = {
   user: UserPublic;
@@ -16,8 +18,9 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           <div className="workspace-logo-mark" aria-hidden="true" />
           <div>
             <h2>Casantris</h2>
-            <span>
-            {user.is_superadmin ? "enterprise core" : user.tenant_slug ? `tenant: ${user.tenant_slug}` : "workspace"}
+            <span className="workspace-logo-suite">Governance Suite</span>
+            <span className="workspace-logo-tenant">
+              {user.is_superadmin ? "enterprise core" : user.tenant_slug ? `tenant: ${user.tenant_slug}` : "workspace"}
             </span>
           </div>
         </div>
@@ -34,14 +37,14 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           <span>{theme === "light" ? "Dark mode" : "Light mode"}</span>
         </button>
         <nav className="workspace-nav">
-          <p className="workspace-nav-group">Operations</p>
-          <NavLink to="/app/dashboard">Dashboard</NavLink>
-          <NavLink to="/app/overview">Overview</NavLink>
-          <NavLink to="/app/runs">Runs</NavLink>
-          <NavLink to="/app/evidence">Evidence</NavLink>
-          <NavLink to="/app/cases">Cases</NavLink>
-          <NavLink to="/app/alerts">Alerts</NavLink>
+          <p className="workspace-nav-group">Workspace</p>
+          <NavLink to="/app/dashboard">Command Center</NavLink>
+          <NavLink to="/app/overview">Ask Casantris AI</NavLink>
+          <NavLink to="/app/evidence">Evidence Hub</NavLink>
+          <NavLink to="/app/runs">Agentic Governance</NavLink>
+          <NavLink to="/app/cases">Decision & Audit</NavLink>
           <p className="workspace-nav-group">Control plane</p>
+          <NavLink to="/app/alerts">Alerts</NavLink>
           <NavLink to="/app/integrations">Integrations</NavLink>
           <NavLink to="/app/portfolio">Portfolio</NavLink>
           <NavLink to="/app/reports">Reports</NavLink>
@@ -50,15 +53,19 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           {user.is_superadmin ? <NavLink to="/app/tenants">Tenants</NavLink> : null}
           {user.is_superadmin ? <NavLink to="/app/leads">Leads</NavLink> : null}
         </nav>
+        <GovernanceConfidenceWidget />
         <div className="workspace-sidebar-footer">
           <button type="button" className="btn btn-ghost workspace-signout" onClick={onLogout}>
             Sign out
           </button>
         </div>
       </aside>
-      <main className="workspace-main">
-        <Outlet />
-      </main>
+      <div className="workspace-content">
+        <WorkspaceTopBar user={user} />
+        <main className="workspace-main">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

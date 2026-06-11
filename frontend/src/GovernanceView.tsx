@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type {
   AgentOpinion,
@@ -9,6 +10,7 @@ import type {
   UtilityResult,
 } from "./api";
 import { formatAgentLabel } from "./api";
+import { deriveAskColumns } from "./lib/governancePresentation";
 
 export type GovernanceViewProps = {
   user: UserPublic;
@@ -84,9 +86,6 @@ export function GovernanceView(props: GovernanceViewProps) {
     batchResult,
   } = props;
 
-  const pmView = result?.pm_view;
-  const consensus = result?.consensus;
-  const rar = result?.rar;
   const utility: UtilityResult | undefined = result?.utility;
   const xi = result?.explainability?.xi_score;
   const framing = result?.decision_framing as
@@ -97,10 +96,7 @@ export function GovernanceView(props: GovernanceViewProps) {
       }
     | undefined;
 
-  const consensusScore = consensus?.consensus_score ?? null;
-  const orchConsensus = framing?.orchestration?.consensus_score ?? consensusScore;
-  const findingsConsensus = framing?.findings_synthesis?.consensus_score ?? null;
-
+  const orchConsensus = framing?.orchestration?.consensus_score ?? result?.consensus?.consensus_score ?? null;
   const scoreClass = useMemo(() => {
     const v = orchConsensus;
     if (v == null) return "";
@@ -112,19 +108,19 @@ export function GovernanceView(props: GovernanceViewProps) {
   const [activeResultTab, setActiveResultTab] = useState<"executive" | "evidence" | "agents" | "explainability">(
     "executive"
   );
+  const [showAdmin, setShowAdmin] = useState(false);
 
+  const askColumns = result ? deriveAskColumns(result) : null;
   const formatIndex = (v: number | undefined) => (v != null && !Number.isNaN(v) ? v.toFixed(2) : "—");
 
   return (
     <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Governance overview</h1>
-          <span>
-            Signed in as {user.email}
-            {user.is_superadmin ? " · superadmin" : user.tenant_slug ? ` · tenant: ${user.tenant_slug}` : ""}
-          </span>
-        </div>
+      <header className="gov-hub-header">
+        <p className="gov-hub-eyebrow">AI Assistant</p>
+        <h1 className="gov-hub-title">Ask Casantris AI</h1>
+        <p className="gov-hub-lead">
+          Governance recommendations grounded in real evidence and traceable reasoning — not generic chat.
+        </p>
       </header>
 
       {error ? (
@@ -133,215 +129,148 @@ export function GovernanceView(props: GovernanceViewProps) {
         </div>
       ) : null}
 
-      {user.is_superadmin && tenants ? (
-        <div className="card">
-          <h2>Tenants (superadmin)</h2>
-          <ul className="list-plain" style={{ marginBottom: "1rem" }}>
-            {tenants.map((t) => (
-              <li key={t.id}>
-                <span className="mono">{t.slug}</span> — {t.name}{" "}
-                <span style={{ color: "var(--muted)" }}>({t.user_count} users)</span>
-              </li>
+      <article className="gov-ask-card">
+        <p className="gov-hub-eyebrow" style={{ marginBottom: "0.5rem" }}>
+          Governance Question
+        </p>
+        <div className="form-row">
+          <label htmlFor="library">Prompt library</label>
+          <select
+            id="library"
+            value={promptId ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) applyLibraryPrompt(v);
+              else setPromptId(null);
+            }}
+          >
+            <option value="">— Custom prompt —</option>
+            {(library?.prompts ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.id}
+              </option>
             ))}
-          </ul>
-          <form onSubmit={onCreateTenant}>
-            <div className="form-row">
-              <label htmlFor="tname">New tenant name</label>
-              <input
-                id="tname"
-                value={newTenantName}
-                onChange={(e) => setNewTenantName(e.target.value)}
-                placeholder="Acme Corp"
-              />
-            </div>
-            <div className="form-row">
-              <label htmlFor="tslug">Slug (lowercase, hyphens ok)</label>
-              <input
-                id="tslug"
-                className="mono"
-                value={newTenantSlug}
-                onChange={(e) => setNewTenantSlug(e.target.value)}
-                placeholder="acme"
-              />
-            </div>
-            <button className="btn btn-ghost" type="submit" disabled={loading}>
-              Add tenant
-            </button>
-          </form>
+          </select>
         </div>
-      ) : null}
+        <div className="form-row">
+          <label htmlFor="prompt" className="field-label-required">
+            Question
+          </label>
+          <textarea
+            id="prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Can we release today, or are GitHub issues, Jira blockers, and cloud cost spikes creating delivery risk?"
+          />
+        </div>
+        <div className="gov-ask-toolbar">
+          <Link to="/app/evidence" className={`btn btn-ghost btn-sm ${!result ? "disabled" : ""}`} aria-disabled={!result}>
+            View Evidence
+          </Link>
+          <Link to="/app/reports" className="btn btn-ghost btn-sm">
+            Export Summary
+          </Link>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={loading || !prompt.trim()}
+            onClick={onRunGovernance}
+          >
+            {loading ? "Running…" : "Run Governance Check"}
+          </button>
+        </div>
+      </article>
 
-      <div className="workspace-split">
-        <div className="card">
+      {result && askColumns ? (
+        <article className="gov-ask-output">
           <div className="workspace-section-intro">
             <div>
-              <h2>Compose request</h2>
-              <p>Select a prompt template or write a custom governance question.</p>
+              <p className="gov-hub-eyebrow">Output</p>
+              <h2 style={{ margin: 0 }}>Governance Recommendation</h2>
             </div>
-            <div className="workspace-meta">Prompt routing follows tenant AI config defaults</div>
-          </div>
-          <div className="form-row">
-            <label htmlFor="library">Prompt library</label>
-            <select
-              id="library"
-              value={promptId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) applyLibraryPrompt(v);
-                else {
-                  setPromptId(null);
-                }
-              }}
-            >
-              <option value="">— Custom prompt —</option>
-              {(library?.prompts ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label htmlFor="prompt" className="field-label-required">
-              Question
-            </label>
-            <textarea
-              id="prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. Are we safe to release based on GitHub activity?"
-            />
-          </div>
-          <div className="actions">
-            <button
-              className="btn btn-primary"
-              type="button"
-              disabled={loading || !prompt.trim()}
-              onClick={onRunGovernance}
-            >
-              {loading ? "Running…" : "Run governance"}
-            </button>
-            {user.is_superadmin || user.is_admin ? (
-              <button className="btn btn-ghost" type="button" disabled={loading} onClick={onBatch}>
-                Run batch (library)
-              </button>
-            ) : null}
-          </div>
-        </div>
-        {result ? (
-          <div className="card">
-            <div className="workspace-section-intro">
-              <div>
-                <h2>Decision snapshot</h2>
-                <p>Live result posture from the latest governance execution.</p>
-              </div>
-            </div>
-            <div className="metrics">
-              <div className="metric">
-                <div className="label">Orchestration consensus</div>
-                <div className={`value ${scoreClass}`}>
-                  {orchConsensus != null ? Number(orchConsensus).toFixed(2) : "—"}
-                </div>
-              </div>
-              {findingsConsensus != null ? (
-                <div className="metric">
-                  <div className="label">Findings synthesis</div>
-                  <div className="value">{findingsConsensus.toFixed(2)}</div>
-                </div>
-              ) : null}
-              <div className="metric">
-                <div className="label">Global U</div>
-                <div className="value">{formatIndex(utility?.global_utility)}</div>
-              </div>
-              <div className="metric">
-                <div className="label">P / Ci / R</div>
-                <div className="value mono" style={{ fontSize: "0.85rem" }}>
-                  {formatIndex(utility?.perf_index)} / {formatIndex(utility?.cost_index)} /{" "}
-                  {formatIndex(utility?.risk_index)}
-                </div>
-              </div>
-              <div className="metric">
-                <div className="label">RAR</div>
-                <div className="value">{rar?.rar_triggered ? `Yes (${rar.rar_loops})` : "No"}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Action</div>
-                <div className="value mono" style={{ fontSize: "0.85rem" }}>
-                  {utility?.recommended_action ?? "—"}
-                </div>
-              </div>
-              <div className="metric">
-                <div className="label">XI</div>
-                <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
-              </div>
+            <div className="gov-ask-risk-pills">
+              <span className="gov-pill gov-pill--high">Delivery Risk: {askColumns.deliveryRisk}</span>
+              <span className="gov-pill gov-pill--medium">Cost Risk: {askColumns.costRisk}</span>
+              <span className="gov-pill gov-pill--healthy">Confidence: {askColumns.confidence}</span>
             </div>
           </div>
-        ) : null}
-      </div>
-
-      {batchResult ? (
-        <div className="card">
-          <div className="workspace-section-intro">
+          <p style={{ margin: "0.75rem 0", fontWeight: 600, fontSize: "1.05rem" }}>{askColumns.recommendation}</p>
+          <div className="gov-ask-columns">
             <div>
-              <h2>Batch results</h2>
-              <p>Execution output from library-scale governance runs.</p>
+              <h4>Why this matters</h4>
+              <p>{askColumns.why}</p>
+            </div>
+            <div>
+              <h4>Business impact</h4>
+              <p>{askColumns.impact}</p>
+            </div>
+            <div>
+              <h4>Suggested next step</h4>
+              <p>{askColumns.nextStep}</p>
             </div>
           </div>
-          <pre className="mono" style={{ fontSize: "0.8rem", overflow: "auto" }}>
-            {JSON.stringify(batchResult, null, 2)}
-          </pre>
-        </div>
+          <div className="gov-recommendation-actions" style={{ marginTop: "1rem" }}>
+            <Link to="/app/runs" className="btn btn-ghost btn-sm">
+              Agent Reasoning
+            </Link>
+            <Link to="/app/evidence" className="btn btn-ghost btn-sm">
+              Evidence Hub
+            </Link>
+            <Link to="/app/cases" className="btn btn-primary btn-sm">
+              Open Decision Case
+            </Link>
+          </div>
+          <div className="metrics" style={{ marginTop: "1rem" }}>
+            <div className="metric">
+              <div className="label">Consensus</div>
+              <div className={`value ${scoreClass}`}>{orchConsensus != null ? orchConsensus.toFixed(2) : "—"}</div>
+            </div>
+            <div className="metric">
+              <div className="label">Global U</div>
+              <div className="value">{formatIndex(utility?.global_utility)}</div>
+            </div>
+            <div className="metric">
+              <div className="label">P / Ci / R</div>
+              <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                {formatIndex(utility?.perf_index)} / {formatIndex(utility?.cost_index)} / {formatIndex(utility?.risk_index)}
+              </div>
+            </div>
+            <div className="metric">
+              <div className="label">XI</div>
+              <div className="value">{xi != null ? xi.toFixed(2) : "—"}</div>
+            </div>
+          </div>
+        </article>
       ) : null}
 
       {result ? (
         <div className="card">
-          <div className="workspace-toolbar">
-            <button
-              className={`btn btn-ghost btn-sm ${activeResultTab === "executive" ? "active" : ""}`}
-              type="button"
-              onClick={() => setActiveResultTab("executive")}
-            >
-              Executive
-            </button>
-            <button
-              className={`btn btn-ghost btn-sm ${activeResultTab === "evidence" ? "active" : ""}`}
-              type="button"
-              onClick={() => setActiveResultTab("evidence")}
-            >
-              Evidence
-            </button>
-            <button
-              className={`btn btn-ghost btn-sm ${activeResultTab === "agents" ? "active" : ""}`}
-              type="button"
-              onClick={() => setActiveResultTab("agents")}
-            >
-              Agents
-            </button>
-            <button
-              className={`btn btn-ghost btn-sm ${activeResultTab === "explainability" ? "active" : ""}`}
-              type="button"
-              onClick={() => setActiveResultTab("explainability")}
-            >
-              Explainability
-            </button>
+          <div className="gov-tabs">
+            {(["executive", "evidence", "agents", "explainability"] as const).map((tab) => (
+              <button
+                key={tab}
+                className={`btn btn-ghost btn-sm ${activeResultTab === tab ? "active" : ""}`}
+                type="button"
+                onClick={() => setActiveResultTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
           </div>
           {activeResultTab === "executive" ? (
             <>
-              <div className="workspace-section-intro">
-                <div>
-                  <h2>Executive view</h2>
-                  <p>Business-facing summary and decision narrative for stakeholder communication.</p>
-                </div>
-              </div>
-              {pmView ? (
+              {result.pm_view ? (
                 <>
-                  <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{pmView.title}</p>
+                  <p style={{ margin: "0 0 0.5rem", fontWeight: 600 }}>{result.pm_view.title}</p>
                   <div className="pm-summary">
-                    <ReactMarkdown>{pmView.summary_markdown}</ReactMarkdown>
+                    <ReactMarkdown>{result.pm_view.summary_markdown}</ReactMarkdown>
                   </div>
                 </>
-              ) : null}
-              <p className="field-hint">Connectors: {result.connectors_used?.join(", ") || "—"}</p>
+              ) : (
+                <div className="explanation">
+                  <ReactMarkdown>{result.explanation ?? ""}</ReactMarkdown>
+                </div>
+              )}
             </>
           ) : null}
           {activeResultTab === "evidence" ? (
@@ -350,36 +279,20 @@ export function GovernanceView(props: GovernanceViewProps) {
                 <h2>Normalized evidence</h2>
                 {result.normalized_evidence?.length ? (
                   <ul className="list-plain">
-                    {result.normalized_evidence.map((e, i) => {
-                      const url = e.metadata?.url as string | undefined;
-                      return (
-                        <li key={i}>
-                          <span className="mono">{e.source}</span> · {e.kind} —{" "}
-                          {url ? (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}
-                            >
-                              {e.summary}
-                            </a>
-                          ) : (
-                            e.summary
-                          )}{" "}
-                          (<strong>{Number(e.severity).toFixed(2)}</strong>)
-                        </li>
-                      );
-                    })}
+                    {result.normalized_evidence.map((e, i) => (
+                      <li key={i}>
+                        <span className="mono">{e.source}</span> · {e.kind} — {e.summary}
+                      </li>
+                    ))}
                   </ul>
                 ) : (
-                  <div className="empty-state">No normalized evidence returned in this run.</div>
+                  <div className="empty-state">No normalized evidence.</div>
                 )}
               </div>
               <div>
                 <h2>Raw evidence</h2>
                 {Object.entries(result.raw_evidence_by_connector ?? {}).map(([name, payload]) => (
-                  <details key={name} className="accordion" open={name === "github"}>
+                  <details key={name} className="accordion">
                     <summary>{name}</summary>
                     <pre>{JSON.stringify(payload, null, 2)}</pre>
                   </details>
@@ -397,19 +310,56 @@ export function GovernanceView(props: GovernanceViewProps) {
                   ))}
                 </ul>
               ) : (
-                <div className="empty-state">No agent opinions available for this run.</div>
+                <div className="empty-state">No agent opinions.</div>
               )}
             </>
           ) : null}
           {activeResultTab === "explainability" ? (
-            <>
-              <h2>Full explanation</h2>
-              <div className="explanation">
-                <ReactMarkdown>{result.explanation ?? ""}</ReactMarkdown>
-              </div>
-            </>
+            <div className="explanation">
+              <ReactMarkdown>{result.explanation ?? ""}</ReactMarkdown>
+            </div>
           ) : null}
         </div>
+      ) : null}
+
+      {batchResult ? (
+        <div className="card">
+          <h2>Batch results</h2>
+          <pre className="mono" style={{ fontSize: "0.8rem", overflow: "auto" }}>
+            {JSON.stringify(batchResult, null, 2)}
+          </pre>
+        </div>
+      ) : null}
+
+      {user.is_superadmin && tenants ? (
+        <details className="card" open={showAdmin} onToggle={(e) => setShowAdmin(e.currentTarget.open)}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Superadmin — tenants & batch</summary>
+          <ul className="list-plain" style={{ margin: "0.75rem 0" }}>
+            {tenants.map((t) => (
+              <li key={t.id}>
+                <span className="mono">{t.slug}</span> — {t.name}
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={onCreateTenant}>
+            <div className="form-row">
+              <label htmlFor="tname">New tenant name</label>
+              <input id="tname" value={newTenantName} onChange={(e) => setNewTenantName(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label htmlFor="tslug">Slug</label>
+              <input id="tslug" className="mono" value={newTenantSlug} onChange={(e) => setNewTenantSlug(e.target.value)} />
+            </div>
+            <button className="btn btn-ghost" type="submit" disabled={loading}>
+              Add tenant
+            </button>
+          </form>
+          {user.is_admin ? (
+            <button className="btn btn-ghost" type="button" disabled={loading} onClick={onBatch} style={{ marginTop: "0.5rem" }}>
+              Run batch (library)
+            </button>
+          ) : null}
+        </details>
       ) : null}
     </div>
   );

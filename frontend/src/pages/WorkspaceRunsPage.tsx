@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   createGovernanceRun,
   createGovernanceRunShareLink,
@@ -10,6 +10,9 @@ import {
   type GovernanceRunV1,
   type PortfolioProject,
 } from "../api";
+import { AgentReasoningGrid } from "../components/governance/AgentReasoningGrid";
+import { ConsensusDecisionPanel } from "../components/governance/ConsensusDecisionPanel";
+import { deriveAgentGrid, parseGovernanceRunResult } from "../lib/governancePresentation";
 
 type WorkspaceRunsPageProps = {
   tenantSlug?: string | null;
@@ -18,6 +21,7 @@ type WorkspaceRunsPageProps = {
 export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const runIdFromUrl = searchParams.get("run_id") ?? "";
+  const queryFromUrl = searchParams.get("query") ?? "";
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
   const setListProjectFilter = (v: string) => {
     const next = new URLSearchParams(searchParams);
@@ -66,6 +70,10 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
   }, [runs]);
 
   useEffect(() => {
+    if (queryFromUrl) setQuery(queryFromUrl);
+  }, [queryFromUrl]);
+
+  useEffect(() => {
     fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
@@ -80,7 +88,7 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runIdFromUrl]);
 
-  const loadRuns = async () => {
+  const loadRuns = async (): Promise<GovernanceRunV1[]> => {
     try {
       setListLoading(true);
       const list = await fetchGovernanceRuns({
@@ -95,15 +103,35 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
         const next = list.find((r) => r.id === selectedRun.id);
         if (next) setSelectedRun(next);
       }
+      return list;
     } finally {
       setListLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRuns().catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
+    loadRuns()
+      .then(async (list) => {
+        if (!runIdFromUrl && !selectedRun) {
+          const latest = list.find((r) => r.status === "succeeded");
+          if (latest) {
+            const full = await fetchGovernanceRun(latest.id);
+            setSelectedRun(full);
+            syncRunIdToUrl(latest.id);
+          }
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offset, statusFilter, query, listProjectFilter]);
+
+  const parsedSelected = useMemo(
+    () => (selectedRun?.status === "succeeded" ? parseGovernanceRunResult(selectedRun) : null),
+    [selectedRun]
+  );
+  const agentGrid = parsedSelected
+    ? deriveAgentGrid(parsedSelected.result.agent_opinions ?? [], parsedSelected.framing)
+    : [];
 
   useEffect(() => {
     if (activeRunIds.length === 0) return;
@@ -209,11 +237,12 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
 
   return (
     <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Runs</h1>
-          <span>Asynchronous governance run history and details</span>
-        </div>
+      <header className="gov-hub-header">
+        <p className="gov-hub-eyebrow">Agentic Governance</p>
+        <h1 className="gov-hub-title">How Casantris reasons about this decision</h1>
+        <p className="gov-hub-lead">
+          Specialist agents evaluate domains independently while the orchestrator synthesizes the final recommendation.
+        </p>
       </header>
       {toast ? <div className="alert alert-success">{toast}</div> : null}
       {error ? (
@@ -221,6 +250,21 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
           {error}
         </div>
       ) : null}
+      {parsedSelected ? (
+        <>
+          <AgentReasoningGrid agents={agentGrid} />
+          <ConsensusDecisionPanel result={parsedSelected.result} framing={parsedSelected.framing} />
+          <div className="gov-recommendation-actions" style={{ marginBottom: "1rem" }}>
+            <Link to={`/app/evidence?run_id=${parsedSelected.run.id}`} className="btn btn-ghost btn-sm">
+              Evidence Hub
+            </Link>
+            <Link to="/app/cases" className="btn btn-ghost btn-sm">
+              Decision & Audit
+            </Link>
+          </div>
+        </>
+      ) : null}
+
       <div className="workspace-kpi-strip">
         <div className="metric">
           <div className="label">Visible runs</div>
@@ -484,7 +528,10 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
               })()}
             </div>
           ) : null}
-          <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
+          <details className="accordion">
+            <summary>Full run JSON</summary>
+            <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
+          </details>
         </div>
       ) : null}
     </div>

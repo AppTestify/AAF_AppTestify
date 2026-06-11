@@ -279,6 +279,7 @@ export type GovernanceRunResult = {
 
 export { formatAgentLabel, parseIncidentFindings } from "./agentLabels";
 export type { AgentFinding } from "./agentLabels";
+export { parseGovernanceRunResult, parseRunResult } from "./lib/governancePresentation";
 
 export async function runGovernance(
   prompt: string,

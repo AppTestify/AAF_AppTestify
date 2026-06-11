@@ -22,6 +22,8 @@ from app.bootstrap import (
     ensure_tenant_notification_delivery_columns,
 )
 from app.db import get_engine, init_db
+from app.logging_config import configure_structlog
+from app.middleware.tenant_rate_limit import TenantRateLimitMiddleware
 from app.routers import (
     admin_tenants,
     auth,
@@ -29,12 +31,15 @@ from app.routers import (
     governance_intelligence,
     governance_policy,
     leads,
+    metrics,
     portfolio,
     governance_v1,
     prompts,
     public_share,
     rbac,
     reports,
+    search,
+    services_catalog,
     telemetry,
     tenant_config,
     webhooks,
@@ -46,6 +51,7 @@ from app.services.run_jobs import start_worker, stop_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_structlog()
     settings = get_settings()
     validate_runtime_safety(settings)
     configure_otel(settings)
@@ -81,6 +87,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TenantRateLimitMiddleware)
 
 
 @app.middleware("http")
@@ -145,6 +152,9 @@ app.include_router(prompts.router, prefix=settings.api_v1_prefix)
 app.include_router(tenant_config.router, prefix=settings.api_v1_prefix)
 app.include_router(leads.router, prefix=settings.api_v1_prefix)
 app.include_router(portfolio.router, prefix=settings.api_v1_prefix)
+app.include_router(metrics.router, prefix=settings.api_v1_prefix)
+app.include_router(search.router, prefix=settings.api_v1_prefix)
+app.include_router(services_catalog.router, prefix=settings.api_v1_prefix)
 
 # Optional production static hosting fallback for React SPA.
 _dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"

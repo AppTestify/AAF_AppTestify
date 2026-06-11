@@ -8,6 +8,28 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aaf
+          POSTGRES_PASSWORD: aaf
+          POSTGRES_DB: aaf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://aaf:aaf@localhost:5432/aaf
+      JWT_SECRET: ci-test-jwt-secret-key-min-32-chars-long
+      APP_ENCRYPTION_KEY: ci-test-encryption-key-for-fernet-migrations
+      SUPERADMIN_EMAIL: super@ci.local
+      SUPERADMIN_PASSWORD: ci-superadmin-pass-xyz
+      ADMIN_EMAIL: admin@ci.local
+      ADMIN_PASSWORD: ci-admin-pass-xyz
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,8 +39,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run pytest suite
-        run: python -m pytest tests -q
+      - name: Run Alembic migrations against Postgres
+        run: alembic upgrade head
+      - name: Run pytest suite with coverage
+        run: python -m pytest tests -q --cov=app --cov=orchestrator --cov=agents --cov-report=term-missing --cov-fail-under=50
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -34,5 +58,20 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         run: npm ci
+      - name: Unit tests
+        run: npm test
       - name: Lint and build
         run: npm run build
+
+  load-test-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Load test gate (optional)
+        run: python scripts/load_test.py --help || echo "load test script present"

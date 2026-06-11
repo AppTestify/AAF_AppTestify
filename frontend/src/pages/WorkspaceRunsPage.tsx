@@ -6,6 +6,7 @@ import {
   fetchGovernanceRun,
   fetchGovernanceRuns,
   fetchPortfolioProjects,
+  exportRunBriefPdf,
   fetchSingleRunExport,
   type GovernanceRunV1,
   type PortfolioProject,
@@ -235,6 +236,19 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
     }
   };
 
+  const exportSelectedRunPdf = async () => {
+    if (!selectedRun) return;
+    try {
+      setError(null);
+      const blob = await exportRunBriefPdf(selectedRun.id);
+      downloadBlob(blob, `governance_run_${selectedRun.id}.pdf`);
+      setToast("Export Brief PDF downloaded");
+      setTimeout(() => setToast(""), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF export failed");
+    }
+  };
+
   return (
     <div className="app">
       <header className="gov-hub-header">
@@ -252,7 +266,10 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
       ) : null}
       {parsedSelected ? (
         <>
-          <AgentReasoningGrid agents={agentGrid} />
+          <AgentReasoningGrid
+            agents={agentGrid}
+            rarLoops={parsedSelected.result.rar?.rar_loops ?? 0}
+          />
           <ConsensusDecisionPanel result={parsedSelected.result} framing={parsedSelected.framing} />
           <div className="gov-recommendation-actions" style={{ marginBottom: "1rem" }}>
             <Link to={`/app/evidence?run_id=${parsedSelected.run.id}`} className="btn btn-ghost btn-sm">
@@ -448,6 +465,9 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
               </button>
               <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunCsv}>
                 Export CSV
+              </button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => void exportSelectedRunPdf()}>
+                Export Brief
               </button>
               <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
             </div>

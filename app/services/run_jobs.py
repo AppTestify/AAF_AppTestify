@@ -58,7 +58,18 @@ def stop_worker() -> None:
     _thread = None
 
 
+def _use_celery() -> bool:
+    settings = get_settings()
+    return bool(settings.celery_broker_url or settings.redis_url)
+
+
 def enqueue_run(run_id: int) -> None:
+    if _use_celery():
+        from app.celery_app import process_run_task
+
+        process_run_task.delay(run_id)
+        set_run_queue_depth(1)
+        return
     _queue.put(run_id)
     set_run_queue_depth(_queue.qsize())
 
@@ -69,10 +80,10 @@ def _worker_loop() -> None:
         set_run_queue_depth(_queue.qsize())
         if run_id < 0:
             return
-        _process_one(run_id)
+        process_run_sync(run_id)
 
 
-def _process_one(run_id: int) -> None:
+def process_run_sync(run_id: int) -> None:
     db = db_mod.SessionLocal()
     started_perf = datetime.now(timezone.utc)
     try:

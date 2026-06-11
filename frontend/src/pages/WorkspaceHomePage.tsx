@@ -110,8 +110,8 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const riskCards = deriveRiskCards(releaseGov, consensus, parsedRun);
   const recommendation = deriveRecommendation(parsedRun, releaseGov);
   const recentDecisions = deriveRecentDecisions(summary, cases);
-  const flowSteps = deriveDecisionFlow(parsedRun);
-  const liveTrace = parsedRun ? isLiveTrace(parsedRun.run.finished_at) : false;
+  const flowSteps = deriveDecisionFlow(parsedRun, parsedRun?.run.status);
+  const liveTrace = parsedRun ? isLiveTrace(parsedRun.run.status, parsedRun.run.finished_at) : false;
 
   const maxRunCount = Math.max(1, ...Object.values(summary?.run_status_counts ?? { empty: 1 }));
   const maxCaseCount = Math.max(1, ...Object.values(summary?.case_status_counts ?? { empty: 1 }));

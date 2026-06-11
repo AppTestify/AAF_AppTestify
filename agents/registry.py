@@ -21,7 +21,6 @@ async def run_all_agents_async(
     settings: Settings | None = None,
     llm_providers: list[ActiveProvider] | None = None,
 ) -> list[AgentOpinion]:
-    del llm_providers
     ctx = tool_ctx
     if ctx is None:
         from aaf.config import get_settings
@@ -29,10 +28,10 @@ async def run_all_agents_async(
         ctx = build_tool_context(settings or get_settings())
 
     results = await asyncio.gather(
-        devops.run_async(evidence, tool_ctx=ctx, settings=settings),
-        finops.run_async(evidence, tool_ctx=ctx, settings=settings),
-        devsecops.run_async(evidence, tool_ctx=ctx, settings=settings),
-        pm_agent.run_async(evidence, tool_ctx=ctx, settings=settings),
+        devops.run_async(evidence, tool_ctx=ctx, settings=settings, llm_providers=llm_providers),
+        finops.run_async(evidence, tool_ctx=ctx, settings=settings, llm_providers=llm_providers),
+        devsecops.run_async(evidence, tool_ctx=ctx, settings=settings, llm_providers=llm_providers),
+        pm_agent.run_async(evidence, tool_ctx=ctx, settings=settings, llm_providers=llm_providers),
     )
     return list(results)
 

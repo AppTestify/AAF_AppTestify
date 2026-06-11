@@ -214,9 +214,10 @@ export type FlowStep = {
   label: string;
   detail?: string;
   active?: boolean;
+  completed?: boolean;
 };
 
-export function deriveDecisionFlow(parsed: ParsedRunContext | null): FlowStep[] {
+export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: string | null): FlowStep[] {
   if (!parsed) {
     return [
       { id: "prompt", label: "PM Prompt", detail: "Ask Casantris AI" },
@@ -231,18 +232,28 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null): FlowStep[] 
   const { result, framing } = parsed;
   const action = formatActionLabel(framing.orchestration?.recommended_action ?? result.utility?.recommended_action);
   const score = framing.orchestration?.consensus_score ?? result.consensus?.consensus_score;
+  const status = runStatus ?? parsed.run.status;
+  const running = status === "running" || status === "queued";
+  const done = status === "succeeded";
   return [
-    { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : "") },
-    { id: "github", label: "GitHub", detail: "Evidence" },
-    { id: "jira", label: "Jira", detail: "Evidence" },
-    { id: "finops", label: "FinOps", detail: "Evidence" },
-    { id: "agents", label: "AI Agents", detail: `${result.agent_opinions?.length ?? 4} agents` },
-    { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—" },
-    { id: "decision", label: "Decision", detail: action, active: true },
+    { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""), completed: true },
+    { id: "github", label: "GitHub", detail: "Evidence", completed: done || !running },
+    { id: "jira", label: "Jira", detail: "Evidence", completed: done || !running },
+    { id: "finops", label: "FinOps", detail: "Evidence", completed: done || !running },
+    {
+      id: "agents",
+      label: "AI Agents",
+      detail: `${result.agent_opinions?.length ?? 4} agents`,
+      active: running,
+      completed: done,
+    },
+    { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done, active: running },
+    { id: "decision", label: "Decision", detail: action, active: done, completed: done },
   ];
 }
 
-export function isLiveTrace(finishedAt: string | null): boolean {
+export function isLiveTrace(runStatus: string | null | undefined, finishedAt: string | null): boolean {
+  if (runStatus === "running" || runStatus === "queued") return true;
   if (!finishedAt) return false;
   return Date.now() - new Date(finishedAt).getTime() < 30 * 60 * 1000;
 }

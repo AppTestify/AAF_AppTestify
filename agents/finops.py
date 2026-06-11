@@ -33,6 +33,9 @@ SYSTEM_PROMPT = (
 class FinOpsAgent(BaseAgent):
     agent_id = "finops"
     risk_theme_default = RiskTheme.COST_RISK
+
+    def system_prompt(self) -> str:
+        return SYSTEM_PROMPT
     staleness_hours = 6.0
     staleness_penalty = 0.4
 
@@ -88,11 +91,14 @@ async def run_async(
     *,
     tool_ctx: ToolContext | None = None,
     settings: Settings | None = None,
+    llm_providers: list[ActiveProvider] | None = None,
 ) -> AgentOpinion:
     from aaf.config import get_settings
 
     ctx = tool_ctx or build_tool_context(settings or get_settings())
     package = EvidencePackage(records=evidence)
+    if llm_providers:
+        return await _agent.run_with_llm(ctx, package, llm_providers=llm_providers)
     return await _agent.run_async(ctx, package)
 
 
@@ -102,5 +108,4 @@ def run(
     *,
     tool_ctx: ToolContext | None = None,
 ) -> AgentOpinion:
-    del llm_providers
-    return _sync_await(run_async(evidence, tool_ctx=tool_ctx))
+    return _sync_await(run_async(evidence, tool_ctx=tool_ctx, llm_providers=llm_providers))

@@ -73,6 +73,41 @@ class BaseAgent(ABC):
             callables = self.tool_callables()
         return list(await asyncio.gather(*[fn(ctx) for fn in callables]))
 
+    def system_prompt(self) -> str:
+        return f"You are the {self.agent_id} governance agent."
+
+    async def run_with_llm(
+        self,
+        ctx: ToolContext,
+        package: EvidencePackage,
+        *,
+        llm_providers: list | None = None,
+        correlation_boost: float = 0.0,
+        refresh_tools: list[str] | None = None,
+    ) -> AgentOpinion:
+        """Run tools then optionally synthesize claim via LLM; fallback to deterministic opinion."""
+        from agents.base import run_agent_llm_flow
+
+        base = await self.run_async(
+            ctx, package, correlation_boost=correlation_boost, refresh_tools=refresh_tools
+        )
+        if not llm_providers:
+            return base
+
+        def fallback() -> AgentOpinion:
+            return base
+
+        llm_opinion = run_agent_llm_flow(
+            self.agent_id,
+            package.records,
+            self.system_prompt(),
+            fallback,
+            llm_providers=llm_providers,
+        )
+        llm_opinion.evidence = base.evidence or llm_opinion.evidence
+        llm_opinion.raw_signals = {**base.raw_signals, **llm_opinion.raw_signals}
+        return llm_opinion
+
     async def run_async(
         self,
         ctx: ToolContext,

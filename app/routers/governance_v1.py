@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from aaf.config import get_settings
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun, PortfolioProject
+from app.models.metrics import LLMCallLog
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.config_resolver import resolve_tenant_for_user
@@ -240,6 +244,114 @@ def create_run_v1(
     enqueue_run(run.id)
     db.refresh(run)
     return _run_out(run)
+
+
+async def _run_sse_events(run_id: int, db_factory) -> AsyncIterator[str]:
+    last_status = None
+    for _ in range(120):
+        db = db_factory()
+        try:
+            run = db.get(GovernanceRun, run_id)
+            if run is None:
+                yield f"event: error\ndata: {json.dumps({'detail': 'not_found'})}\n\n"
+                return
+            status_val = run.status
+            if status_val != last_status:
+                last_status = status_val
+                yield f"event: status\ndata: {json.dumps({'status': status_val, 'run_id': run_id})}\n\n"
+                if status_val == "running":
+                    yield f"event: evidence_fetched\ndata: {json.dumps({'run_id': run_id})}\n\n"
+                if status_val == "succeeded":
+                    result = run.result_json or {}
+                    yield f"event: agent_complete\ndata: {json.dumps({'agents': len(result.get('agent_opinions') or [])})}\n\n"
+                    rar = result.get("rar") or {}
+                    if rar.get("rar_triggered"):
+                        yield f"event: rar_loop\ndata: {json.dumps(rar)}\n\n"
+                    yield f"event: result_ready\ndata: {json.dumps({'run_id': run_id, 'consensus': (result.get('consensus') or {}).get('consensus_score')})}\n\n"
+                    return
+                if status_val == "failed":
+                    yield f"event: error\ndata: {json.dumps({'error': run.error_message})}\n\n"
+                    return
+        finally:
+            db.close()
+        await asyncio.sleep(1)
+    yield f"event: timeout\ndata: {json.dumps({'run_id': run_id})}\n\n"
+
+
+@router.get("/runs/{run_id}/stream")
+async def stream_run_v1(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+
+    from app.db import SessionLocal
+
+    return StreamingResponse(
+        _run_sse_events(run_id, SessionLocal),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/runs/{run_id}/llm-log")
+def run_llm_log_v1(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+    rows = db.execute(select(LLMCallLog).where(LLMCallLog.run_id == run_id)).scalars().all()
+    return {
+        "run_id": run_id,
+        "calls": [
+            {
+                "agent_id": r.agent_id,
+                "provider_name": r.provider_name,
+                "model_name": r.model_name,
+                "prompt_tokens": r.prompt_tokens,
+                "completion_tokens": r.completion_tokens,
+                "cost_usd": r.cost_usd,
+                "latency_ms": r.latency_ms,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/tenant/data")
+def delete_tenant_data_v1(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    """GDPR-style tenant data purge (superadmin only). Retains audit_events."""
+    if not current.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
+    tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    if tenant is None:
+        raise HTTPException(status_code=400, detail="tenant_required")
+    run_ids = [
+        r.id
+        for r in db.execute(select(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id)).scalars().all()
+    ]
+    if run_ids:
+        db.execute(delete(EvidenceSnapshot).where(EvidenceSnapshot.run_id.in_(run_ids)))
+        db.execute(delete(LLMCallLog).where(LLMCallLog.run_id.in_(run_ids)))
+    db.execute(delete(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id))
+    db.execute(delete(GovernanceCase).where(GovernanceCase.tenant_id == tenant.id))
+    db.commit()
+    return {"status": "purged", "tenant_id": tenant.id, "runs_deleted": len(run_ids)}
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)

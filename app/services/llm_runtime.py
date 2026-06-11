@@ -99,6 +99,8 @@ def invoke_text(
             text = _invoke_azure_openai(provider, prompt, system_prompt=system_prompt)
         elif provider.provider_name == "aws_bedrock":
             raise LLMInvocationError("aws_bedrock runtime invocation is not implemented")
+        elif provider.provider_name == "ollama":
+            text = _invoke_ollama(provider, prompt, system_prompt=system_prompt)
         else:
             raise LLMInvocationError(f"unsupported provider: {provider.provider_name}")
     except Exception as exc:  # noqa: BLE001
@@ -206,6 +208,30 @@ def _invoke_anthropic(
         first = content[0] or {}
         return str(first.get("text") or "").strip()
     return ""
+
+
+def _invoke_ollama(
+    provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
+) -> str:
+    base = (provider.endpoint_url or "http://localhost:11434").rstrip("/")
+    url = f"{base}/api/chat"
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    payload = {
+        "model": provider.model_name,
+        "messages": messages,
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+    with httpx.Client(timeout=provider.timeout_seconds) as client:
+        resp = client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        body = resp.json()
+    return str((body.get("message") or {}).get("content") or "").strip()
 
 
 def _invoke_azure_openai(

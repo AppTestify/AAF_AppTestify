@@ -8,11 +8,15 @@ from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PipelineResult
 from app.services.llm_runtime import ActiveProvider
 from connectors.evidence_normalizer import normalize_all
+from connectors.azure_connector import AzureDevOpsConnector
+from connectors.bitbucket_connector import BitbucketConnector
 from connectors.finops_connector import FinopsConnector
 from connectors.github_connector import GitHubConnector
+from connectors.gitlab_connector import GitLabConnector
 from connectors.jira_connector import JiraConnector
+from connectors.pagerduty_connector import PagerDutyConnector
+from orchestrator.connector_router import route_connectors_semantic
 from orchestrator.pipeline import run_pipeline
-from pm_interface.router import route_connectors
 from tools.context import build_tool_context
 
 
@@ -27,6 +31,18 @@ async def _fetch_raw_evidence(settings: Settings, names: list[str], ctx: dict[st
     if "finops" in names:
         fo = FinopsConnector(settings)
         raw["finops"] = await fo.fetch_evidence(ctx)  # type: ignore[arg-type]
+    if "gitlab" in names:
+        gl = GitLabConnector(settings)
+        raw["gitlab"] = await gl.fetch_evidence(ctx)  # type: ignore[arg-type]
+    if "bitbucket" in names:
+        bb = BitbucketConnector(settings)
+        raw["bitbucket"] = await bb.fetch_evidence(ctx)  # type: ignore[arg-type]
+    if "pagerduty" in names:
+        pd = PagerDutyConnector(settings)
+        raw["pagerduty"] = await pd.fetch_evidence(ctx)  # type: ignore[arg-type]
+    if "azure_devops" in names:
+        az = AzureDevOpsConnector(settings)
+        raw["azure_devops"] = await az.fetch_evidence(ctx)  # type: ignore[arg-type]
     return raw
 
 
@@ -36,7 +52,7 @@ async def run_governance(
     settings: Settings,
     llm_providers: list[ActiveProvider] | None = None,
 ) -> PipelineResult:
-    names = route_connectors(prompt)
+    names, _routing_confidence = route_connectors_semantic(prompt)
     ctx: dict[str, str] = {
         "prompt": prompt,
         "github_repo": settings.github_repo,

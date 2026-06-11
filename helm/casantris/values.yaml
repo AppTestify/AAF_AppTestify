@@ -1,0 +1,45 @@
+replicaCount: 2
+
+image:
+  repository: casantris/api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  host: casantris.example.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+postgres:
+  enabled: true
+  storage: 20Gi
+
+redis:
+  enabled: true
+
+celery:
+  replicas: 2
+
+nginx:
+  enabled: true
+
+secrets:
+  jwtSecret: change-me
+  encryptionKey: change-me-32-char-encryption-key

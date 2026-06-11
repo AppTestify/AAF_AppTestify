@@ -1,32 +1,16 @@
-"""HTTP auth and protected governance routes."""
+"""HTTP auth and protected governance routes (cookie-based)."""
 
 from __future__ import annotations
+
+from tests.conftest_auth import cookie_client, login_as
 
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    db_path = tmp_path / "auth_test.db"
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
-    monkeypatch.setenv("JWT_SECRET", "unit-test-jwt-secret-key-min-32-chars!!")
-    monkeypatch.setenv("SUPERADMIN_EMAIL", "super@example.com")
-    monkeypatch.setenv("SUPERADMIN_PASSWORD", "super-pass-123")
-    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
-    monkeypatch.setenv("ADMIN_PASSWORD", "test-password-123")
-    # deps.settings_dep is lru_cached from prior imports; clear so env is picked up
-    from app import deps
-
-    deps.settings_dep.cache_clear()
-
-    from app.main import app
-
-    with TestClient(app) as c:
-        yield c
-
-    deps.settings_dep.cache_clear()
-    app.dependency_overrides.clear()
+def client(cookie_client):
+    return cookie_client
 
 
 def test_login_success(client: TestClient):
@@ -36,12 +20,12 @@ def test_login_success(client: TestClient):
     )
     assert r.status_code == 200, r.text
     data = r.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+    assert "access_token" not in data
     assert data["user"]["email"] == "admin@example.com"
     assert data["user"]["is_admin"] is True
     assert data["user"]["is_superadmin"] is False
     assert data["user"]["tenant_slug"] == "default"
+    assert "access_token" in client.cookies
 
 
 def test_login_wrong_password(client: TestClient):
@@ -57,17 +41,9 @@ def test_governance_run_requires_auth(client: TestClient):
     assert r.status_code == 401
 
 
-def test_governance_run_with_token(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "test-password-123"},
-    )
-    token = login.json()["access_token"]
-    r = client.post(
-        "/api/v1/governance/run",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"prompt": "GitHub status"},
-    )
+def test_governance_run_with_cookie(client: TestClient):
+    login_as(client, "admin@example.com", "test-password-123")
+    r = client.post("/api/v1/governance/run", json={"prompt": "GitHub status"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "consensus" in body
@@ -75,28 +51,16 @@ def test_governance_run_with_token(client: TestClient):
 
 
 def test_batch_admin_only(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "test-password-123"},
-    )
-    token = login.json()["access_token"]
-    r = client.post(
-        "/api/v1/governance/batch",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    login_as(client, "admin@example.com", "test-password-123")
+    r = client.post("/api/v1/governance/batch")
     assert r.status_code == 200, r.text
     assert "runs" in r.json()
 
 
 def test_superadmin_create_tenant(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "super@example.com", "password": "super-pass-123"},
-    )
-    token = login.json()["access_token"]
+    login_as(client, "super@example.com", "super-pass-123")
     r = client.post(
         "/api/v1/admin/tenants",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Acme", "slug": "acme"},
     )
     assert r.status_code == 201, r.text
@@ -112,8 +76,7 @@ def test_superadmin_login_and_tenants(client: TestClient):
     data = login.json()
     assert data["user"]["is_superadmin"] is True
     assert data["user"]["tenant_id"] is None
-    token = data["access_token"]
-    r = client.get("/api/v1/admin/tenants", headers={"Authorization": f"Bearer {token}"})
+    r = client.get("/api/v1/admin/tenants")
     assert r.status_code == 200, r.text
     tenants = r.json()
     assert len(tenants) >= 1
@@ -121,43 +84,40 @@ def test_superadmin_login_and_tenants(client: TestClient):
 
 
 def test_tenant_admin_cannot_list_tenants(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "test-password-123"},
-    )
-    token = login.json()["access_token"]
-    r = client.get("/api/v1/admin/tenants", headers={"Authorization": f"Bearer {token}"})
+    login_as(client, "admin@example.com", "test-password-123")
+    r = client.get("/api/v1/admin/tenants")
     assert r.status_code == 403
 
 
 def test_superadmin_batch(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "super@example.com", "password": "super-pass-123"},
-    )
-    token = login.json()["access_token"]
-    r = client.post("/api/v1/governance/batch", headers={"Authorization": f"Bearer {token}"})
+    login_as(client, "super@example.com", "super-pass-123")
+    r = client.post("/api/v1/governance/batch")
     assert r.status_code == 200, r.text
 
 
 def test_me_endpoint(client: TestClient):
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "test-password-123"},
-    )
-    token = login.json()["access_token"]
-    r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    login_as(client, "admin@example.com", "test-password-123")
+    r = client.get("/api/v1/auth/me")
     assert r.status_code == 200
     assert r.json()["email"] == "admin@example.com"
 
 
-def test_signup_status_default_off(client: TestClient):
+def test_signup_status_default_off(client: TestClient, monkeypatch):
+    monkeypatch.setenv("PUBLIC_TENANT_SIGNUP_ENABLED", "false")
+    from app import deps
+
+    deps.settings_dep.cache_clear()
     r = client.get("/api/v1/auth/signup-status")
     assert r.status_code == 200, r.text
     assert r.json()["tenant_signup_enabled"] is False
+    deps.settings_dep.cache_clear()
 
 
-def test_signup_tenant_disabled_by_default(client: TestClient):
+def test_signup_tenant_disabled_by_default(client: TestClient, monkeypatch):
+    monkeypatch.setenv("PUBLIC_TENANT_SIGNUP_ENABLED", "false")
+    from app import deps
+
+    deps.settings_dep.cache_clear()
     r = client.post(
         "/api/v1/auth/signup-tenant",
         json={
@@ -168,6 +128,7 @@ def test_signup_tenant_disabled_by_default(client: TestClient):
         },
     )
     assert r.status_code == 403
+    deps.settings_dep.cache_clear()
 
 
 def test_signup_tenant_success(client: TestClient, monkeypatch):
@@ -190,8 +151,8 @@ def test_signup_tenant_success(client: TestClient, monkeypatch):
     assert data["user"]["tenant_slug"] == "planet-express"
     assert data["user"]["is_admin"] is True
     assert data["user"]["is_superadmin"] is False
-    token = data["access_token"]
-    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert "access_token" in client.cookies
+    me = client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["tenant_slug"] == "planet-express"
     deps.settings_dep.cache_clear()
@@ -211,11 +172,7 @@ def test_signup_tenant_duplicate_slug(client: TestClient, monkeypatch):
     assert client.post("/api/v1/auth/signup-tenant", json=body).status_code == 201
     r2 = client.post(
         "/api/v1/auth/signup-tenant",
-        json={
-            **body,
-            "organization_name": "Second",
-            "admin_email": "b@example.org",
-        },
+        json={**body, "organization_name": "Second", "admin_email": "b@example.org"},
     )
     assert r2.status_code == 409
     deps.settings_dep.cache_clear()

@@ -1,0 +1,5 @@
+{
+  "simulated": true,
+  "merge_requests": [{"id": 1, "title": "feat: governance API", "state": "opened"}],
+  "pipelines": [{"id": 42, "status": "success", "ref": "main"}]
+}

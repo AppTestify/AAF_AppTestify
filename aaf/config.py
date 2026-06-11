@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # Pipeline
     tau_consensus: float = 0.55
     max_rar_loops: int = 2
-    rar_live_refresh_enabled: bool = False
+    rar_live_refresh_enabled: bool = True
     w_perf: float = 0.4
     w_cost: float = 0.3
     w_risk: float = 0.3
@@ -39,7 +39,17 @@ class Settings(BaseSettings):
     jira_api_token: str = ""
     jira_project: str = "PROJ"
     jira_board_id: str = "1"
+    gitlab_token: str = ""
+    gitlab_project_id: str = ""
+    gitlab_url: str = "https://gitlab.com"
+    gitlab_webhook_secret: str = ""
+    pagerduty_api_token: str = ""
     finops_cost_file: Optional[Path] = None  # JSON/CSV path for live file-based cost
+
+    # SQLAlchemy pool tuning (optional PgBouncer sidecar in compose/helm)
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_recycle_seconds: int = 1800
 
     # AWS (FinOps live tools)
     aws_region: str = "us-east-1"
@@ -60,8 +70,16 @@ class Settings(BaseSettings):
     # Prometheus text at GET /metrics without auth (for scrapers). Must stay false in production.
     metrics_public_enabled: bool = False
 
-    # Database (SQLite default; use postgresql+psycopg://... for Postgres)
-    database_url: str = "sqlite:///./data/aaf.db"
+    # Database (Postgres recommended for production; SQLite for local quick start)
+    database_url: str = "postgresql+psycopg://aaf:aaf@localhost:5432/aaf"
+
+    # Background jobs (Celery + Redis). Empty broker falls back to in-process thread queue.
+    redis_url: str = ""
+    celery_broker_url: str = ""
+    celery_result_backend: str = ""
+
+    # Evidence normalization cap per connector source
+    max_evidence_per_source: int = 50
 
     # App-level encryption key for at-rest secret fields
     app_encryption_key: str = "change-me-32-char-encryption-key"
@@ -119,3 +137,9 @@ def validate_runtime_safety(settings: Settings) -> None:
         raise RuntimeError("METRICS_PUBLIC_ENABLED must be false in production")
     if settings.app_encryption_key.startswith("change-me") or len(settings.app_encryption_key) < 24:
         raise RuntimeError("Unsafe APP_ENCRYPTION_KEY for production")
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if "*" in origins:
+        raise RuntimeError("CORS_ORIGINS must not contain wildcard in production")
+    for origin in origins:
+        if "localhost" in origin or "127.0.0.1" in origin:
+            raise RuntimeError("CORS_ORIGINS must not include localhost in production")

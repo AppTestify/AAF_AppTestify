@@ -36,6 +36,7 @@ import { WorkspaceRunsPage } from "./pages/WorkspaceRunsPage";
 import { WorkspaceSettingsPage } from "./pages/WorkspaceSettingsPage";
 import { WorkspaceLeadsPage } from "./pages/WorkspaceLeadsPage";
 import { WorkspaceTenantsPage } from "./pages/WorkspaceTenantsPage";
+import { OnboardingWizardPage } from "./pages/OnboardingWizardPage";
 import "./App.css";
 
 export default function App() {
@@ -303,6 +304,7 @@ function AppRoutes() {
           path="ai-config"
           element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="ai" />}
         />
+        <Route path="onboarding" element={<OnboardingWizardPage />} />
         <Route path="leads" element={<WorkspaceLeadsPage />} />
         <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage /> : <Navigate to="/app/dashboard" replace />} />
       </Route>

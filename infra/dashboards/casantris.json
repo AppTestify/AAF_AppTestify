@@ -1,0 +1,9 @@
+{
+  "title": "Casantris Governance",
+  "panels": [
+    {"title": "API p95 latency (ms)", "type": "graph", "targets": [{"expr": "aaf_request_latency_p95"}]},
+    {"title": "Error rate", "type": "graph", "targets": [{"expr": "aaf_error_rate"}]},
+    {"title": "RAR trigger rate", "type": "stat", "targets": [{"expr": "aaf_rar_triggered_total"}]},
+    {"title": "Run queue depth", "type": "gauge", "targets": [{"expr": "aaf_run_queue_depth"}]}
+  ]
+}

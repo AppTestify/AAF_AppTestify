@@ -28,6 +28,7 @@ def create_tables() -> None:
     from app.models import rbac as _rbac  # noqa: F401
     from app.models import tenant as _tenant  # noqa: F401
     from app.models import user as _user  # noqa: F401
+    from app.models import metrics as _metrics  # noqa: F401
 
     Base.metadata.create_all(bind=get_engine())
 

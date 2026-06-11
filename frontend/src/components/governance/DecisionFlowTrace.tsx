@@ -18,7 +18,10 @@ export function DecisionFlowTrace({ steps, live }: DecisionFlowTraceProps) {
       <div className="gov-decision-flow">
         {steps.map((step, i) => (
           <div key={step.id} className="gov-flow-step-wrap">
-            <div className={`gov-flow-step ${step.active ? "gov-flow-step--active" : ""}`}>
+            <div
+              className={`gov-flow-step ${step.active ? "gov-flow-step--active" : ""} ${step.completed ? "gov-flow-step--done" : ""}`}
+            >
+              {step.completed ? <span className="gov-flow-check" aria-hidden="true">✓</span> : null}
               <span className="gov-flow-step-label">{step.label}</span>
               {step.detail ? <span className="gov-flow-step-detail">{step.detail}</span> : null}
             </div>

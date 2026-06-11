@@ -23,6 +23,7 @@ def test_validate_runtime_safety_blocks_public_metrics_in_prod():
         superadmin_password="unique-superadmin-pass-xyz",
         admin_password="unique-admin-pass-xyz",
         app_encryption_key="very-strong-encryption-key-for-prod-tests",
+        public_tenant_signup_enabled=False,
         metrics_public_enabled=True,
     )
     with pytest.raises(RuntimeError, match="METRICS_PUBLIC"):

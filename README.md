@@ -71,40 +71,42 @@ chmod +x scripts/dev.sh
 
 **3. Sign in**
 
-Use **tenant admin** credentials from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) for day-to-day PM runs, or **superadmin** (`SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD`) to manage tenants and run batch. The UI stores the JWT in `sessionStorage`.
+Use **tenant admin** credentials from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) for day-to-day PM runs, or **superadmin** (`SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD`) to manage tenants and run batch. The browser UI authenticates via an **httpOnly `access_token` cookie** set on login (not returned in the JSON body).
 
 ## API (for scripts or other clients)
+
+**Authentication:** `POST /api/v1/auth/login` sets an httpOnly `access_token` cookie. Protected routes read that cookie automatically — use `curl -c/-b cookie.jar` or `credentials: "include"` in fetch. The login response body contains user metadata only (no token field).
 
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/health` | Liveness |
 | GET | `/metrics?window_seconds=300` | Prometheus text when `METRICS_PUBLIC_ENABLED=true` (404 otherwise; **disabled in production**) |
-| POST | `/api/v1/auth/login` | JSON `{"email","password"}` → JWT + user (roles, tenant) |
-| GET | `/api/v1/auth/me` | Bearer JWT |
+| POST | `/api/v1/auth/login` | JSON `{"email","password"}` → sets httpOnly cookie + user JSON (roles, tenant) |
+| GET | `/api/v1/auth/me` | httpOnly cookie |
 | GET | `/api/v1/auth/signup-status` | Public — whether tenant self-signup is enabled |
 | POST | `/api/v1/auth/signup-tenant` | Public (when enabled) — create tenant + tenant admin account |
 | GET | `/api/v1/prompts/library` | Public prompt library |
 | GET | `/api/v1/admin/tenants` | **Superadmin** — list tenants + user counts |
 | POST | `/api/v1/admin/tenants` | **Superadmin** — JSON `{"name","slug"}` create tenant |
-| POST | `/api/v1/governance/run` | Bearer JWT — full pipeline JSON |
+| POST | `/api/v1/governance/run` | httpOnly cookie — full pipeline JSON |
 | POST | `/api/v1/governance/batch` | **Tenant admin or superadmin** — runs prompt library |
-| POST | `/api/v1/governance/runs` | Bearer JWT — queue async governance run |
-| GET | `/api/v1/governance/runs` | Bearer JWT — list persisted governance runs |
-| GET | `/api/v1/governance/runs/{id}` | Bearer JWT — run status + result |
+| POST | `/api/v1/governance/runs` | httpOnly cookie — queue async governance run |
+| GET | `/api/v1/governance/runs` | httpOnly cookie — list persisted governance runs |
+| GET | `/api/v1/governance/runs/{id}` | httpOnly cookie — run status + result |
 | POST | `/api/v1/governance/cases` | **Tenant admin/superadmin** — create governance case |
-| GET | `/api/v1/governance/cases` | Bearer JWT — list cases in tenant scope |
+| GET | `/api/v1/governance/cases` | httpOnly cookie — list cases in tenant scope |
 | PATCH | `/api/v1/governance/cases/{id}` | **Tenant admin/superadmin** — update case lifecycle |
 | POST | `/api/v1/governance/cases/{id}/decisions` | **Tenant admin/superadmin** — create decision |
 | POST | `/api/v1/governance/decisions/{id}/approve` | **Approver permission / admin fallback** |
 | GET | `/api/v1/governance/audit-events` | **Tenant admin/superadmin** — governance audit feed |
-| GET | `/api/v1/governance/policies` | Bearer JWT — tenant policy thresholds |
+| GET | `/api/v1/governance/policies` | httpOnly cookie — tenant policy thresholds |
 | PUT | `/api/v1/governance/policies/{name}` | **settings.manage permission / admin fallback** |
-| GET | `/api/v1/reports/runs/summary?format=json|csv` | Bearer JWT — export run summaries |
+| GET | `/api/v1/reports/runs/summary?format=json|csv` | httpOnly cookie — export run summaries |
 | GET | `/api/v1/reports/audit-events?format=json|csv` | **cases.manage permission / admin fallback** — export audit feed |
-| GET | `/api/v1/telemetry/summary` | Bearer JWT — dashboard KPIs + integration telemetry summary |
-| GET | `/api/v1/telemetry/observability/summary` | Bearer JWT — rolling API/worker SLI snapshot (latency/error/throughput) |
-| GET | `/api/v1/telemetry/observability/metrics` | Bearer JWT — Prometheus text metrics export |
-| GET | `/api/v1/rbac/me/permissions` | Bearer JWT — resolved RBAC permissions |
+| GET | `/api/v1/telemetry/summary` | httpOnly cookie — dashboard KPIs + integration telemetry summary |
+| GET | `/api/v1/telemetry/observability/summary` | httpOnly cookie — rolling API/worker SLI snapshot (latency/error/throughput) |
+| GET | `/api/v1/telemetry/observability/metrics` | httpOnly cookie — Prometheus text metrics export |
+| GET | `/api/v1/rbac/me/permissions` | httpOnly cookie — resolved RBAC permissions |
 | GET | `/api/v1/tenant/settings` | Authenticated tenant user/superadmin — tenant settings view |
 | PATCH | `/api/v1/tenant/settings` | **Tenant admin or superadmin** — update tenant settings |
 | GET | `/api/v1/tenant/connectors` | Authenticated tenant user/superadmin — connector settings |
@@ -126,7 +128,7 @@ See [.env.example](.env.example) for database, auth, and tenant bootstrap variab
 ## OpenTelemetry and metrics scraping
 
 - **OTLP export (traces + metrics):** set `OTEL_EXPORTER_OTLP_ENDPOINT` to your collector base URL (HTTP/protobuf), for example `https://otel.example.com:4318`. Optional `OTEL_EXPORTER_OTLP_HEADERS` (comma-separated `Key=Value`). Optional `OTEL_SERVICE_NAME` (defaults to `aaf-governance`). The app registers OTLP HTTP exporters for `/v1/traces` and `/v1/metrics` and instruments FastAPI when the endpoint is set.
-- **Authenticated Prometheus:** `GET /api/v1/telemetry/observability/metrics` (Bearer JWT) returns the same in-process gauges as `/metrics`.
+- **Authenticated Prometheus:** `GET /api/v1/telemetry/observability/metrics` (httpOnly cookie) returns the same in-process gauges as `/metrics`.
 - **Public scrape (dev only):** `METRICS_PUBLIC_ENABLED=true` exposes `GET /metrics` without auth. Startup rejects this when `APP_ENV=prod`.
 
 ## Multi-tenancy, superadmin, and database

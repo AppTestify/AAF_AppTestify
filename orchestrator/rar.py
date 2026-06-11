@@ -10,6 +10,16 @@ from aaf.schema import AgentOpinion, ConsensusResult, EvidenceRecord, RARResult
 from orchestrator.consensus import compute_consensus
 
 
+def _has_theme_conflict(opinions: list[AgentOpinion]) -> bool:
+    from orchestrator.consensus import _theme_compat
+
+    for i in range(len(opinions)):
+        for j in range(i + 1, len(opinions)):
+            if not _theme_compat(opinions[i].risk_theme, opinions[j].risk_theme):
+                return True
+    return False
+
+
 async def run_rar_loop_async(
     *,
     initial_evidence: list[EvidenceRecord],
@@ -20,6 +30,7 @@ async def run_rar_loop_async(
     | Callable[[list[EvidenceRecord], int], Awaitable[list[AgentOpinion]]],
     enrich_evidence: Callable[[list[EvidenceRecord], int], list[EvidenceRecord]],
     live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
+    llm_reground: Callable[[list[AgentOpinion], list[EvidenceRecord]], str] | None = None,
 ) -> tuple[list[AgentOpinion], RARResult, ConsensusResult]:
     """
     If consensus < tau, enrich evidence (or live-refresh connectors) and rerun agents up to max_loops.
@@ -57,6 +68,10 @@ async def run_rar_loop_async(
         current = cr.consensus_score
 
     final_consensus = compute_consensus(opinions)
+    if llm_reground and _has_theme_conflict(opinions) and final_consensus.consensus_score < tau:
+        note = llm_reground(opinions, evidence)
+        if note:
+            reground_notes.append(f"LLM reground: {note}")
     return opinions, RARResult(
         rar_triggered=True,
         rar_loops=loops,

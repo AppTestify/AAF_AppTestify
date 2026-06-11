@@ -1210,6 +1210,46 @@ export async function fetchRbacUsers(tenantSlug?: string | null): Promise<AdminU
   return r.json() as Promise<AdminUser[]>;
 }
 
+export type GlobalSearchResult = {
+  query: string;
+  total: number;
+  groups: {
+    runs: { id: number; prompt?: string; status?: string }[];
+    cases: { id: number; title?: string; status?: string }[];
+    evidence: { id: number; run_id?: number; connector?: string }[];
+    decisions: { id: number }[];
+  };
+};
+
+export type AssistantAskResponse = {
+  answer: string;
+  confidence: number;
+  evidence: Record<string, unknown>;
+};
+
+export async function askAssistant(question: string): Promise<AssistantAskResponse> {
+  const r = await fetch(`${API}/intelligence/assistant/ask`, {
+    credentials: "include",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<AssistantAskResponse>;
+}
+
+export async function globalSearch(q: string): Promise<GlobalSearchResult> {
+  const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<GlobalSearchResult>;
+}
+
+export async function exportRunBriefPdf(runId: number): Promise<Blob> {
+  const r = await fetch(`${API}/reports/pdf/${runId}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.blob();
+}
+
 export async function createRbacUser(
   body: { email: string; role_name: string; is_active?: boolean },
   tenantSlug?: string | null

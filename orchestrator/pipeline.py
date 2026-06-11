@@ -43,6 +43,21 @@ async def run_pipeline(
         )
 
     lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
+
+    def llm_reground(opinions: list[Any], evidence: list[EvidenceRecord]) -> str:
+        if not llm_providers:
+            return ""
+        prompt = (
+            "Agents disagree on risk themes. Summarize the conflict and what additional evidence "
+            "would resolve it in one sentence. Context: "
+            + str({"opinions": [o.model_dump() for o in opinions], "evidence_count": len(evidence)})
+        )
+        try:
+            text, _ = invoke_text_with_failover(llm_providers, prompt)
+            return text.strip()[:500]
+        except Exception:
+            return ""
+
     initial_opinions = await run_all_agents_async(
         normalized_evidence,
         tool_ctx=ctx,
@@ -57,6 +72,7 @@ async def run_pipeline(
         rerun_agents=rerun_agents,
         enrich_evidence=enrich_for_rar,
         live_refresh_evidence=lr,
+        llm_reground=llm_reground if llm_providers else None,
     )
 
     utility_result = score_actions(normalized_evidence, settings, opinions=opinions)

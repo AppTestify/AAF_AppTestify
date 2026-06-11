@@ -9,7 +9,7 @@ import type {
   UserPublic,
   UtilityResult,
 } from "./api";
-import { formatAgentLabel } from "./api";
+import { askAssistant, formatAgentLabel } from "./api";
 import { deriveAskColumns } from "./lib/governancePresentation";
 
 export type GovernanceViewProps = {
@@ -109,6 +109,35 @@ export function GovernanceView(props: GovernanceViewProps) {
     "executive"
   );
   const [showAdmin, setShowAdmin] = useState(false);
+  const [followUp, setFollowUp] = useState("");
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; text: string; confidence?: number }[]>(
+    []
+  );
+  const [chatLoading, setChatLoading] = useState(false);
+  const suggestedPrompts = [
+    "What is our current release risk?",
+    "Are there latency or error rate concerns?",
+    "Any cost spikes I should know about?",
+  ];
+
+  const sendFollowUp = async (question: string) => {
+    const q = question.trim();
+    if (!q) return;
+    setChatLoading(true);
+    setChatHistory((h) => [...h, { role: "user", text: q }]);
+    try {
+      const res = await askAssistant(q);
+      setChatHistory((h) => [...h, { role: "assistant", text: res.answer, confidence: res.confidence }]);
+    } catch (err) {
+      setChatHistory((h) => [
+        ...h,
+        { role: "assistant", text: err instanceof Error ? err.message : "Assistant unavailable" },
+      ]);
+    } finally {
+      setChatLoading(false);
+      setFollowUp("");
+    }
+  };
 
   const askColumns = result ? deriveAskColumns(result) : null;
   const formatIndex = (v: number | undefined) => (v != null && !Number.isNaN(v) ? v.toFixed(2) : "—");
@@ -128,6 +157,42 @@ export function GovernanceView(props: GovernanceViewProps) {
           {error}
         </div>
       ) : null}
+
+      <article className="gov-ask-card gov-chat-panel">
+        <p className="gov-hub-eyebrow">Follow-up chat</p>
+        <div className="gov-suggested-prompts">
+          {suggestedPrompts.map((p) => (
+            <button key={p} type="button" className="gov-search-chip" onClick={() => void sendFollowUp(p)}>
+              {p}
+            </button>
+          ))}
+        </div>
+        {chatHistory.length ? (
+          <ul className="gov-chat-history">
+            {chatHistory.map((m, i) => (
+              <li key={i} className={m.role === "user" ? "gov-chat-user" : "gov-chat-assistant"}>
+                <strong>{m.role === "user" ? "You" : "Casantris"}</strong>
+                <p>{m.text}</p>
+                {m.confidence != null ? <span className="field-hint">confidence {m.confidence.toFixed(2)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="gov-ask-toolbar">
+          <input
+            type="text"
+            value={followUp}
+            onChange={(e) => setFollowUp(e.target.value)}
+            placeholder="Ask a follow-up about this governance context…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void sendFollowUp(followUp);
+            }}
+          />
+          <button className="btn btn-ghost btn-sm" type="button" disabled={chatLoading} onClick={() => void sendFollowUp(followUp)}>
+            {chatLoading ? "Thinking…" : "Ask"}
+          </button>
+        </div>
+      </article>
 
       <article className="gov-ask-card">
         <p className="gov-hub-eyebrow" style={{ marginBottom: "0.5rem" }}>

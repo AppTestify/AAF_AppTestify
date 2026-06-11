@@ -1,0 +1,6 @@
+{
+  "simulated": true,
+  "repos": [{"name": "governance-api", "defaultBranch": "main"}],
+  "pipelines": [{"id": 1, "name": "CI", "result": "succeeded"}],
+  "work_items": [{"id": 100, "title": "Release gate", "state": "Active"}]
+}

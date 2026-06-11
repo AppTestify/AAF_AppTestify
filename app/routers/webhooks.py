@@ -63,3 +63,40 @@ async def github_workflow_run(
         "conclusion": run.get("conclusion"),
         "cache_invalidated_at": _ci_cache_invalidation.get(repo_full),
     }
+
+
+@router.post("/jira")
+async def jira_webhook(request: Request) -> dict[str, Any]:
+    """Jira issue_updated webhook — invalidates PM tool caches."""
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    issue = payload.get("issue") or {}
+    key = issue.get("key", "")
+    _ci_cache_invalidation[f"jira:{key}"] = datetime.now(timezone.utc).isoformat()
+    _log.info("Jira cache invalidated for %s", key)
+    return {"status": "ok", "issue_key": key}
+
+
+@router.post("/gitlab")
+async def gitlab_webhook(
+    request: Request,
+    x_gitlab_token: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
+    """GitLab pipeline webhook — invalidates CI cache."""
+    body = await request.body()
+    settings = get_settings()
+    secret = getattr(settings, "gitlab_webhook_secret", None) or ""
+    if secret and x_gitlab_token and not hmac.compare_digest(secret, x_gitlab_token):
+        raise HTTPException(status_code=401, detail="Invalid webhook token")
+    payload: dict[str, Any] = {}
+    if body:
+        try:
+            payload = await request.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    project = (payload.get("project") or {}).get("path_with_namespace", "")
+    if project:
+        _ci_cache_invalidation[f"gitlab:{project}"] = datetime.now(timezone.utc).isoformat()
+    return {"status": "ok", "project": project}

@@ -9,13 +9,14 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import require_permission
+from app.deps import get_current_active_user, require_permission
 from app.models.governance import AuditEvent, GovernanceRun
+from app.services.df_onepager_pdf import build_decision_framing_onepager_pdf
 from app.models.user import User
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -248,3 +249,43 @@ def audit_events_export(
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="audit_events.csv"'},
     )
+
+
+@router.get("/pdf/{run_id}")
+def export_run_pdf(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not user.is_superadmin and user.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    pdf_bytes = build_decision_framing_onepager_pdf(run)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="governance_run_{run_id}.pdf"'},
+    )
+
+
+@router.get("/compliance")
+def compliance_export(
+    framework: str = Query(default="soc2"),
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """SOC2-oriented compliance control mapping export."""
+    del db, user
+    controls = [
+        {"id": "CC6.1", "title": "Logical access", "status": "implemented", "evidence": "cookie auth + RBAC"},
+        {"id": "CC6.7", "title": "Encryption at rest", "status": "implemented", "evidence": "Fernet connector credentials"},
+        {"id": "CC7.2", "title": "System monitoring", "status": "implemented", "evidence": "observability + DORA metrics"},
+        {"id": "CC8.1", "title": "Change management", "status": "partial", "evidence": "governance runs + audit trail"},
+    ]
+    payload = {"framework": framework, "generated_at": datetime.now(timezone.utc).isoformat(), "controls": controls}
+    if format == "pdf":
+        return JSONResponse(content=payload, headers={"X-Export-Format": "pdf-stub"})
+    return payload

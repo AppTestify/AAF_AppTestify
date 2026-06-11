@@ -4,18 +4,43 @@ from __future__ import annotations
 
 from typing import Any
 
+from aaf.config import get_settings
 from aaf.schema import EvidenceRecord
 
 
+def _cap_per_source(recs: list[EvidenceRecord], limit: int) -> list[EvidenceRecord]:
+    if len(recs) <= limit:
+        return recs
+    sorted_recs = sorted(recs, key=lambda r: r.severity, reverse=True)
+    return sorted_recs[:limit]
+
+
 def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceRecord]:
+    limit = get_settings().max_evidence_per_source
     out: list[EvidenceRecord] = []
+    truncated = 0
     for source, payload in raw_by_connector.items():
         if source == "github":
-            out.extend(_github(payload))
+            batch = _github(payload)
         elif source == "jira":
-            out.extend(_jira(payload))
+            batch = _jira(payload)
         elif source == "finops":
-            out.extend(_finops(payload))
+            batch = _finops(payload)
+        else:
+            batch = []
+        if len(batch) > limit:
+            truncated += len(batch) - limit
+        out.extend(_cap_per_source(batch, limit))
+    if truncated:
+        out.append(
+            EvidenceRecord(
+                source="system",
+                kind="evidence_truncated",
+                summary=f"Truncated {truncated} lower-severity evidence rows (max {limit} per source)",
+                severity=0.1,
+                metadata={"truncated_count": truncated, "max_per_source": limit},
+            )
+        )
     return out
 
 

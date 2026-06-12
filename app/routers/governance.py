@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,8 @@ from aaf.config import Settings
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin, settings_dep
 from app.db import get_db
 from app.models.config import TenantSettings
+from app.models.governance import EvidenceSnapshot, GovernanceRun
+from app.models.metrics import LLMCallLog
 from app.models.user import User
 from app.services.config_resolver import (
     apply_pipeline_overrides,
@@ -99,6 +102,51 @@ async def governance_run(
             },
         ) from exc
     out = pipeline_result_to_jsonable(result)
+
+    # Persist run + evidence snapshots so Evidence Hub has data
+    run = GovernanceRun(
+        tenant_id=tenant.id if tenant else None,
+        requested_by_user_id=user.id,
+        prompt=body.prompt,
+        prompt_id=body.prompt_id,
+        status="succeeded",
+        result_json=out,
+        runtime_config_json={"tenant_slug": tenant.slug if tenant else None},
+        started_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    db.flush()
+    evidence_by_connector = out.get("raw_evidence_by_connector") or {}
+    if isinstance(evidence_by_connector, dict):
+        for connector_name, payload in evidence_by_connector.items():
+            db.add(
+                EvidenceSnapshot(
+                    run_id=run.id,
+                    connector_name=str(connector_name),
+                    payload_json=payload if isinstance(payload, dict) else {"payload": payload},
+                )
+            )
+    llm_cost = out.get("llm_cost") if isinstance(out.get("llm_cost"), dict) else {}
+    for call in (llm_cost.get("calls") or []):
+        if not isinstance(call, dict):
+            continue
+        db.add(
+            LLMCallLog(
+                run_id=run.id,
+                tenant_id=run.tenant_id,
+                agent_id=str(call.get("agent_id") or "unknown"),
+                provider_name=str(call.get("provider_name") or "unknown"),
+                model_name=str(call.get("model_name") or "unknown"),
+                prompt_tokens=int(call.get("prompt_tokens") or 0),
+                completion_tokens=int(call.get("completion_tokens") or 0),
+                cost_usd=float(call.get("cost_usd") or 0.0),
+                latency_ms=int(call.get("latency_ms") or 0),
+            )
+        )
+    db.commit()
+    out["run_id"] = run.id
+
     out["runtime_config"] = {
         "tenant_slug": tenant.slug if tenant else None,
         "connector_mode": effective.connector_mode.value,

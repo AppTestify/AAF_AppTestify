@@ -95,8 +95,14 @@ export function WorkspaceEvidencePage() {
       .finally(() => setListLoading(false));
   }, [connector, runId, listProjectFilter, offset, pageSize]);
 
-  const sourceCards = deriveConnectorSummaries(parsedRun, connectorHealth);
-  const timeline = deriveEvidenceTimeline(rows, parsedRun?.result.normalized_evidence ?? []);
+  const connectorOrder = (parsedRun?.result.intent?.connectors as string[] | undefined) ?? [];
+  const prompt = parsedRun?.run.prompt ?? "";
+  const sortOptions = { prompt, connectorOrder };
+  const sourceCards = deriveConnectorSummaries(parsedRun, connectorHealth, sortOptions);
+  const timeline = deriveEvidenceTimeline(rows, parsedRun?.result.normalized_evidence ?? [], sortOptions);
+  const jiraRecord = parsedRun?.result.normalized_evidence?.find((e) => e.source === "jira");
+  const jiraBaseUrl =
+    typeof jiraRecord?.metadata?.jira_base_url === "string" ? jiraRecord.metadata.jira_base_url : null;
   const refreshedLabel = rows[0] ? `Refreshed ${formatRelativeTime(rows[0].created_at)}` : undefined;
 
   const evidenceStats = useMemo(() => {
@@ -161,7 +167,7 @@ export function WorkspaceEvidencePage() {
       </div>
 
       {listLoading ? <div className="table-skeleton" /> : null}
-      <EvidenceTimelineTable rows={timeline} refreshedLabel={refreshedLabel} />
+      <EvidenceTimelineTable rows={timeline} refreshedLabel={refreshedLabel} jiraBaseUrl={jiraBaseUrl} />
 
       {selected ? (
         <div className="card" style={{ marginTop: "1rem" }}>

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   countToolCallsFromRawSignals,
+  deriveConnectorSummaries,
   deriveDecisionFlow,
+  deriveEvidenceTimeline,
   deriveTransportFromRawSignals,
   formatActionLabel,
   formatToolCallLabel,
@@ -9,6 +11,7 @@ import {
   isLiveTrace,
   parseGovernanceRunResult,
   parseRunResult,
+  resolveConnectorOrder,
 } from "./governancePresentation";
 import type { GovernanceRunV1 } from "../api";
 
@@ -99,6 +102,33 @@ describe("governancePresentation", () => {
       get_ci_status: { ci_pass_rate: 0.9, transport: "mcp" },
     };
     expect(deriveTransportFromRawSignals(raw)).toBe("mcp");
+  });
+
+  it("boosts jira before github for blocker prompts", () => {
+    const order = resolveConnectorOrder("Jira blockers for PAY release", []);
+    expect(order.indexOf("jira")).toBeLessThan(order.indexOf("github"));
+  });
+
+  it("uses intent connector order when provided", () => {
+    const order = resolveConnectorOrder("release check", ["finops", "jira", "github"]);
+    expect(order.slice(0, 3)).toEqual(["finops", "jira", "github"]);
+  });
+
+  it("sorts connector summary cards by prompt relevance", () => {
+    const cards = deriveConnectorSummaries(null, null, { prompt: "Jira sprint blockers" });
+    expect(cards[0]?.id).toBe("jira");
+  });
+
+  it("sorts evidence timeline with jira-first for blocker prompts", () => {
+    const timeline = deriveEvidenceTimeline(
+      [],
+      [
+        { source: "github", kind: "open_pr", summary: "PR open", severity: 0.5 },
+        { source: "jira", kind: "blocked_issue", summary: "PAY-1: blocked", severity: 0.9 },
+      ],
+      { prompt: "Are Jira blockers cleared?" }
+    );
+    expect(timeline[0]?.source).toBe("jira");
   });
 
   it("parses guardrails and llm_cost from result_json", () => {

@@ -44,21 +44,42 @@ def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceR
     return out
 
 
+def _github_repo_base(p: dict[str, Any]) -> str:
+    owner = p.get("owner")
+    name = p.get("repo")
+    if owner and name:
+        return f"https://github.com/{owner}/{name}"
+    return ""
+
+
+def _github_pr_url(p: dict[str, Any], pr: dict[str, Any]) -> str:
+    if pr.get("html_url"):
+        return str(pr["html_url"])
+    base = _github_repo_base(p)
+    number = pr.get("number")
+    if base and number is not None:
+        return f"{base}/pull/{number}"
+    return ""
+
+
 def _github(p: dict[str, Any]) -> list[EvidenceRecord]:
     recs: list[EvidenceRecord] = []
+    repo_base = _github_repo_base(p)
     for pr in p.get("pull_requests") or []:
         state = (pr.get("state") or "").lower()
         title = pr.get("title") or "PR"
         draft = pr.get("draft", False)
         sev = 0.35 if draft else 0.25
         if state == "open":
+            number = pr.get("number")
+            url = _github_pr_url(p, pr)
             recs.append(
                 EvidenceRecord(
                     source="github",
                     kind="open_pr",
                     summary=title[:200],
                     severity=min(1.0, sev + 0.1 * (1 if "block" in title.lower() else 0)),
-                    metadata={"number": pr.get("number")},
+                    metadata={"number": number, "url": url, "repo": repo_base or None},
                 )
             )
     for run in p.get("workflow_runs") or []:
@@ -72,13 +93,16 @@ def _github(p: dict[str, Any]) -> list[EvidenceRecord]:
             sev = 0.5
         elif status == "completed" and conclusion == "success":
             sev = 0.15
+        run_url = run.get("html_url") or ""
+        if not run_url and repo_base and run.get("id") is not None:
+            run_url = f"{repo_base}/actions/runs/{run['id']}"
         recs.append(
             EvidenceRecord(
                 source="github",
                 kind="workflow_run",
                 summary=f"{name}: {conclusion or status}",
                 severity=sev,
-                metadata={"id": run.get("id")},
+                metadata={"id": run.get("id"), "url": run_url or None, "repo": repo_base or None},
             )
         )
     for issue in p.get("issues") or []:
@@ -89,13 +113,21 @@ def _github(p: dict[str, Any]) -> list[EvidenceRecord]:
         sev = 0.4
         if any("bug" in x.lower() for x in labels):
             sev = 0.65
+        issue_url = issue.get("html_url") or ""
+        if not issue_url and repo_base and issue.get("number") is not None:
+            issue_url = f"{repo_base}/issues/{issue['number']}"
         recs.append(
             EvidenceRecord(
                 source="github",
                 kind="open_issue",
                 summary=title[:200],
                 severity=sev,
-                metadata={"labels": labels},
+                metadata={
+                    "labels": labels,
+                    "number": issue.get("number"),
+                    "url": issue_url or None,
+                    "repo": repo_base or None,
+                },
             )
         )
     return recs
@@ -120,13 +152,14 @@ def _jira(p: dict[str, Any]) -> list[EvidenceRecord]:
         key = item.get("key", "")
         url = f"{base_url}/browse/{key}" if key else ""
         
+        summary_text = f"{key}: {summary} [{status}]" if key else f"{summary} [{status}]"
         recs.append(
             EvidenceRecord(
                 source="jira",
                 kind=kind,
-                summary=f"{summary} [{status}]",
+                summary=summary_text,
                 severity=sev,
-                metadata={"key": key, "url": url},
+                metadata={"key": key, "url": url, "jira_base_url": base_url},
             )
         )
     return recs

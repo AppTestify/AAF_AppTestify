@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AgentCardView } from "../../lib/governancePresentation";
+import { linkifyEvidenceText } from "../../lib/evidenceLinks";
 
 type AgentReasoningGridProps = {
   agents: AgentCardView[];
@@ -42,7 +43,7 @@ export function AgentReasoningGrid({ agents, rarLoops = 0 }: AgentReasoningGridP
           </div>
           <span className="gov-agent-conf-pct">{Math.round(agent.confidence * 100)}%</span>
           <p className="gov-agent-claim-label">Evidence</p>
-          <p className="gov-agent-evidence">{agent.evidence[0]}</p>
+          <p className="gov-agent-evidence">{linkifyEvidenceText(agent.evidence[0] ?? "")}</p>
           <button
             type="button"
             className="btn btn-ghost btn-sm gov-agent-drawer-toggle"
@@ -54,7 +55,7 @@ export function AgentReasoningGrid({ agents, rarLoops = 0 }: AgentReasoningGridP
             <div className="gov-agent-drawer">
               <ul>
                 {agent.evidence.map((line) => (
-                  <li key={line}>{line}</li>
+                  <li key={line}>{linkifyEvidenceText(line)}</li>
                 ))}
               </ul>
               {agent.isOrchestrator && rarLoops > 0 ? (

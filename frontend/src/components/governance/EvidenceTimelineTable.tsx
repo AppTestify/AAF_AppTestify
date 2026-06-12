@@ -1,11 +1,13 @@
 import type { TimelineRow } from "../../lib/governancePresentation";
+import { EvidenceDetailCell } from "../../lib/evidenceLinks";
 
 type EvidenceTimelineTableProps = {
   rows: TimelineRow[];
   refreshedLabel?: string;
+  jiraBaseUrl?: string | null;
 };
 
-export function EvidenceTimelineTable({ rows, refreshedLabel }: EvidenceTimelineTableProps) {
+export function EvidenceTimelineTable({ rows, refreshedLabel, jiraBaseUrl }: EvidenceTimelineTableProps) {
   return (
     <article className="gov-evidence-timeline card">
       <div className="gov-timeline-head">
@@ -38,7 +40,9 @@ export function EvidenceTimelineTable({ rows, refreshedLabel }: EvidenceTimeline
                 <tr key={row.id}>
                   <td>{row.source}</td>
                   <td>{row.signal}</td>
-                  <td>{row.detail}</td>
+                  <td>
+                    <EvidenceDetailCell detail={row.detail} record={row.record} jiraBaseUrl={jiraBaseUrl} />
+                  </td>
                   <td>{row.captured}</td>
                   <td>
                     <span className={`gov-pill gov-pill--${row.severity === "high" ? "high" : row.severity === "medium" ? "medium" : "info"}`}>

@@ -3347,6 +3347,38 @@ input:focus-visible {
   cursor: pointer;
 }
 
+/* Evidence external links */
+.evidence-detail-cell {
+  display: inline;
+}
+
+.evidence-external-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+  margin-right: 0.25rem;
+}
+
+.evidence-external-link:hover {
+  text-decoration: underline;
+}
+
+.evidence-detail-text a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.evidence-detail-text a:hover {
+  text-decoration: underline;
+}
+
+.gov-agent-evidence a,
+.agent-evidence-list a {
+  color: #2563eb;
+  font-weight: 600;
+}
+
 /* Deep link copy bar */
 .deep-link-bar {
   display: flex;

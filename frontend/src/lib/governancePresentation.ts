@@ -403,9 +403,54 @@ function numSignal(signals: Record<string, unknown> | undefined, key: string, fa
   return String(v);
 }
 
+export type EvidenceSortOptions = {
+  prompt?: string;
+  connectorOrder?: string[];
+};
+
+const DEFAULT_CONNECTOR_ORDER = ["github", "jira", "finops", "secops", "pagerduty", "gitlab"];
+
+const PROMPT_KEYWORD_BOOSTS: Record<string, string[]> = {
+  jira: ["blocker", "jira", "sprint", "story", "ticket", "defect"],
+  github: ["pr", "pull request", "ci", "workflow", "github", "merge", "deploy"],
+  finops: ["cost", "finops", "spend", "aws", "budget", "cloud"],
+  secops: ["security", "cve", "secret", "vulnerability", "scan"],
+};
+
+export function normalizeConnectorId(id: string): string {
+  const key = id.toLowerCase();
+  if (key === "devsecops" || key === "secops") return "secops";
+  if (key === "finops" || key === "aws") return "finops";
+  return key;
+}
+
+export function resolveConnectorOrder(prompt = "", intentConnectors: string[] = []): string[] {
+  const order: string[] = [];
+  const add = (id: string) => {
+    const norm = normalizeConnectorId(id);
+    if (norm && !order.includes(norm)) order.push(norm);
+  };
+
+  for (const connector of intentConnectors) add(connector);
+
+  const lower = prompt.toLowerCase();
+  for (const [connector, keywords] of Object.entries(PROMPT_KEYWORD_BOOSTS)) {
+    if (keywords.some((word) => lower.includes(word))) add(connector);
+  }
+
+  for (const connector of DEFAULT_CONNECTOR_ORDER) add(connector);
+  return order;
+}
+
+function connectorRank(source: string, order: string[]): number {
+  const idx = order.indexOf(normalizeConnectorId(source));
+  return idx === -1 ? order.length : idx;
+}
+
 export function deriveConnectorSummaries(
   parsed: ParsedRunContext | null,
-  connectorHealth: DashboardSummary["connector_health"] | null
+  connectorHealth: DashboardSummary["connector_health"] | null,
+  options?: EvidenceSortOptions
 ): ConnectorSummaryCard[] {
   const signals = (parsed?.run.result_json?.integration_signals ?? {}) as Record<string, Record<string, unknown>>;
   const github = signals.github ?? {};
@@ -426,7 +471,9 @@ export function deriveConnectorSummaries(
 
   const ghOk = connectorHealth?.find((c) => c.connector_name === "github")?.last_validation_ok;
 
-  return [
+  const order = resolveConnectorOrder(options?.prompt ?? parsed?.run.prompt ?? "", options?.connectorOrder ?? []);
+
+  const cards: ConnectorSummaryCard[] = [
     {
       id: "github",
       title: "GitHub Evidence",
@@ -480,6 +527,8 @@ export function deriveConnectorSummaries(
       ],
     },
   ];
+
+  return [...cards].sort((a, b) => connectorRank(a.id, order) - connectorRank(b.id, order));
 }
 
 export type TimelineRow = {
@@ -489,12 +538,17 @@ export type TimelineRow = {
   detail: string;
   captured: string;
   severity: "high" | "medium" | "info";
+  record?: EvidenceRecord;
+  severityScore?: number;
 };
 
 export function deriveEvidenceTimeline(
   rows: EvidenceRow[],
-  normalized: EvidenceRecord[]
+  normalized: EvidenceRecord[],
+  options?: EvidenceSortOptions
 ): TimelineRow[] {
+  const order = resolveConnectorOrder(options?.prompt ?? "", options?.connectorOrder ?? []);
+
   const fromRows: TimelineRow[] = rows.map((r) => ({
     id: `row-${r.id}`,
     source: r.connector_name,
@@ -502,6 +556,7 @@ export function deriveEvidenceTimeline(
     detail: `Run #${r.run_id} payload`,
     captured: formatRelativeTime(r.created_at),
     severity: "info",
+    severityScore: 0,
   }));
 
   const fromNorm: TimelineRow[] = normalized.map((e, i) => ({
@@ -511,9 +566,18 @@ export function deriveEvidenceTimeline(
     detail: e.summary,
     captured: "This run",
     severity: e.severity >= 0.75 ? "high" : e.severity >= 0.45 ? "medium" : "info",
+    record: e,
+    severityScore: e.severity,
   }));
 
-  return [...fromNorm, ...fromRows].slice(0, 12);
+  const sortTimeline = (items: TimelineRow[]) =>
+    [...items].sort((a, b) => {
+      const rankDiff = connectorRank(a.source, order) - connectorRank(b.source, order);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.severityScore ?? 0) - (a.severityScore ?? 0);
+    });
+
+  return sortTimeline([...sortTimeline(fromNorm), ...sortTimeline(fromRows)]).slice(0, 12);
 }
 
 export type AgentCardView = {

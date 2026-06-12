@@ -12,6 +12,7 @@ import type {
 import { askAssistant, formatAgentLabel } from "./api";
 import { GuardrailStatusPanel } from "./components/governance/GuardrailStatusPanel";
 import { deriveAskColumns } from "./lib/governancePresentation";
+import { EvidenceDetailCell, linkifyEvidenceText } from "./lib/evidenceLinks";
 
 export type GovernanceViewProps = {
   user: UserPublic;
@@ -50,7 +51,7 @@ function AgentOpinionCard({ opinion }: { opinion: AgentOpinion }) {
       {evidence.length > 0 ? (
         <ul className="list-plain agent-evidence-list">
           {evidence.map((line, idx) => (
-            <li key={idx}>{line}</li>
+            <li key={idx}>{linkifyEvidenceText(line)}</li>
           ))}
         </ul>
       ) : null}
@@ -364,7 +365,8 @@ export function GovernanceView(props: GovernanceViewProps) {
                   <ul className="list-plain">
                     {result.normalized_evidence.map((e, i) => (
                       <li key={i}>
-                        <span className="mono">{e.source}</span> · {e.kind} — {e.summary}
+                        <span className="mono">{e.source}</span> · {e.kind} —{" "}
+                        <EvidenceDetailCell detail={e.summary} record={e} />
                       </li>
                     ))}
                   </ul>

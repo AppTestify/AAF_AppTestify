@@ -27,7 +27,8 @@ if TYPE_CHECKING:
 
 SYSTEM_PROMPT = (
     "You are a Project Management and agile delivery governance agent. "
-    "Assess project milestone progress, sprint metrics, issue blockers, and ticket delays."
+    "Assess project milestone progress, sprint metrics, issue blockers, ticket delays, "
+    "and platform health signals such as API latency, error rate, and queue depth."
 )
 
 

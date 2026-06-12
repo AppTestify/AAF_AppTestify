@@ -11,10 +11,12 @@ class IntentCategory(str, Enum):
     COST_REVIEW = "cost_review"
     SECURITY_GATE = "security_gate"
     CROSS_DOMAIN = "cross_domain"
+    OBSERVABILITY = "observability"
 
 
 _DEFAULT_AGENTS = ["devops", "project_management", "finops"]
 _SECURITY_AGENTS = [*_DEFAULT_AGENTS, "devsecops"]
+_OBSERVABILITY_AGENTS = ["project_management", "devops"]
 
 _SECURITY_KEYWORDS = frozenset(
     {
@@ -37,6 +39,7 @@ _SECURITY_KEYWORDS = frozenset(
 )
 _COST_KEYWORDS = frozenset({"cost", "spend", "budget", "finops", "cloud cost", "billing", "ri coverage"})
 _RELEASE_KEYWORDS = frozenset({"release", "deploy", "ship", "production", "rollback", "ci", "blocker", "sprint"})
+_OBSERVABILITY_KEYWORDS = frozenset({"latency", "error rate", "queue depth", "platform health", "observability", "apdex"})
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,7 @@ def classify_pm_intent(prompt: str) -> IntentResult:
     security_hits = sum(1 for kw in _SECURITY_KEYWORDS if kw in text or kw in tokens)
     cost_hits = sum(1 for kw in _COST_KEYWORDS if kw in text)
     release_hits = sum(1 for kw in _RELEASE_KEYWORDS if kw in text)
+    observability_hits = sum(1 for kw in _OBSERVABILITY_KEYWORDS if kw in text)
 
     if security_hits >= 2 or (security_hits >= 1 and "security" in text):
         intent = IntentCategory.SECURITY_GATE
@@ -71,6 +75,11 @@ def classify_pm_intent(prompt: str) -> IntentResult:
         agents = list(_DEFAULT_AGENTS)
         connectors = ["github", "jira", "finops"]
         confidence = min(0.9, 0.5 + release_hits * 0.08)
+    elif observability_hits >= 1:
+        intent = IntentCategory.OBSERVABILITY
+        agents = list(_OBSERVABILITY_AGENTS)
+        connectors = ["github", "jira"]
+        confidence = min(0.85, 0.5 + observability_hits * 0.12)
     elif security_hits >= 1 and (release_hits >= 1 or cost_hits >= 1):
         intent = IntentCategory.CROSS_DOMAIN
         agents = list(_SECURITY_AGENTS)

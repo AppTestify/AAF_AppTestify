@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +23,9 @@ from app.services.config_resolver import (
     resolve_tenant_for_user,
 )
 from app.services.decision_framing import build_decision_framing
+from guardrails.budget_cap import check_budget_cap, enforce_budget_cap
+from guardrails.exceptions import GuardrailBlockedError
+from guardrails.pm_prompt_guard import check_pm_prompt
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
@@ -54,8 +57,41 @@ async def governance_run(
         else None
     )
     effective = apply_pipeline_overrides(effective, ts_row)
+    if effective.guardrails_enabled and tenant:
+        try:
+            enforce_budget_cap(db, tenant.id, ts_row, effective)
+        except GuardrailBlockedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "budget_exceeded",
+                    "guard": exc.result.guard_name,
+                    "violations": [v.model_dump() for v in exc.result.violations],
+                },
+            ) from exc
+    if effective.guardrails_enabled:
+        guard = check_pm_prompt(body.prompt, effective)
+        if guard.blocked:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "guardrail_blocked",
+                    "guard": guard.guard_name,
+                    "violations": [v.model_dump() for v in guard.violations],
+                },
+            )
     provider_chain = resolve_provider_chain(db, tenant)
-    result = await run_governance(body.prompt, body.prompt_id, effective, llm_providers=provider_chain)
+    try:
+        result = await run_governance(body.prompt, body.prompt_id, effective, llm_providers=provider_chain)
+    except GuardrailBlockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "guardrail_blocked",
+                "guard": exc.result.guard_name,
+                "violations": [v.model_dump() for v in exc.result.violations],
+            },
+        ) from exc
     out = pipeline_result_to_jsonable(result)
     out["decision_framing"] = build_decision_framing(out)
     out["runtime_config"] = {
@@ -68,6 +104,12 @@ async def governance_run(
         "status": "degraded",
         "reason": "no_active_provider",
     }
+    if tenant:
+        budget_report = check_budget_cap(db, tenant.id, ts_row, effective)
+        out["llm_budget"] = {
+            **budget_report.metadata,
+            "violations": [v.model_dump() for v in budget_report.violations],
+        }
     return out
 
 

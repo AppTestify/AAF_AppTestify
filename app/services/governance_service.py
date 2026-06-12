@@ -15,6 +15,9 @@ from connectors.github_connector import GitHubConnector
 from connectors.gitlab_connector import GitLabConnector
 from connectors.jira_connector import JiraConnector
 from connectors.pagerduty_connector import PagerDutyConnector
+from datetime import datetime, timezone
+
+from guardrails.pipeline import run_input_guards
 from orchestrator.connector_router import route_connectors_semantic
 from orchestrator.pipeline import run_pipeline
 from tools.context import build_tool_context
@@ -65,11 +68,23 @@ async def run_governance(
         jira_board_id=settings.jira_board_id,
     )
     raw = await _fetch_raw_evidence(settings, names, ctx)
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    for payload in raw.values():
+        if isinstance(payload, dict):
+            payload["_fetched_at"] = fetched_at
     normalized = normalize_all(raw)
+    guard_outcome = run_input_guards(prompt, normalized, raw, settings)
+    prompt = guard_outcome.prompt
+    normalized = guard_outcome.evidence
 
     async def live_refresh_evidence() -> list[EvidenceRecord]:
         raw_fresh = await _fetch_raw_evidence(settings, names, ctx)
-        return normalize_all(raw_fresh)
+        for payload in raw_fresh.values():
+            if isinstance(payload, dict):
+                payload["_fetched_at"] = datetime.now(timezone.utc).isoformat()
+        fresh_normalized = normalize_all(raw_fresh)
+        fresh_outcome = run_input_guards(prompt, fresh_normalized, raw_fresh, settings)
+        return fresh_outcome.evidence
 
     return await run_pipeline(
         prompt=prompt,
@@ -81,4 +96,5 @@ async def run_governance(
         llm_providers=llm_providers or [],
         live_refresh_evidence=live_refresh_evidence,
         tool_ctx=tool_ctx,
+        input_guard_reports=guard_outcome.reports,
     )

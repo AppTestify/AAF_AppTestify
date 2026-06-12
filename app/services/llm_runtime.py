@@ -86,30 +86,41 @@ def resolve_active_provider(db: Session, tenant: Optional[Tenant]) -> Optional[A
     return chain[0] if chain else None
 
 
+def _estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
 def invoke_text(
     provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
 ) -> tuple[str, dict[str, Any]]:
     started = time.time()
+    usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
     try:
         if provider.provider_name == "openai":
-            text = _invoke_openai(provider, prompt, system_prompt=system_prompt)
+            text, usage = _invoke_openai(provider, prompt, system_prompt=system_prompt)
         elif provider.provider_name == "anthropic":
-            text = _invoke_anthropic(provider, prompt, system_prompt=system_prompt)
+            text, usage = _invoke_anthropic(provider, prompt, system_prompt=system_prompt)
         elif provider.provider_name == "azure_openai":
-            text = _invoke_azure_openai(provider, prompt, system_prompt=system_prompt)
+            text, usage = _invoke_azure_openai(provider, prompt, system_prompt=system_prompt)
         elif provider.provider_name == "aws_bedrock":
             raise LLMInvocationError("aws_bedrock runtime invocation is not implemented")
         elif provider.provider_name == "ollama":
-            text = _invoke_ollama(provider, prompt, system_prompt=system_prompt)
+            text, usage = _invoke_ollama(provider, prompt, system_prompt=system_prompt)
         else:
             raise LLMInvocationError(f"unsupported provider: {provider.provider_name}")
     except Exception as exc:  # noqa: BLE001
         raise LLMInvocationError(str(exc)) from exc
+    prompt_tokens = int(usage.get("prompt_tokens") or _estimate_tokens((system_prompt or "") + prompt))
+    completion_tokens = int(usage.get("completion_tokens") or _estimate_tokens(text))
     return text, {
         "provider": provider.provider_name,
         "model": provider.model_name,
         "latency_ms": int((time.time() - started) * 1000),
         "status": "ok",
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
     }
 
 
@@ -158,9 +169,23 @@ def _extract_json(text: str) -> str:
     return s.strip()
 
 
+def _usage_from_body(body: dict[str, Any], provider_name: str) -> dict[str, int]:
+    if provider_name == "anthropic":
+        usage = body.get("usage") or {}
+        return {
+            "prompt_tokens": int(usage.get("input_tokens") or 0),
+            "completion_tokens": int(usage.get("output_tokens") or 0),
+        }
+    usage = body.get("usage") or {}
+    return {
+        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "completion_tokens": int(usage.get("completion_tokens") or 0),
+    }
+
+
 def _invoke_openai(
     provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
-) -> str:
+) -> tuple[str, dict[str, int]]:
     url = provider.endpoint_url or "https://api.openai.com/v1/chat/completions"
     sys_content = system_prompt or "You are a governance reasoning assistant. Return concise, structured output."
     payload = {
@@ -178,12 +203,13 @@ def _invoke_openai(
         resp = client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         body = resp.json()
-    return str((((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")).strip()
+    text = str((((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")).strip()
+    return text, _usage_from_body(body, "openai")
 
 
 def _invoke_anthropic(
     provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
-) -> str:
+) -> tuple[str, dict[str, int]]:
     url = provider.endpoint_url or "https://api.anthropic.com/v1/messages"
     payload = {
         "model": provider.model_name,
@@ -206,13 +232,14 @@ def _invoke_anthropic(
     content = body.get("content") or []
     if content and isinstance(content, list):
         first = content[0] or {}
-        return str(first.get("text") or "").strip()
-    return ""
+        text = str(first.get("text") or "").strip()
+        return text, _usage_from_body(body, "anthropic")
+    return "", {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 def _invoke_ollama(
     provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
-) -> str:
+) -> tuple[str, dict[str, int]]:
     base = (provider.endpoint_url or "http://localhost:11434").rstrip("/")
     url = f"{base}/api/chat"
     messages = []
@@ -231,12 +258,13 @@ def _invoke_ollama(
         resp = client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         body = resp.json()
-    return str((body.get("message") or {}).get("content") or "").strip()
+    text = str((body.get("message") or {}).get("content") or "").strip()
+    return text, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 def _invoke_azure_openai(
     provider: ActiveProvider, prompt: str, system_prompt: Optional[str] = None
-) -> str:
+) -> tuple[str, dict[str, int]]:
     if not provider.endpoint_url:
         raise LLMInvocationError("azure_openai requires endpoint_url")
     url = provider.endpoint_url
@@ -258,4 +286,5 @@ def _invoke_azure_openai(
         resp = client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         body = resp.json()
-    return str((((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")).strip()
+    text = str((((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")).strip()
+    return text, _usage_from_body(body, "azure_openai")

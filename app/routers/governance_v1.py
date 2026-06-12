@@ -21,7 +21,11 @@ from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, Govern
 from app.models.metrics import LLMCallLog
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.services.config_resolver import resolve_tenant_for_user
+from guardrails.budget_cap import enforce_budget_cap
+from guardrails.exceptions import GuardrailBlockedError
+from guardrails.pm_prompt_guard import check_pm_prompt
+from app.models.config import TenantSettings
+from app.services.config_resolver import apply_pipeline_overrides, resolve_effective_settings, resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
 from app.services.share_link import mint_governance_share_token
 
@@ -217,11 +221,44 @@ def create_run_v1(
     current: User = Depends(require_permission("runs.create")),
 ):
     tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    settings = get_settings()
+    effective = resolve_effective_settings(db, settings, tenant)
+    ts_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+        if tenant
+        else None
+    )
+    effective = apply_pipeline_overrides(effective, ts_row)
+    if effective.guardrails_enabled and tenant:
+        try:
+            enforce_budget_cap(db, tenant.id, ts_row, effective)
+        except GuardrailBlockedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "budget_exceeded",
+                    "guard": exc.result.guard_name,
+                    "violations": [v.model_dump() for v in exc.result.violations],
+                },
+            ) from exc
+    sanitized_prompt = body.prompt.strip()
+    if effective.guardrails_enabled:
+        guard = check_pm_prompt(body.prompt, effective)
+        if guard.blocked:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "guardrail_blocked",
+                    "guard": guard.guard_name,
+                    "violations": [v.model_dump() for v in guard.violations],
+                },
+            )
+        sanitized_prompt = guard.sanitized_prompt
     portfolio_project_id = _validate_portfolio_project_for_context(db, current, tenant, body.portfolio_project_id)
     run = GovernanceRun(
         tenant_id=tenant.id if tenant else None,
         requested_by_user_id=current.id,
-        prompt=body.prompt.strip(),
+        prompt=sanitized_prompt,
         prompt_id=body.prompt_id,
         portfolio_project_id=portfolio_project_id,
         status="queued",

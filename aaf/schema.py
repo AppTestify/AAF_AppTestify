@@ -105,3 +105,5 @@ class PipelineResult(BaseModel):
     explainability: ExplainabilityResult
     pm_view: PMFormattedDecision
     llm_invocation: Dict[str, Any] = Field(default_factory=dict)
+    guardrails: Dict[str, Any] = Field(default_factory=dict)
+    llm_cost: Dict[str, Any] = Field(default_factory=dict)

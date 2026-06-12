@@ -39,6 +39,12 @@ flowchart TB
   Pipeline --> ui
 ```
 
+## Design docs
+
+- [Governance pipeline architecture](docs/design/governance-pipeline-architecture.md) — connectors → agents → orchestrator → brief, with guardrails and LLM cost controls
+- [Phase 1 governance flow](docs/design/phase-1-governance-flow.md) — keyword classifier → static weighted agents → 1 LLM explanation (~4s)
+- [Phase 3 governance flow](docs/design/phase-3-governance-flow.md) — LLM intent router → LLM tool-calling agents → unchanged orchestrator → richer brief (~12s, 7–9 LLM calls)
+
 ## Quick start (API + UI)
 
 **1. Backend**

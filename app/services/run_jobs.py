@@ -16,6 +16,7 @@ from app import db as db_mod
 from app.models.governance import AuditEvent, EvidenceSnapshot, GovernanceRun
 from app.models.governance import AgentFinding, CorrelatedIncident, ExecutiveSummary
 from app.models.config import TenantConnectorConfig, TenantSettings
+from app.models.metrics import LLMCallLog
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.agentic_intelligence import (
@@ -25,6 +26,8 @@ from app.services.agentic_intelligence import (
     compute_consensus,
 )
 from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings, resolve_tenant_for_user
+from guardrails.budget_cap import enforce_budget_cap
+from guardrails.exceptions import GuardrailBlockedError
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
@@ -120,8 +123,73 @@ def process_run_sync(run_id: int) -> None:
         effective = resolve_effective_settings(db, settings, tenant)
         effective = apply_pipeline_overrides(effective, settings_row_early)
         provider_chain = resolve_provider_chain(db, tenant)
-        result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
+        if effective.guardrails_enabled and run.tenant_id:
+            try:
+                enforce_budget_cap(db, run.tenant_id, settings_row_early, effective)
+            except GuardrailBlockedError as budget_exc:
+                run.status = "failed"
+                run.error_message = str(budget_exc)
+                run.finished_at = datetime.now(timezone.utc)
+                db.add(
+                    AuditEvent(
+                        tenant_id=run.tenant_id,
+                        actor_user_id=run.requested_by_user_id,
+                        area="guardrails",
+                        action="budget_blocked",
+                        entity_type="governance_run",
+                        entity_id=run.id,
+                        severity="warn",
+                        summary=f"Run {run.id} blocked by {budget_exc.result.guard_name}",
+                        after_json={"violations": [v.model_dump() for v in budget_exc.result.violations]},
+                    )
+                )
+                db.commit()
+                elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+                record_run(run.status, elapsed_ms, run.retry_count)
+                return
+        try:
+            result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
+        except GuardrailBlockedError as guard_exc:
+            run.status = "failed"
+            run.error_message = str(guard_exc)
+            run.finished_at = datetime.now(timezone.utc)
+            db.add(
+                AuditEvent(
+                    tenant_id=run.tenant_id,
+                    actor_user_id=run.requested_by_user_id,
+                    area="guardrails",
+                    action="blocked",
+                    entity_type="governance_run",
+                    entity_id=run.id,
+                    severity="warn",
+                    summary=f"Run {run.id} blocked by {guard_exc.result.guard_name}",
+                    after_json={
+                        "violations": [v.model_dump() for v in guard_exc.result.violations],
+                    },
+                )
+            )
+            db.commit()
+            elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+            record_run(run.status, elapsed_ms, run.retry_count)
+            return
         out = pipeline_result_to_jsonable(result)
+        llm_cost = out.get("llm_cost") if isinstance(out.get("llm_cost"), dict) else {}
+        for call in llm_cost.get("calls") or []:
+            if not isinstance(call, dict):
+                continue
+            db.add(
+                LLMCallLog(
+                    run_id=run.id,
+                    tenant_id=run.tenant_id,
+                    agent_id=str(call.get("agent_id") or "unknown"),
+                    provider_name=str(call.get("provider_name") or "unknown"),
+                    model_name=str(call.get("model_name") or "unknown"),
+                    prompt_tokens=int(call.get("prompt_tokens") or 0),
+                    completion_tokens=int(call.get("completion_tokens") or 0),
+                    cost_usd=float(call.get("cost_usd") or 0.0),
+                    latency_ms=int(call.get("latency_ms") or 0),
+                )
+            )
         connector_rows = (
             db.execute(select(TenantConnectorConfig).where(TenantConnectorConfig.tenant_id == run.tenant_id))
             .scalars()

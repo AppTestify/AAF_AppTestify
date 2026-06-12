@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     # Evidence normalization cap per connector source
     max_evidence_per_source: int = 50
 
+    # Input/output guardrails (see docs/design/governance-pipeline-architecture.md)
+    guardrails_enabled: bool = True
+    pm_prompt_max_length: int = 4000
+    evidence_max_total: int = 200
+    evidence_stale_hours: float = 24.0
+    evidence_stale_ratio_block: float = 0.5
+
     # App-level encryption key for at-rest secret fields
     app_encryption_key: str = "change-me-32-char-encryption-key"
 

@@ -1,0 +1,861 @@
+{
+  "version": 1,
+  "agents": {
+    "devops": {
+      "label": "DevOps",
+      "summary": "Evaluates CI/CD pipeline health, deployment stability, branch readiness, and release blockers."
+    },
+    "project_management": {
+      "label": "PM",
+      "summary": "Evaluates sprint delivery health, story completion, blockers, velocity, and defects."
+    },
+    "finops": {
+      "label": "FinOps",
+      "summary": "Evaluates cloud spend, budget pace, scaling anomalies, unit cost, and commitment waste."
+    },
+    "devsecops": {
+      "label": "SecOps",
+      "summary": "Evaluates CVEs, secrets, policy violations, dependency vulnerabilities, and compliance posture."
+    }
+  },
+  "tools": [
+    {
+      "function_name": "get_ci_status",
+      "agent_id": "devops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.35,
+      "jira_task": "T-072",
+      "system": "GitHub Actions",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/actions/runs?branch={branch}&per_page=10",
+        "GET /repos/{owner}/{repo}/check-runs"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 list_workflow_runs"
+      ],
+      "fires_when": "Fires first on every release governance run.",
+      "returns": [
+        "blocking_check",
+        "ci_pass_rate",
+        "failed_steps",
+        "runs_in_window"
+      ],
+      "pm_scenario": {
+        "title": "Should we release v4.12.0 today?",
+        "narrative": "CI failing at test step with pass_rate 0.40 raises governance confidence to 0.85+. PM sees 3 of 5 recent CI runs failed \u2014 test step blocking release."
+      },
+      "id": "devops:get_ci_status",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "get_deploy_history",
+      "agent_id": "devops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.25,
+      "jira_task": "T-072",
+      "system": "GitHub Deployments / ArgoCD",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/deployments?environment=production&per_page=20"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 list_deployments"
+      ],
+      "fires_when": "Fires on release readiness and post-incident runs.",
+      "returns": [
+        "change_fail_rate",
+        "deploy_freq",
+        "last_env",
+        "mttr_hours",
+        "tag_present"
+      ],
+      "pm_scenario": {
+        "title": "Post-incident release decision",
+        "narrative": "3 failed deployments in 7 days with MTTR 4h signals instability. Agent recommends MITIGATE before proceeding."
+      },
+      "id": "devops:get_deploy_history",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "detect_rollbacks",
+      "agent_id": "devops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.25,
+      "jira_task": "T-072",
+      "system": "GitHub Deployments",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/deployments"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires when CI is failing or deploy history shows instability.",
+      "returns": [
+        "affected_svcs",
+        "hrs_since_stable",
+        "rollback_24h",
+        "rollback_7d"
+      ],
+      "pm_scenario": {
+        "title": "Hotfix release decision",
+        "narrative": "2 rollbacks in 24h signals hotfix may not be stable. Triggers HOLD recommendation."
+      },
+      "id": "devops:detect_rollbacks",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "check_branch_protection",
+      "agent_id": "devops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.15,
+      "jira_task": "T-072",
+      "system": "GitHub Branch Protection",
+      "auth": "Bearer token \u2014 admin:repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/branches/{branch}/protection"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 get_branch_protection_rules"
+      ],
+      "fires_when": "Fires on every governance run as compliance gate.",
+      "returns": [
+        "checks_pass",
+        "pr_merged",
+        "reviews_met",
+        "signed_commits"
+      ],
+      "pm_scenario": {
+        "title": "Release without second reviewer",
+        "narrative": "Branch protection requires 2 reviewers \u2014 only 1 approval. Release gated by policy."
+      },
+      "id": "devops:check_branch_protection",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "get_pr_status",
+      "agent_id": "devops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": "T-057",
+      "system": "GitHub Pull Requests",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/pulls?state=open&base={release_branch}"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 list_pull_requests"
+      ],
+      "fires_when": "Fires on feature flag rollout and freeze window checks.",
+      "returns": [
+        "approved_count",
+        "changes_requested_count",
+        "draft_pr_flag",
+        "oldest_open_pr_days",
+        "open_pr_count"
+      ],
+      "pm_scenario": {
+        "title": "Feature flag rollout",
+        "narrative": "2 open PRs on release branch \u2014 1 with change requests. Recommend merging or descoping before flag enablement."
+      },
+      "id": "devops:get_pr_status",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "get_commit_activity",
+      "agent_id": "devops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.08,
+      "jira_task": "T-058",
+      "system": "GitHub Commits",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/commits?sha={branch}&since={24h_ago}"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on hotfix and large-change risk assessments.",
+      "returns": [
+        "authors_count",
+        "commit_count_24h",
+        "files_changed",
+        "high_risk_path_touched",
+        "lines_added",
+        "lines_deleted"
+      ],
+      "pm_scenario": {
+        "title": "Small hotfix scope check",
+        "narrative": "Hotfix touched 23 files including payment/ \u2014 scope larger than typical hotfix."
+      },
+      "id": "devops:get_commit_activity",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "check_pipeline_config",
+      "agent_id": "devops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.07,
+      "jira_task": "T-059",
+      "system": "GitHub Actions",
+      "auth": "Bearer token \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/contents/.github/workflows"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on freeze window and compliance governance runs.",
+      "returns": [
+        "environments_protected",
+        "freeze_window_active",
+        "manual_gate_configured",
+        "pipeline_has_approval_gate"
+      ],
+      "pm_scenario": {
+        "title": "Quarter-end freeze",
+        "narrative": "Freeze window active \u2014 no emergency deployment gate. Release blocked by governance policy."
+      },
+      "id": "devops:check_pipeline_config",
+      "display_agent": "DevOps"
+    },
+    {
+      "function_name": "get_sprint_status",
+      "agent_id": "project_management",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": "T-073",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/agile/1.0/board/{boardId}/sprint?state=active"
+      ],
+      "mcp_mappings": [
+        "atlassian-mcp \u2192 get_active_sprint"
+      ],
+      "fires_when": "Fires first on every PM agent run.",
+      "returns": [
+        "days_remaining",
+        "sprint_done_pct",
+        "sprint_name",
+        "stories_remaining"
+      ],
+      "pm_scenario": {
+        "title": "Sprint review tomorrow",
+        "narrative": "Sprint 65% complete with 1 day left \u2014 descope or negotiate scope."
+      },
+      "id": "project_management:get_sprint_status",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "count_blockers",
+      "agent_id": "project_management",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.3,
+      "jira_task": "T-073",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/api/3/search?jql=sprint=active AND status=Blocked"
+      ],
+      "mcp_mappings": [
+        "atlassian-mcp \u2192 search_issues"
+      ],
+      "fires_when": "Highest weight tool when delivery risk is primary concern.",
+      "returns": [
+        "blocked_count",
+        "blocker_reasons",
+        "story_keys"
+      ],
+      "pm_scenario": {
+        "title": "Why are we behind?",
+        "narrative": "3 stories blocked avg 4 days \u2014 primary delivery risk."
+      },
+      "id": "project_management:count_blockers",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "get_open_defects",
+      "agent_id": "project_management",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.2,
+      "jira_task": "T-073",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/api/3/search?jql=issuetype=Bug AND priority in (High,Critical)"
+      ],
+      "mcp_mappings": [
+        "atlassian-mcp \u2192 search_issues"
+      ],
+      "fires_when": "Fires on release readiness checks.",
+      "returns": [
+        "defect_keys",
+        "oldest_defect_age_days",
+        "open_bugs_high"
+      ],
+      "pm_scenario": {
+        "title": "CI green \u2014 can we release?",
+        "narrative": "1 critical customer-reported bug in payments \u2014 release not recommended."
+      },
+      "id": "project_management:get_open_defects",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "calc_velocity_risk",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.15,
+      "jira_task": "T-073",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/agile/1.0/board/{boardId}/sprint?state=closed&maxResults=3"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on board call prep and leadership reporting.",
+      "returns": [
+        "committed_points",
+        "completed_points",
+        "pace_flag",
+        "velocity_ratio"
+      ],
+      "pm_scenario": {
+        "title": "CTO delivery pace question",
+        "narrative": "Velocity ratio 0.58 vs 0.85 avg \u2014 at risk of 40% shortfall."
+      },
+      "id": "project_management:calc_velocity_risk",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "get_story_cycle_time",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.12,
+      "jira_task": "T-060",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/api/3/issue/{key}/changelog"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on leadership reporting and delivery trend analysis.",
+      "returns": [
+        "avg_cycle_time_days",
+        "cycle_time_trend",
+        "longest_cycle_time_story",
+        "stories_stuck_in_review"
+      ],
+      "pm_scenario": {
+        "title": "Why stories take longer",
+        "narrative": "Cycle time doubled \u2014 review bottleneck is primary cause."
+      },
+      "id": "project_management:get_story_cycle_time",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "get_scope_change",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": "T-061",
+      "system": "JIRA + AgileOps sprint snapshot",
+      "auth": "Basic auth \u2014 email + API token",
+      "api_endpoints": [
+        "GET /rest/agile/1.0/sprint/{sprintId}/issue"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires when velocity is low and cause is unclear.",
+      "returns": [
+        "points_added_after_start",
+        "scope_change_pct",
+        "stories_added_after_start"
+      ],
+      "pm_scenario": {
+        "title": "Behind but no flags",
+        "narrative": "Sprint scope grew 37% mid-sprint \u2014 team not behind, scope expanded."
+      },
+      "id": "project_management:get_scope_change",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "get_team_capacity",
+      "agent_id": "project_management",
+      "method": "roadmap",
+      "implementation_status": "roadmap",
+      "weight": 0.0,
+      "jira_task": "T-062",
+      "system": "Jira/Tempo Timesheets",
+      "auth": "OAuth2 \u2014 Tempo API token",
+      "api_endpoints": [
+        "GET /4/worklogs/user/{accountId}"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Roadmap \u2014 capacity context when sprint is behind.",
+      "returns": [
+        "team_capacity_pct",
+        "planned_vs_available_hours",
+        "leave_count_this_sprint"
+      ],
+      "pm_scenario": {
+        "title": "3 people on leave",
+        "narrative": "Roadmap \u2014 capacity-adjusted sprint risk view."
+      },
+      "id": "project_management:get_team_capacity",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "check_latency",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": null,
+      "extension": true,
+      "system": "Observability signals",
+      "auth": "Connector config",
+      "api_endpoints": [],
+      "mcp_mappings": [],
+      "fires_when": "Operational extension \u2014 latency SLO check.",
+      "returns": [
+        "latency_ms_p95"
+      ],
+      "pm_scenario": {
+        "title": "Delivery SLO",
+        "narrative": "Extension tool for operational latency signals."
+      },
+      "id": "project_management:check_latency",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "check_error_rate",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": null,
+      "extension": true,
+      "system": "Observability signals",
+      "auth": "Connector config",
+      "api_endpoints": [],
+      "mcp_mappings": [],
+      "fires_when": "Operational extension \u2014 error rate check.",
+      "returns": [
+        "error_rate"
+      ],
+      "pm_scenario": {
+        "title": "Error budget",
+        "narrative": "Extension tool for error rate signals."
+      },
+      "id": "project_management:check_error_rate",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "check_queue_depth",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.05,
+      "jira_task": null,
+      "extension": true,
+      "system": "Observability signals",
+      "auth": "Connector config",
+      "api_endpoints": [],
+      "mcp_mappings": [],
+      "fires_when": "Operational extension \u2014 queue depth check.",
+      "returns": [
+        "run_queue_depth"
+      ],
+      "pm_scenario": {
+        "title": "Queue pressure",
+        "narrative": "Extension tool for queue depth signals."
+      },
+      "id": "project_management:check_queue_depth",
+      "display_agent": "PM"
+    },
+    {
+      "function_name": "get_spend_trend",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.3,
+      "jira_task": "T-074",
+      "system": "AWS Cost Explorer",
+      "auth": "IAM \u2014 ce:GetCostAndUsage",
+      "api_endpoints": [
+        "POST ce.amazonaws.com \u2192 GetCostAndUsage"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "First FinOps tool on every run.",
+      "returns": [
+        "anomaly_flag",
+        "daily_spend",
+        "top_services",
+        "wow_delta_pct"
+      ],
+      "pm_scenario": {
+        "title": "Cloud bill jumped 44%",
+        "narrative": "Primary driver search-service EC2 + payments RDS."
+      },
+      "id": "finops:get_spend_trend",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "check_budget_pace",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.25,
+      "jira_task": "T-074",
+      "system": "AWS Budgets / workspace config",
+      "auth": "IAM \u2014 budgets:ViewBudget",
+      "api_endpoints": [
+        "POST budgets.amazonaws.com \u2192 DescribeBudgets"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on every FinOps run.",
+      "returns": [
+        "alert_triggered",
+        "budget_pct_used",
+        "days_elapsed_pct",
+        "forecast_overage",
+        "pace_ratio"
+      ],
+      "pm_scenario": {
+        "title": "Over budget before month-end?",
+        "narrative": "Pace ratio 1.49 \u2014 forecast $5,400 overage."
+      },
+      "id": "finops:check_budget_pace",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "detect_scaling_anomaly",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.2,
+      "jira_task": "T-074",
+      "system": "AWS Auto Scaling + CloudWatch",
+      "auth": "IAM",
+      "api_endpoints": [
+        "POST autoscaling.amazonaws.com \u2192 DescribeScalingActivities"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires when spend trend shows anomaly.",
+      "returns": [
+        "instance_delta",
+        "orphan_scale_flag",
+        "spot_interruptions",
+        "thrash_events"
+      ],
+      "pm_scenario": {
+        "title": "3 to 47 instances overnight",
+        "narrative": "Orphan scale without traffic \u2014 misconfigured policy."
+      },
+      "id": "finops:detect_scaling_anomaly",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "calc_unit_cost",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.15,
+      "jira_task": "T-074",
+      "system": "AWS Cost Explorer + CloudWatch",
+      "auth": "IAM",
+      "api_endpoints": [
+        "POST ce.amazonaws.com \u2192 GetCostAndUsage"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Fires on architecture change evaluation.",
+      "returns": [
+        "cost_per_req",
+        "top_unit_offenders",
+        "trend_direction",
+        "unit_delta_pct"
+      ],
+      "pm_scenario": {
+        "title": "2 new microservices cost",
+        "narrative": "Estimated $1,260/month at projected traffic."
+      },
+      "id": "finops:calc_unit_cost",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "get_ri_coverage",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": "T-074",
+      "system": "AWS Cost Explorer",
+      "auth": "IAM \u2014 ce:GetReservationCoverage",
+      "api_endpoints": [
+        "POST ce.amazonaws.com \u2192 GetReservationCoverage"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Strategic signal on monthly reporting.",
+      "returns": [
+        "ondemand_waste_usd",
+        "ri_coverage_pct",
+        "ri_expiring_soon",
+        "sp_utilisation_pct"
+      ],
+      "pm_scenario": {
+        "title": "Why cost higher than estimate",
+        "narrative": "66% on-demand \u2014 $8,200/month overspend vs reserved."
+      },
+      "id": "finops:get_ri_coverage",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "get_cost_by_tag",
+      "agent_id": "finops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.08,
+      "jira_task": "T-063",
+      "system": "AWS Cost Explorer",
+      "auth": "IAM \u2014 ce:GetCostAndUsage",
+      "api_endpoints": [
+        "POST ce.amazonaws.com \u2192 GetCostAndUsage GroupBy TAG"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Team-level accountability reports.",
+      "returns": [
+        "cost_by_environment",
+        "cost_by_team_tag",
+        "top_spending_team",
+        "untagged_resource_cost"
+      ],
+      "pm_scenario": {
+        "title": "Who caused cost overrun?",
+        "narrative": "Payments team 54% of spend \u2014 staging cleanup opportunity."
+      },
+      "id": "finops:get_cost_by_tag",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "get_cost_forecast",
+      "agent_id": "finops",
+      "method": "roadmap",
+      "implementation_status": "roadmap",
+      "weight": 0.0,
+      "jira_task": "T-064",
+      "system": "AWS Cost Explorer",
+      "auth": "IAM \u2014 ce:GetCostForecast",
+      "api_endpoints": [
+        "POST ce.amazonaws.com \u2192 GetCostForecast"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Roadmap \u2014 monthly planning.",
+      "returns": [
+        "forecast_spend_usd",
+        "confidence_interval",
+        "forecast_vs_budget_delta"
+      ],
+      "pm_scenario": {
+        "title": "Board cloud spend forecast",
+        "narrative": "Roadmap \u2014 AWS 30-day forecast vs budget."
+      },
+      "id": "finops:get_cost_forecast",
+      "display_agent": "FinOps"
+    },
+    {
+      "function_name": "scan_cves",
+      "agent_id": "devsecops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.4,
+      "jira_task": "T-075",
+      "system": "GitHub Advanced Security / Snyk",
+      "auth": "Bearer \u2014 security_events scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/code-scanning/alerts"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 list_code_scanning_alerts"
+      ],
+      "fires_when": "Every release run \u2014 hard block on critical CVE.",
+      "returns": [
+        "affected_packages",
+        "critical_count",
+        "high_count"
+      ],
+      "pm_scenario": {
+        "title": "Security flagged \u2014 release Monday?",
+        "narrative": "2 critical CVEs \u2014 release blocked at 0.92 confidence."
+      },
+      "id": "devsecops:scan_cves",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "scan_secrets",
+      "agent_id": "devsecops",
+      "method": "api_mcp",
+      "implementation_status": "shipped",
+      "weight": 0.3,
+      "jira_task": "T-075",
+      "system": "GitHub Secret Scanning",
+      "auth": "secret_scanning_alerts scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/secret-scanning/alerts"
+      ],
+      "mcp_mappings": [
+        "github-mcp \u2192 list_secret_scanning_alerts"
+      ],
+      "fires_when": "Any open secret forces HOLD at 0.98 confidence.",
+      "returns": [
+        "affected_files",
+        "secrets_detected"
+      ],
+      "pm_scenario": {
+        "title": "TruffleHog flagged PR",
+        "narrative": "Active AWS key in source \u2014 hard block."
+      },
+      "id": "devsecops:scan_secrets",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "check_policy_violations",
+      "agent_id": "devsecops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.2,
+      "jira_task": "T-075",
+      "system": "GitHub Actions Checkov / AWS Config",
+      "auth": "Webhook / IAM",
+      "api_endpoints": [
+        "POST config.amazonaws.com \u2192 DescribeComplianceByConfigRule"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Infrastructure change release gates.",
+      "returns": [
+        "violated_rules",
+        "violation_count"
+      ],
+      "pm_scenario": {
+        "title": "Terraform policy issues",
+        "narrative": "Unencrypted S3 and open SSH \u2014 release blocked."
+      },
+      "id": "devsecops:check_policy_violations",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "audit_dependencies",
+      "agent_id": "devsecops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.1,
+      "jira_task": "T-075",
+      "system": "GitHub Dependency Graph",
+      "auth": "Bearer \u2014 repo scope",
+      "api_endpoints": [
+        "GET /repos/{owner}/{repo}/dependency-graph/sbom"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Dependency change security trend.",
+      "returns": [
+        "critical",
+        "high",
+        "low",
+        "medium"
+      ],
+      "pm_scenario": {
+        "title": "12 package upgrades",
+        "narrative": "Net improvement but 2 new medium issues via lodash."
+      },
+      "id": "devsecops:audit_dependencies",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "check_ssl_expiry",
+      "agent_id": "devsecops",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.08,
+      "jira_task": "T-065",
+      "system": "TLS checker + AWS ACM",
+      "auth": "IAM acm:ListCertificates",
+      "api_endpoints": [
+        "POST acm.amazonaws.com \u2192 ListCertificates"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Every release run for payment/auth domains.",
+      "returns": [
+        "acm_managed",
+        "affected_domains",
+        "cert_expiry_date",
+        "days_remaining",
+        "renewal_status"
+      ],
+      "pm_scenario": {
+        "title": "Certificate warning",
+        "narrative": "Cert expires in 3 days \u2014 HOLD payments service release."
+      },
+      "id": "devsecops:check_ssl_expiry",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "get_sast_results",
+      "agent_id": "devsecops",
+      "method": "roadmap",
+      "implementation_status": "roadmap",
+      "weight": 0.0,
+      "jira_task": "T-066",
+      "system": "SonarCloud / Semgrep",
+      "auth": "API token",
+      "api_endpoints": [
+        "GET /api/issues/search"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Roadmap \u2014 SOC2 evidence runs.",
+      "returns": [
+        "quality_gate_status",
+        "security_hotspots",
+        "coverage_pct"
+      ],
+      "pm_scenario": {
+        "title": "SOC2 auditor evidence",
+        "narrative": "Roadmap \u2014 continuous security scanning artefact."
+      },
+      "id": "devsecops:get_sast_results",
+      "display_agent": "SecOps"
+    },
+    {
+      "function_name": "check_compliance_posture",
+      "agent_id": "devsecops",
+      "method": "roadmap",
+      "implementation_status": "roadmap",
+      "weight": 0.0,
+      "jira_task": "T-067",
+      "system": "AWS Security Hub",
+      "auth": "IAM securityhub:GetFindings",
+      "api_endpoints": [
+        "POST securityhub.amazonaws.com \u2192 GetFindings"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Roadmap \u2014 quarterly compliance reviews.",
+      "returns": [
+        "compliance_framework_status",
+        "control_failures",
+        "overall_posture_score"
+      ],
+      "pm_scenario": {
+        "title": "Enterprise security report",
+        "narrative": "Roadmap \u2014 one-page compliance posture summary."
+      },
+      "id": "devsecops:check_compliance_posture",
+      "display_agent": "SecOps"
+    }
+  ]
+}

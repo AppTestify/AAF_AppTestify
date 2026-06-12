@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   createRbacUser,
   fetchNotificationConfig,
@@ -957,6 +958,10 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
             <div>
               <h2>AI providers</h2>
               <p>Pick a default provider, add keys, test connection, and save.</p>
+              <p className="field-hint" style={{ marginTop: "0.5rem" }}>
+                Browse the canonical <Link to="/app/tool-registry">AgileOps tool registry</Link> for shipped tools,
+                API endpoints, and PM scenarios.
+              </p>
             </div>
             <div className="workspace-meta">Keep advanced settings collapsed unless needed</div>
           </div>

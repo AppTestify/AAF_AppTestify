@@ -42,6 +42,7 @@ from app.routers import (
     services_catalog,
     telemetry,
     tenant_config,
+    tool_registry,
     webhooks,
 )
 from app.services.observability import record_request, record_span, render_prometheus, request_started
@@ -155,6 +156,7 @@ app.include_router(portfolio.router, prefix=settings.api_v1_prefix)
 app.include_router(metrics.router, prefix=settings.api_v1_prefix)
 app.include_router(search.router, prefix=settings.api_v1_prefix)
 app.include_router(services_catalog.router, prefix=settings.api_v1_prefix)
+app.include_router(tool_registry.router, prefix=settings.api_v1_prefix)
 
 # Optional production static hosting fallback for React SPA.
 _dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"

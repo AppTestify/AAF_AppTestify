@@ -1,0 +1,7 @@
+{
+  "cert_expiry_date": "2026-06-18",
+  "days_remaining": 7,
+  "affected_domains": ["api.example.com", "app.example.com"],
+  "renewal_status": "manual",
+  "acm_managed": false
+}

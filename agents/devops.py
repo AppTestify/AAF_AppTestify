@@ -10,7 +10,15 @@ from aaf.schema import AgentOpinion, EvidenceRecord, RiskTheme
 from agents.base_agent import BaseAgent
 from agents.schemas import EvidencePackage, ToolResult
 from tools.context import ToolContext, build_tool_context
-from tools.devops import check_branch_protection, detect_rollbacks, get_ci_status, get_deploy_history
+from tools.devops import (
+    check_branch_protection,
+    check_pipeline_config,
+    detect_rollbacks,
+    get_ci_status,
+    get_commit_activity,
+    get_deploy_history,
+    get_pr_status,
+)
 
 if TYPE_CHECKING:
     from aaf.config import Settings
@@ -37,10 +45,21 @@ class DevOpsAgent(BaseAgent):
             "get_deploy_history": 0.25,
             "detect_rollbacks": 0.25,
             "check_branch_protection": 0.15,
+            "get_pr_status": 0.10,
+            "get_commit_activity": 0.08,
+            "check_pipeline_config": 0.07,
         }
 
     def tool_callables(self):
-        return [get_ci_status, get_deploy_history, detect_rollbacks, check_branch_protection]
+        return [
+            get_ci_status,
+            get_deploy_history,
+            detect_rollbacks,
+            check_branch_protection,
+            get_pr_status,
+            get_commit_activity,
+            check_pipeline_config,
+        ]
 
     def generate_claim(self, tool_results: list[ToolResult], package: EvidencePackage) -> str:
         by_name = {r.tool_name: r for r in tool_results}

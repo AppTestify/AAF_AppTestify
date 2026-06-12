@@ -51,6 +51,7 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           <NavLink to="/app/reports">Reports</NavLink>
           <NavLink to="/app/settings">Settings</NavLink>
           <NavLink to="/app/ai-config">AI Config</NavLink>
+          <NavLink to="/app/tool-registry">Tool Registry</NavLink>
           {user.is_superadmin ? <NavLink to="/app/tenants">Tenants</NavLink> : null}
           {user.is_superadmin ? <NavLink to="/app/leads">Leads</NavLink> : null}
         </nav>

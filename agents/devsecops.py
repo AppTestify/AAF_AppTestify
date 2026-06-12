@@ -10,7 +10,13 @@ from aaf.schema import AgentOpinion, EvidenceRecord, RiskTheme
 from agents.base_agent import BaseAgent
 from agents.schemas import EvidencePackage, ToolResult
 from tools.context import ToolContext, build_tool_context
-from tools.devsecops import audit_dependencies, check_policy_violations, scan_cves, scan_secrets
+from tools.devsecops import (
+    audit_dependencies,
+    check_policy_violations,
+    check_ssl_expiry,
+    scan_cves,
+    scan_secrets,
+)
 
 if TYPE_CHECKING:
     from aaf.config import Settings
@@ -37,10 +43,11 @@ class DevSecOpsAgent(BaseAgent):
             "scan_secrets": 0.30,
             "check_policy_violations": 0.20,
             "audit_dependencies": 0.10,
+            "check_ssl_expiry": 0.08,
         }
 
     def tool_callables(self):
-        return [scan_cves, scan_secrets, check_policy_violations, audit_dependencies]
+        return [scan_cves, scan_secrets, check_policy_violations, audit_dependencies, check_ssl_expiry]
 
     def generate_claim(self, tool_results: list[ToolResult], package: EvidencePackage) -> str:
         by_name = {r.tool_name: r for r in tool_results}

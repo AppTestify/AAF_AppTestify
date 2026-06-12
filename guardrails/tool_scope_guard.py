@@ -9,34 +9,13 @@ from guardrails.types import GuardrailResult, GuardrailViolation
 if TYPE_CHECKING:
     from aaf.config import Settings
 
-AGENT_TOOL_ALLOWLIST: dict[str, frozenset[str]] = {
-    "devops": frozenset(
-        {"get_ci_status", "get_deploy_history", "detect_rollbacks", "check_branch_protection"}
-    ),
-    "finops": frozenset(
-        {
-            "get_spend_trend",
-            "check_budget_pace",
-            "detect_scaling_anomaly",
-            "calc_unit_cost",
-            "get_ri_coverage",
-        }
-    ),
-    "devsecops": frozenset(
-        {"scan_cves", "scan_secrets", "check_policy_violations", "audit_dependencies"}
-    ),
-    "project_management": frozenset(
-        {
-            "get_sprint_status",
-            "count_blockers",
-            "get_open_defects",
-            "calc_velocity_risk",
-            "check_latency",
-            "check_error_rate",
-            "check_queue_depth",
-        }
-    ),
-}
+def _load_allowlist() -> dict[str, frozenset[str]]:
+    from agents.tool_registry import registry_allowlist
+
+    return registry_allowlist(shipped_only=True)
+
+
+AGENT_TOOL_ALLOWLIST: dict[str, frozenset[str]] = _load_allowlist()
 
 _WRITE_TOOL_PREFIXES = ("create_", "delete_", "update_", "post_", "put_", "patch_", "mutate_")
 

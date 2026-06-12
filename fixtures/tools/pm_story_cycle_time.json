@@ -1,0 +1,6 @@
+{
+  "avg_cycle_time_days": 3.8,
+  "cycle_time_trend": "degrading",
+  "stories_stuck_in_review": 4,
+  "longest_cycle_time_story": "PROJ-142"
+}

@@ -15,7 +15,9 @@ from tools.pm.error_rate import check_error_rate
 from tools.pm.latency_check import check_latency
 from tools.pm.open_defects import get_open_defects
 from tools.pm.queue_depth import check_queue_depth
+from tools.pm.scope_change import get_scope_change
 from tools.pm.sprint_status import get_sprint_status
+from tools.pm.story_cycle_time import get_story_cycle_time
 from tools.pm.velocity_risk import calc_velocity_risk
 
 if TYPE_CHECKING:
@@ -43,6 +45,8 @@ class PMAgent(BaseAgent):
             "get_open_defects": 0.20,
             "calc_velocity_risk": 0.15,
             "get_sprint_status": 0.10,
+            "get_story_cycle_time": 0.12,
+            "get_scope_change": 0.10,
             "check_latency": 0.10,
             "check_error_rate": 0.10,
             "check_queue_depth": 0.05,
@@ -54,6 +58,8 @@ class PMAgent(BaseAgent):
             count_blockers,
             get_open_defects,
             calc_velocity_risk,
+            get_story_cycle_time,
+            get_scope_change,
             check_latency,
             check_error_rate,
             check_queue_depth,

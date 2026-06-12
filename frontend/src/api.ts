@@ -1322,3 +1322,60 @@ export async function createRbacUser(
   if (!r.ok) throw new Error(await parseError(r));
   return r.json();
 }
+
+export type PMScenario = {
+  title: string;
+  narrative: string;
+};
+
+export type ToolRegistryEntry = {
+  id: string;
+  function_name: string;
+  agent_id: string;
+  display_agent: string;
+  method: "direct_api" | "api_mcp" | "mcp" | "roadmap";
+  implementation_status: "shipped" | "pending" | "roadmap";
+  weight: number;
+  jira_task?: string | null;
+  extension?: boolean;
+  system: string;
+  auth: string;
+  api_endpoints: string[];
+  mcp_mappings: string[];
+  fires_when: string;
+  returns: string[];
+  pm_scenario: PMScenario;
+};
+
+export type ToolRegistryAgentSection = {
+  id: string;
+  label: string;
+  summary: string;
+  tools: ToolRegistryEntry[];
+};
+
+export type ToolRegistryResponse = {
+  agents: ToolRegistryAgentSection[];
+  meta: {
+    total_count: number;
+    shipped_count: number;
+    pending_count: number;
+    roadmap_count: number;
+    filtered_count: number;
+  };
+};
+
+export async function fetchToolRegistry(params?: {
+  agent?: string;
+  status?: string;
+  method?: string;
+}): Promise<ToolRegistryResponse> {
+  const qs = new URLSearchParams();
+  if (params?.agent) qs.set("agent", params.agent);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.method) qs.set("method", params.method);
+  const q = qs.toString();
+  const r = await fetch(`${API}/agents/tool-registry${q ? `?${q}` : ""}`);
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<ToolRegistryResponse>;
+}

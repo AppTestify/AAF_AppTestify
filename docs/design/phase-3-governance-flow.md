@@ -213,5 +213,5 @@ Difference: evidence strings are **richer and context-aware** because LLM agents
 ## Related
 
 - [Phase 1 governance flow](phase-1-governance-flow.md)
-- [CAS-71 epic](https://apptestify.atlassian.net/browse/CAS-71) — tool registry
+- [CAS-71 epic](https://apptestify.atlassian.net/browse/CAS-71) — tool registry (**shipped**: `data/tool_registry.json`, API, `/app/tool-registry`, `/capabilities`; see [agileops-tool-registry.md](agileops-tool-registry.md))
 - [CAS-91 epic](https://apptestify.atlassian.net/browse/CAS-91) — Phase 1 flow implementation

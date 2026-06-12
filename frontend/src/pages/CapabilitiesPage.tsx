@@ -1,17 +1,26 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchSignupStatus } from "../api";
-import { AGENTS, WORKSPACE_FEATURES } from "../marketing/content";
+import { fetchSignupStatus, fetchToolRegistry, type ToolRegistryResponse } from "../api";
+import { WORKSPACE_FEATURES } from "../marketing/content";
+import { ToolRegistryTable } from "../components/governance/ToolRegistryTable";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
 
 export function CapabilitiesPage() {
   const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
+  const [registry, setRegistry] = useState<ToolRegistryResponse | null>(null);
+  const [showFullRegistry, setShowFullRegistry] = useState(false);
   useEffect(() => {
     fetchSignupStatus()
       .then((s) => setSignupOpen(s.tenant_signup_enabled))
       .catch(() => setSignupOpen(false));
   }, []);
+
+  useEffect(() => {
+    fetchToolRegistry(showFullRegistry ? { status: "all" } : { status: "shipped" })
+      .then(setRegistry)
+      .catch(() => setRegistry(null));
+  }, [showFullRegistry]);
 
   return (
     <MarketingLayout signupOpen={signupOpen}>
@@ -20,8 +29,8 @@ export function CapabilitiesPage() {
           <p className="section-eyebrow">Capabilities</p>
           <h1 className="section-title">What Casantris does today</h1>
           <p className="section-lead">
-            Four domain agents, seventeen live or sim tools, weighted confidence scoring, and a full governance workspace —
-            not generic AI chat wrapped around dashboards.
+            Four domain agents, {registry?.meta.shipped_count ?? "24+"} shipped tools (sim or live), weighted confidence
+            scoring, and a full governance workspace — not generic AI chat wrapped around dashboards.
           </p>
         </div>
       </section>
@@ -29,24 +38,26 @@ export function CapabilitiesPage() {
       <section className="section subpage-band">
         <p className="section-eyebrow">Agent tool layer</p>
         <h2 className="section-title">Every agent calls real tools — in parallel</h2>
-        <div className="agent-showcase-grid" style={{ marginTop: "1rem" }}>
-          {AGENTS.map((agent) => (
-            <article key={agent.id} className="agent-showcase-card">
-              <div className="agent-showcase-head">
-                <h3>{agent.name} agent</h3>
-                <span className="agent-showcase-tag">{agent.tagline}</span>
-              </div>
-              <ul className="agent-tool-list">
-                {agent.tools.map((t) => (
-                  <li key={t}>{t}</li>
-                ))}
-              </ul>
-              <p className="field-hint mono" style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                Signals: {agent.signals}
-              </p>
-            </article>
-          ))}
-        </div>
+        <p className="section-lead" style={{ marginTop: "0.75rem" }}>
+          Scroll the registry for API endpoints, MCP mappings, return signals, and PM scenarios per tool.
+        </p>
+        <label className="tool-registry-toggle" style={{ display: "inline-flex", marginTop: "1rem" }}>
+          <input
+            type="checkbox"
+            checked={showFullRegistry}
+            onChange={(e) => setShowFullRegistry(e.target.checked)}
+          />
+          Full registry including roadmap
+        </label>
+        {registry ? (
+          <div style={{ marginTop: "1rem" }}>
+            <ToolRegistryTable data={registry} defaultStatus={showFullRegistry ? "all" : "shipped"} readOnly />
+          </div>
+        ) : (
+          <p className="field-hint" style={{ marginTop: "1rem" }}>
+            Loading tool registry…
+          </p>
+        )}
       </section>
 
       <section className="section subpage-band subpage-band-dark">

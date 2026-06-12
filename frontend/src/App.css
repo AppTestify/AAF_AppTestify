@@ -3778,6 +3778,157 @@ input:focus-visible {
   background: var(--border);
 }
 
+.tool-registry {
+  margin-top: 1rem;
+}
+
+.tool-registry-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-registry-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tool-registry-tab {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tool-registry-tab--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.tool-registry-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tool-registry-filter--active {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.tool-registry-meta {
+  margin: 0;
+}
+
+.tool-registry-summary {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tool-registry-scroll {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.tool-registry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.tool-registry-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tool-registry-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.tool-registry-row:hover {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.tool-registry-weight {
+  margin-left: 0.35rem;
+  font-size: 0.7rem;
+}
+
+.tool-registry-fires {
+  max-width: 14rem;
+  color: var(--muted);
+}
+
+.tool-registry-returns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-width: 16rem;
+}
+
+.tool-registry-returns .guardrail-chip {
+  font-size: 0.68rem;
+}
+
+.tool-registry-expand {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.45rem;
+}
+
+.tool-registry-detail-row td {
+  background: color-mix(in srgb, var(--border) 30%, var(--surface));
+}
+
+.tool-registry-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.tool-registry-mono-list {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+}
+
+.tool-registry-mono-list code {
+  word-break: break-all;
+}
+
+.tool-registry-scenario {
+  grid-column: 1 / -1;
+}
+
+.tool-registry-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
 @media (max-width: 960px) {
   .gov-command-split {
     grid-template-columns: 1fr;

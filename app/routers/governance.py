@@ -82,7 +82,13 @@ async def governance_run(
             )
     provider_chain = resolve_provider_chain(db, tenant)
     try:
-        result = await run_governance(body.prompt, body.prompt_id, effective, llm_providers=provider_chain)
+        result = await run_governance(
+            body.prompt,
+            body.prompt_id,
+            effective,
+            llm_providers=provider_chain,
+            tenant_ui_preferences=(ts_row.ui_preferences if ts_row else None),
+        )
     except GuardrailBlockedError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -128,7 +134,13 @@ async def governance_batch(
     for p in prompts:
         text = p.get("text") or ""
         pid = p.get("id")
-        r = await run_governance(text, pid, effective, llm_providers=provider_chain)
+        r = await run_governance(
+            text,
+            pid,
+            effective,
+            llm_providers=provider_chain,
+            tenant_ui_preferences=(ts_row.ui_preferences if ts_row else None),
+        )
         results.append(
             {
                 "prompt_id": pid,

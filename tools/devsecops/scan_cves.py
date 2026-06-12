@@ -10,7 +10,7 @@ from tools.context import ToolContext
 from tools.devsecops._security_data import load_security_bundle
 
 
-async def scan_cves(ctx: ToolContext) -> ToolResult:
+async def _direct_scan_cves(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_security_bundle(ctx)
     cves = bundle.get("cves") or {}
@@ -36,4 +36,15 @@ async def scan_cves(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def scan_cves(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="scan_cves",
+        mcp_tool="list_code_scanning_alerts",
+        direct_fn=_direct_scan_cves,
     )

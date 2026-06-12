@@ -17,7 +17,7 @@ def _is_blocked(issue: dict[str, Any]) -> bool:
     return "block" in status or "blocked" in summary
 
 
-async def count_blockers(ctx: ToolContext) -> ToolResult:
+async def _direct_count_blockers(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     _, issues = await load_sprint_issues(ctx)
 
@@ -52,4 +52,15 @@ async def count_blockers(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def count_blockers(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="count_blockers",
+        mcp_tool="search_issues",
+        direct_fn=_direct_count_blockers,
     )

@@ -24,7 +24,7 @@ def _days_remaining(sprint: dict[str, Any]) -> int:
         return 7
 
 
-async def get_sprint_status(ctx: ToolContext) -> ToolResult:
+async def _direct_get_sprint_status(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     sprint, issues = await load_sprint_issues(ctx)
 
@@ -66,4 +66,15 @@ async def get_sprint_status(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def get_sprint_status(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="get_sprint_status",
+        mcp_tool="get_active_sprint",
+        direct_fn=_direct_get_sprint_status,
     )

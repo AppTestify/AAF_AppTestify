@@ -1,0 +1,5 @@
+{
+  "quality_gate_status": "ERROR",
+  "security_hotspots": ["SQL injection risk in UserController", "Hard-coded credential pattern"],
+  "coverage_pct": 62.5
+}

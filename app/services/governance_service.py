@@ -54,6 +54,8 @@ async def run_governance(
     prompt_id: str | None,
     settings: Settings,
     llm_providers: list[ActiveProvider] | None = None,
+    *,
+    tenant_ui_preferences: dict[str, Any] | None = None,
 ) -> PipelineResult:
     input_reports: list = []
 
@@ -79,11 +81,15 @@ async def run_governance(
         "github_repo": settings.github_repo,
         "jira_project": settings.jira_project,
     }
+    tool_extra: dict[str, Any] = {}
+    if tenant_ui_preferences:
+        tool_extra["ui_preferences"] = tenant_ui_preferences
     tool_ctx = build_tool_context(
         settings,
         github_repo=settings.github_repo,
         jira_project=settings.jira_project,
         jira_board_id=settings.jira_board_id,
+        extra=tool_extra,
     )
     raw = await _fetch_raw_evidence(settings, names, ctx)
     fetched_at = datetime.now(timezone.utc).isoformat()

@@ -32,9 +32,36 @@ Shared component: `frontend/src/components/governance/ToolRegistryTable.tsx`
 
 ## Shipped vs roadmap
 
-- **Shipped (27):** Wired in agent `tool_callables()`, sim fixtures under `fixtures/tools/`, contract-tested in `tests/test_tool_registry_contract.py`
-- **Roadmap (4):** `get_team_capacity`, `get_cost_forecast`, `get_sast_results`, `check_compliance_posture` — documented only
-- **MCP Phase 3:** github-mcp / atlassian-mcp wrappers (T-068–T-070) — documented in registry, not implemented
+- **Shipped (31):** All registry tools wired in agent `tool_callables()` except none remaining roadmap; contract-tested in `tests/test_tool_registry_contract.py`
+- **MCP Phase 3 (T-068–T-070):** `tools/mcp/` transport layer routes 9 `api_mcp` tools through external github-mcp / atlassian-mcp servers with direct API fallback
+
+### MCP tenant configuration
+
+Set in **Settings → Advanced → UI preferences**:
+
+```json
+{
+  "mcp_enabled": true,
+  "mcp_servers": {
+    "github": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env_ref": "github_token"
+    },
+    "atlassian": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-atlassian"],
+      "env_ref": "jira_credentials"
+    }
+  },
+  "team_capacity": { "available_hours": 320, "planned_hours": 380, "leave_count": 3 },
+  "sast": { "org": "myorg", "project_key": "myproject", "api_token": "<token>" }
+}
+```
+
+Tool results include `raw_signals.transport`: `sim` | `direct_api` | `mcp`.
 
 ## Related
 

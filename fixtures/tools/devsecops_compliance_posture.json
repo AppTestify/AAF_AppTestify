@@ -1,0 +1,5 @@
+{
+  "compliance_framework_status": "FAIL",
+  "control_failures": ["S3 bucket public read ACL", "Security group allows 0.0.0.0/0 on port 22"],
+  "overall_posture_score": 72.0
+}

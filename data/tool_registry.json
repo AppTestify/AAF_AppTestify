@@ -40,7 +40,8 @@
         "blocking_check",
         "ci_pass_rate",
         "failed_steps",
-        "runs_in_window"
+        "runs_in_window",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Should we release v4.12.0 today?",
@@ -70,7 +71,8 @@
         "deploy_freq",
         "last_env",
         "mttr_hours",
-        "tag_present"
+        "tag_present",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Post-incident release decision",
@@ -126,7 +128,8 @@
         "checks_pass",
         "pr_merged",
         "reviews_met",
-        "signed_commits"
+        "signed_commits",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Release without second reviewer",
@@ -156,7 +159,8 @@
         "changes_requested_count",
         "draft_pr_flag",
         "oldest_open_pr_days",
-        "open_pr_count"
+        "open_pr_count",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Feature flag rollout",
@@ -241,7 +245,8 @@
         "days_remaining",
         "sprint_done_pct",
         "sprint_name",
-        "stories_remaining"
+        "stories_remaining",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Sprint review tomorrow",
@@ -269,7 +274,8 @@
       "returns": [
         "blocked_count",
         "blocker_reasons",
-        "story_keys"
+        "story_keys",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Why are we behind?",
@@ -297,7 +303,8 @@
       "returns": [
         "defect_keys",
         "oldest_defect_age_days",
-        "open_bugs_high"
+        "open_bugs_high",
+        "transport"
       ],
       "pm_scenario": {
         "title": "CI green \u2014 can we release?",
@@ -389,9 +396,9 @@
     {
       "function_name": "get_team_capacity",
       "agent_id": "project_management",
-      "method": "roadmap",
-      "implementation_status": "roadmap",
-      "weight": 0.0,
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.08,
       "jira_task": "T-062",
       "system": "Jira/Tempo Timesheets",
       "auth": "OAuth2 \u2014 Tempo API token",
@@ -401,9 +408,9 @@
       "mcp_mappings": [],
       "fires_when": "Roadmap \u2014 capacity context when sprint is behind.",
       "returns": [
-        "team_capacity_pct",
+        "leave_count_this_sprint",
         "planned_vs_available_hours",
-        "leave_count_this_sprint"
+        "team_capacity_pct"
       ],
       "pm_scenario": {
         "title": "3 people on leave",
@@ -647,9 +654,9 @@
     {
       "function_name": "get_cost_forecast",
       "agent_id": "finops",
-      "method": "roadmap",
-      "implementation_status": "roadmap",
-      "weight": 0.0,
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.07,
       "jira_task": "T-064",
       "system": "AWS Cost Explorer",
       "auth": "IAM \u2014 ce:GetCostForecast",
@@ -659,8 +666,8 @@
       "mcp_mappings": [],
       "fires_when": "Roadmap \u2014 monthly planning.",
       "returns": [
-        "forecast_spend_usd",
         "confidence_interval",
+        "forecast_spend_usd",
         "forecast_vs_budget_delta"
       ],
       "pm_scenario": {
@@ -689,7 +696,8 @@
       "returns": [
         "affected_packages",
         "critical_count",
-        "high_count"
+        "high_count",
+        "transport"
       ],
       "pm_scenario": {
         "title": "Security flagged \u2014 release Monday?",
@@ -716,7 +724,8 @@
       "fires_when": "Any open secret forces HOLD at 0.98 confidence.",
       "returns": [
         "affected_files",
-        "secrets_detected"
+        "secrets_detected",
+        "transport"
       ],
       "pm_scenario": {
         "title": "TruffleHog flagged PR",
@@ -808,9 +817,9 @@
     {
       "function_name": "get_sast_results",
       "agent_id": "devsecops",
-      "method": "roadmap",
-      "implementation_status": "roadmap",
-      "weight": 0.0,
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.06,
       "jira_task": "T-066",
       "system": "SonarCloud / Semgrep",
       "auth": "API token",
@@ -820,9 +829,9 @@
       "mcp_mappings": [],
       "fires_when": "Roadmap \u2014 SOC2 evidence runs.",
       "returns": [
+        "coverage_pct",
         "quality_gate_status",
-        "security_hotspots",
-        "coverage_pct"
+        "security_hotspots"
       ],
       "pm_scenario": {
         "title": "SOC2 auditor evidence",
@@ -834,9 +843,9 @@
     {
       "function_name": "check_compliance_posture",
       "agent_id": "devsecops",
-      "method": "roadmap",
-      "implementation_status": "roadmap",
-      "weight": 0.0,
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.06,
       "jira_task": "T-067",
       "system": "AWS Security Hub",
       "auth": "IAM securityhub:GetFindings",

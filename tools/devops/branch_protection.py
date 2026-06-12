@@ -11,7 +11,7 @@ from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
 
-async def check_branch_protection(ctx: ToolContext) -> ToolResult:
+async def _direct_check_branch_protection(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     branch = ctx.release_branch
     raw: dict[str, Any] = {
@@ -68,4 +68,15 @@ async def check_branch_protection(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def check_branch_protection(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="check_branch_protection",
+        mcp_tool="get_branch_protection_rules",
+        direct_fn=_direct_check_branch_protection,
     )

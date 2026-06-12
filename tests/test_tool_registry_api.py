@@ -11,7 +11,8 @@ def test_tool_registry_returns_all_entries():
     assert r.status_code == 200
     body = r.json()
     assert body["meta"]["total_count"] == 31
-    assert body["meta"]["shipped_count"] >= 24
+    assert body["meta"]["shipped_count"] == 31
+    assert body["meta"]["roadmap_count"] == 0
     assert len(body["agents"]) == 4
 
 

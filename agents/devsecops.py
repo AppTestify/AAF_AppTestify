@@ -13,7 +13,9 @@ from tools.context import ToolContext, build_tool_context
 from tools.devsecops import (
     audit_dependencies,
     check_policy_violations,
+    check_compliance_posture,
     check_ssl_expiry,
+    get_sast_results,
     scan_cves,
     scan_secrets,
 )
@@ -44,10 +46,20 @@ class DevSecOpsAgent(BaseAgent):
             "check_policy_violations": 0.20,
             "audit_dependencies": 0.10,
             "check_ssl_expiry": 0.08,
+            "get_sast_results": 0.06,
+            "check_compliance_posture": 0.06,
         }
 
     def tool_callables(self):
-        return [scan_cves, scan_secrets, check_policy_violations, audit_dependencies, check_ssl_expiry]
+        return [
+            scan_cves,
+            scan_secrets,
+            check_policy_violations,
+            audit_dependencies,
+            check_ssl_expiry,
+            get_sast_results,
+            check_compliance_posture,
+        ]
 
     def generate_claim(self, tool_results: list[ToolResult], package: EvidencePackage) -> str:
         by_name = {r.tool_name: r for r in tool_results}
@@ -55,6 +67,9 @@ class DevSecOpsAgent(BaseAgent):
         secrets = by_name.get("scan_secrets")
         if secrets and secrets.raw_signals.get("secrets_detected"):
             return "Secret exposure detected — shipping is blocked from a security standpoint."
+        sast = by_name.get("get_sast_results")
+        if sast and str(sast.raw_signals.get("quality_gate_status", "OK")).upper() not in ("OK", "PASSED"):
+            return "SAST quality gate failed — release requires security review."
         if cves and int(cves.raw_signals.get("critical_count", 0)) > 0:
             return "Critical CVEs present — release should be blocked."
         if cves and int(cves.raw_signals.get("high_count", 0)) > 0:

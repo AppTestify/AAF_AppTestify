@@ -149,7 +149,15 @@ def process_run_sync(run_id: int) -> None:
                 record_run(run.status, elapsed_ms, run.retry_count)
                 return
         try:
-            result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
+            result = asyncio.run(
+                run_governance(
+                    run.prompt,
+                    run.prompt_id,
+                    effective,
+                    llm_providers=provider_chain,
+                    tenant_ui_preferences=(settings_row_early.ui_preferences if settings_row_early else None),
+                )
+            )
         except GuardrailBlockedError as guard_exc:
             run.status = "failed"
             run.error_message = str(guard_exc)

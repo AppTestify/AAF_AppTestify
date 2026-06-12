@@ -555,7 +555,8 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
               <summary>Advanced — JSON (UI preferences, LLM key map, RAG)</summary>
               <p className="workspace-meta" style={{ marginTop: "0.5rem" }}>
                 For power users. Invalid JSON will fail on save. LLM keys: use real secret values only when updating; placeholder entries are ignored by the
-                backend if unchanged.
+                backend if unchanged. Optional keys: <code>team_capacity</code> (planned/available hours, leave_count),{" "}
+                <code>mcp_enabled</code> + <code>mcp_servers</code> (github/atlassian stdio MCP brokers), <code>sast</code> (SonarCloud org/project_key/api_token).
               </p>
               <div className="form-row">
                 <label htmlFor="ui-prefs">UI preferences (JSON)</label>

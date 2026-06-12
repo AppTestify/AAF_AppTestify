@@ -20,7 +20,7 @@ def _parse_time(value: str | None) -> datetime | None:
         return None
 
 
-async def get_deploy_history(ctx: ToolContext) -> ToolResult:
+async def _direct_get_deploy_history(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(days=7)
     raw: dict[str, Any] = {
@@ -95,4 +95,15 @@ async def get_deploy_history(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def get_deploy_history(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="get_deploy_history",
+        mcp_tool="list_deployments",
+        direct_fn=_direct_get_deploy_history,
     )

@@ -17,6 +17,7 @@ from tools.pm.open_defects import get_open_defects
 from tools.pm.queue_depth import check_queue_depth
 from tools.pm.scope_change import get_scope_change
 from tools.pm.sprint_status import get_sprint_status
+from tools.pm.team_capacity import get_team_capacity
 from tools.pm.story_cycle_time import get_story_cycle_time
 from tools.pm.velocity_risk import calc_velocity_risk
 
@@ -47,6 +48,7 @@ class PMAgent(BaseAgent):
             "get_sprint_status": 0.10,
             "get_story_cycle_time": 0.12,
             "get_scope_change": 0.10,
+            "get_team_capacity": 0.08,
             "check_latency": 0.10,
             "check_error_rate": 0.10,
             "check_queue_depth": 0.05,
@@ -60,6 +62,7 @@ class PMAgent(BaseAgent):
             calc_velocity_risk,
             get_story_cycle_time,
             get_scope_change,
+            get_team_capacity,
             check_latency,
             check_error_rate,
             check_queue_depth,

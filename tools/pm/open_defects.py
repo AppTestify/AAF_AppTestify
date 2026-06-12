@@ -31,7 +31,7 @@ def _issue_age_days(issue: dict[str, Any]) -> float:
         return 0.0
 
 
-async def get_open_defects(ctx: ToolContext) -> ToolResult:
+async def _direct_get_open_defects(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     _, issues = await load_sprint_issues(ctx)
 
@@ -57,4 +57,15 @@ async def get_open_defects(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def get_open_defects(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="get_open_defects",
+        mcp_tool="search_issues",
+        direct_fn=_direct_get_open_defects,
     )

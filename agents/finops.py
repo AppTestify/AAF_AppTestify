@@ -15,6 +15,7 @@ from tools.finops import (
     check_budget_pace,
     detect_scaling_anomaly,
     get_cost_by_tag,
+    get_cost_forecast,
     get_ri_coverage,
     get_spend_trend,
 )
@@ -48,6 +49,7 @@ class FinOpsAgent(BaseAgent):
             "calc_unit_cost": 0.15,
             "get_ri_coverage": 0.10,
             "get_cost_by_tag": 0.08,
+            "get_cost_forecast": 0.07,
         }
 
     def tool_callables(self):
@@ -58,6 +60,7 @@ class FinOpsAgent(BaseAgent):
             calc_unit_cost,
             get_ri_coverage,
             get_cost_by_tag,
+            get_cost_forecast,
         ]
 
     def generate_claim(self, tool_results: list[ToolResult], package: EvidencePackage) -> str:

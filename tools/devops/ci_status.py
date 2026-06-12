@@ -28,7 +28,7 @@ def _parse_run_time(value: str | None) -> datetime | None:
         return None
 
 
-async def get_ci_status(ctx: ToolContext) -> ToolResult:
+async def _direct_get_ci_status(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(hours=24)
     raw: dict[str, Any] = {
@@ -101,4 +101,15 @@ async def get_ci_status(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def get_ci_status(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="get_ci_status",
+        mcp_tool="list_workflow_runs",
+        direct_fn=_direct_get_ci_status,
     )

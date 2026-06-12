@@ -11,7 +11,7 @@ from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
 
-async def get_pr_status(ctx: ToolContext) -> ToolResult:
+async def _direct_get_pr_status(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     base = ctx.release_branch or "main"
     raw: dict[str, Any] = {
@@ -71,4 +71,15 @@ async def get_pr_status(ctx: ToolContext) -> ToolResult:
         captured_at=now,
         raw_signals=raw,
         evidence_lines=lines,
+    )
+
+
+async def get_pr_status(ctx: ToolContext) -> ToolResult:
+    from tools.mcp.router import run_with_transport
+
+    return await run_with_transport(
+        ctx,
+        agileops_tool="get_pr_status",
+        mcp_tool="list_pull_requests",
+        direct_fn=_direct_get_pr_status,
     )

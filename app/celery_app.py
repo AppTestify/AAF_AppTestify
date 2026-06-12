@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 
 from aaf.config import get_settings
 
@@ -33,6 +34,16 @@ celery_app.conf.update(
         },
     },
 )
+
+
+@worker_process_init.connect
+def _init_worker_db(**_kwargs) -> None:
+    """Celery workers don't run the FastAPI startup lifespan, so initialize the
+    database engine/session per worker process (required by process_run_sync)."""
+    from app import db as db_mod
+
+    if db_mod.SessionLocal is None:
+        db_mod.init_db(get_settings().database_url)
 
 
 @celery_app.task(name="governance.process_run", bind=True)

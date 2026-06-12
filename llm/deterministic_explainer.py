@@ -73,5 +73,6 @@ def _action_label(a: GovernanceAction) -> str:
         GovernanceAction.MITIGATE_MONITOR: "Mitigate and monitor",
         GovernanceAction.SCALE_ADJUST: "Scale / capacity adjustment",
         GovernanceAction.PATCH_BLOCK_RELEASE: "Patch or block release",
+        GovernanceAction.HOLD_RELEASE: "Hold release",
         GovernanceAction.OBSERVE: "No immediate action / observe",
     }.get(a, a.value)

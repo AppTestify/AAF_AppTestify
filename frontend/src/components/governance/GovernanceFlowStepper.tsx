@@ -11,12 +11,23 @@ export type FlowStepLink = {
 type GovernanceFlowStepperProps = {
   runId: number;
   activeStep?: string;
+  /** When 3, show LLM Intent Router step in workspace navigation */
+  pipelinePhase?: number;
 };
 
-export function GovernanceFlowStepper({ runId, activeStep = "runs" }: GovernanceFlowStepperProps) {
+export function GovernanceFlowStepper({ runId, activeStep = "runs", pipelinePhase }: GovernanceFlowStepperProps) {
   const q = `?run_id=${runId}`;
   const steps: FlowStepLink[] = [
-    { id: "prompt", label: "Prompt", route: "/app/overview", completed: true },
+    {
+      id: "prompt",
+      label: "Prompt",
+      route: `/app/overview${q}`,
+      active: activeStep === "prompt",
+      completed: activeStep !== "prompt",
+    },
+    ...(pipelinePhase === 3
+      ? [{ id: "intent", label: "Intent", route: `/app/runs${q}`, completed: activeStep !== "runs", active: activeStep === "runs" }]
+      : []),
     { id: "evidence", label: "Evidence", route: `/app/evidence${q}`, active: activeStep === "evidence", completed: activeStep !== "evidence" },
     { id: "runs", label: "Agents", route: `/app/runs${q}`, active: activeStep === "runs", completed: activeStep !== "runs" },
     { id: "cases", label: "Decision", route: `/app/cases${q}`, active: activeStep === "cases" },

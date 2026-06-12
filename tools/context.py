@@ -24,6 +24,7 @@ class ToolContext:
     aws_secret_access_key: str = ""
     release_branch: str = "main"
     extra: dict[str, Any] = field(default_factory=dict)
+    evidence_package: dict[str, Any] | None = None
 
     @property
     def connector_mode(self) -> ConnectorMode:
@@ -50,6 +51,7 @@ def build_tool_context(
     jira_board_id: str | None = None,
     release_branch: str | None = None,
     extra: dict[str, Any] | None = None,
+    evidence_package: dict[str, Any] | None = None,
 ) -> ToolContext:
     return ToolContext(
         settings=settings,
@@ -65,4 +67,37 @@ def build_tool_context(
         aws_secret_access_key=getattr(settings, "aws_secret_access_key", ""),
         release_branch=release_branch or "main",
         extra=extra or {},
+        evidence_package=evidence_package,
     )
+
+
+def get_cached_tool_result(ctx: ToolContext, tool_name: str):
+    """Return a cached ToolResult from the evidence package, if present."""
+    from agents.schemas import ToolResult
+
+    pkg = ctx.evidence_package or {}
+    tools = pkg.get("tools") or {}
+    entry = tools.get(tool_name)
+    if entry is None:
+        return None
+    if isinstance(entry, ToolResult):
+        return entry
+    if isinstance(entry, dict):
+        return ToolResult.model_validate(entry)
+    return None
+
+
+def cache_tool_result(ctx: ToolContext, result) -> None:
+    """Store a tool result in the evidence package cache."""
+    if ctx.evidence_package is None:
+        ctx.evidence_package = {}
+    tools = ctx.evidence_package.setdefault("tools", {})
+    tools[result.tool_name] = result.model_dump(mode="json")
+
+
+def read_package_signal(ctx: ToolContext, tool_name: str, key: str, default=None):
+    """Read a raw signal value from a package-backed tool result."""
+    cached = get_cached_tool_result(ctx, tool_name)
+    if cached is None:
+        return default
+    return cached.raw_signals.get(key, default)

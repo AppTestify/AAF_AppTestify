@@ -12,6 +12,43 @@ service:
 ingress:
   enabled: true
   host: casantris.example.com
+  className: ""
+  annotations: {}
+
+# Comma-separated browser origins for the React app (required in production).
+corsOrigins: ""
+
+database:
+  url: ""
+
+redis:
+  enabled: true
+  url: ""
+
+celery:
+  enabled: true
+  replicas: 2
+  beatEnabled: true
+  brokerUrl: ""
+  resultBackend: ""
+
+kafka:
+  enabled: false
+  bootstrapServers: ""
+  consumer:
+    enabled: true
+    replicas: 1
+
+opensearch:
+  enabled: false
+  url: ""
+
+integration:
+  mode: python
+
+apisix:
+  enabled: false
+  gatewayUrl: ""
 
 resources:
   requests:
@@ -31,15 +68,27 @@ postgres:
   enabled: true
   storage: 20Gi
 
-redis:
-  enabled: true
-
-celery:
-  replicas: 2
-
 nginx:
   enabled: true
 
+# Secrets must be supplied externally in production (Sealed Secrets / External Secrets).
+# Set secrets.create=true only for local/dev chart installs with explicit --set values.
 secrets:
-  jwtSecret: change-me
-  encryptionKey: change-me-32-char-encryption-key
+  create: false
+  existingSecretName: casantris-secrets
+  jwtSecret: ""
+  encryptionKey: ""
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3

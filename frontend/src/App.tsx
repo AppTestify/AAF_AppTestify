@@ -38,7 +38,9 @@ import { WorkspaceSettingsPage } from "./pages/WorkspaceSettingsPage";
 import { WorkspaceToolRegistryPage } from "./pages/WorkspaceToolRegistryPage";
 import { WorkspaceLeadsPage } from "./pages/WorkspaceLeadsPage";
 import { WorkspaceTenantsPage } from "./pages/WorkspaceTenantsPage";
+import { WorkspacePlatformSettingsPage } from "./pages/WorkspacePlatformSettingsPage";
 import { OnboardingWizardPage } from "./pages/OnboardingWizardPage";
+import { PublicSharePage } from "./pages/PublicSharePage";
 import "./App.css";
 
 export default function App() {
@@ -221,6 +223,7 @@ function AppRoutes() {
           )
         }
       />
+      <Route path="/share/:token" element={<PublicSharePage />} />
       <Route
         path="/app"
         element={
@@ -303,14 +306,15 @@ function AppRoutes() {
           path="settings"
           element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="general" />}
         />
-        <Route
-          path="ai-config"
-          element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="ai" />}
-        />
+        <Route path="ai-config" element={<Navigate to="/app/settings?tab=ai" replace />} />
         <Route path="tool-registry" element={<WorkspaceToolRegistryPage />} />
         <Route path="onboarding" element={<OnboardingWizardPage />} />
         <Route path="leads" element={<WorkspaceLeadsPage />} />
         <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage /> : <Navigate to="/app/dashboard" replace />} />
+        <Route
+          path="platform-settings"
+          element={user?.is_superadmin ? <WorkspacePlatformSettingsPage /> : <Navigate to="/app/dashboard" replace />}
+        />
       </Route>
       <Route
         path="*"

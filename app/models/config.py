@@ -87,6 +87,34 @@ class ConfigAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PlatformNotificationConfig(Base):
+    """Singleton platform-wide SMTP + webhook defaults (superadmin managed)."""
+
+    __tablename__ = "platform_notification_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_password_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    smtp_from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_from_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    use_tls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    use_ssl: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    allow_tenant_smtp_override: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    templates_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    slack_incoming_webhook_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    teams_incoming_webhook_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_test_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    last_test_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TenantNotificationConfig(Base):
     __tablename__ = "tenant_notification_configs"
 
@@ -102,8 +130,11 @@ class TenantNotificationConfig(Base):
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     templates_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     slack_incoming_webhook_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    teams_incoming_webhook_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     governance_notify_on_run_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     governance_run_notify_emails_json: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
+    notification_channels_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    digest_schedule_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     last_test_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     last_test_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

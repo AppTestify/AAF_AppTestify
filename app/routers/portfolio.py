@@ -177,11 +177,8 @@ def create_release(
     return ReleaseOut.model_validate(row)
 
 
-@router.get("/reports/executive", response_model=ExecutivePortfolioReport)
-def executive_portfolio_report(
-    db: Session = Depends(get_db),
-    current: User = Depends(require_permission("cases.manage")),
-):
+def build_executive_portfolio_report(db: Session, current: User) -> ExecutivePortfolioReport:
+    """Shared executive portfolio payload for JSON and export endpoints."""
     projects_q = select(func.count(PortfolioProject.id), func.sum(case((PortfolioProject.status == "active", 1), else_=0)))
     releases_q = select(
         func.count(ProjectRelease.id),
@@ -246,6 +243,14 @@ def executive_portfolio_report(
             for r in breakdown_rows
         ],
     )
+
+
+@router.get("/reports/executive", response_model=ExecutivePortfolioReport)
+def executive_portfolio_report(
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("cases.manage")),
+):
+    return build_executive_portfolio_report(db, current)
 
 
 def _governance_run_scope(current: User):

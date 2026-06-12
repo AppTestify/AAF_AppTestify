@@ -15,7 +15,8 @@ _ACTION_KEYWORDS: dict[GovernanceAction, list[str]] = {
     GovernanceAction.ROLLBACK: ["rollback", "roll back", "revert", "roll-back"],
     GovernanceAction.MITIGATE_MONITOR: ["mitigate", "mitigation", "monitor closely"],
     GovernanceAction.SCALE_ADJUST: ["scale up", "scale down", "capacity adjustment", "autoscale"],
-    GovernanceAction.PATCH_BLOCK_RELEASE: ["block release", "patch", "hold release", "do not release"],
+    GovernanceAction.PATCH_BLOCK_RELEASE: ["block release", "patch", "do not release"],
+    GovernanceAction.HOLD_RELEASE: ["hold release", "hold the release", "do not release", "delay release"],
     GovernanceAction.OBSERVE: ["observe", "no immediate action", "watch", "continue monitoring"],
 }
 
@@ -24,6 +25,7 @@ _ACTION_LABELS: dict[GovernanceAction, str] = {
     GovernanceAction.MITIGATE_MONITOR: "Mitigate and monitor",
     GovernanceAction.SCALE_ADJUST: "Scale / capacity adjustment",
     GovernanceAction.PATCH_BLOCK_RELEASE: "Patch or block release",
+    GovernanceAction.HOLD_RELEASE: "Hold release",
     GovernanceAction.OBSERVE: "No immediate action / observe",
 }
 

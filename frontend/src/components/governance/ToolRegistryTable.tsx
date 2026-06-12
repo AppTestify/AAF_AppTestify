@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ToolRegistryEntry, ToolRegistryResponse } from "../../api";
+import { PaginationBar } from "../ui/PaginationBar";
+
+const CLIENT_PAGE_SIZE = 25;
 
 const METHOD_LABELS: Record<string, string> = {
   direct_api: "Direct API",
@@ -27,6 +30,8 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatus === "all" ? "all" : "shipped");
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(CLIENT_PAGE_SIZE);
 
   const sections = useMemo(() => {
     const byId = new Map(data.agents.map((a) => [a.id, a]));
@@ -43,6 +48,13 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
       return true;
     });
   }, [activeSection, statusFilter, methodFilter]);
+
+  const pagedTools = useMemo(
+    () => filteredTools.slice(offset, offset + pageSize),
+    [filteredTools, offset, pageSize]
+  );
+
+  const showPagination = filteredTools.length > pageSize;
 
   const toggleRow = (id: string) => {
     setExpanded((prev) => {
@@ -64,7 +76,10 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
               role="tab"
               aria-selected={activeAgent === section.id}
               className={`tool-registry-tab ${activeAgent === section.id ? "tool-registry-tab--active" : ""}`}
-              onClick={() => setActiveAgent(section.id)}
+              onClick={() => {
+                setActiveAgent(section.id);
+                setOffset(0);
+              }}
             >
               {section.label}
             </button>
@@ -76,7 +91,10 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
               key={s}
               type="button"
               className={`guardrail-chip guardrail-chip--neutral tool-registry-filter ${statusFilter === s ? "tool-registry-filter--active" : ""}`}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => {
+                setStatusFilter(s);
+                setOffset(0);
+              }}
             >
               {s === "all" ? "All status" : STATUS_LABELS[s]}
             </button>
@@ -86,7 +104,10 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
               key={m}
               type="button"
               className={`guardrail-chip guardrail-chip--neutral tool-registry-filter ${methodFilter === m ? "tool-registry-filter--active" : ""}`}
-              onClick={() => setMethodFilter(m)}
+              onClick={() => {
+                setMethodFilter(m);
+                setOffset(0);
+              }}
             >
               {m === "all" ? "All methods" : METHOD_LABELS[m]}
             </button>
@@ -115,7 +136,7 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
             </tr>
           </thead>
           <tbody>
-            {filteredTools.map((tool) => (
+            {pagedTools.map((tool) => (
               <ToolRow
                 key={tool.id}
                 tool={tool}
@@ -131,6 +152,20 @@ export function ToolRegistryTable({ data, defaultStatus = "shipped", readOnly = 
           </p>
         ) : null}
       </div>
+      {showPagination ? (
+        <PaginationBar
+          offset={offset}
+          pageSize={pageSize}
+          itemCount={pagedTools.length}
+          totalCount={filteredTools.length}
+          onOffsetChange={setOffset}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setOffset(0);
+          }}
+          className="tool-registry-pagination"
+        />
+      ) : null}
     </div>
   );
 }

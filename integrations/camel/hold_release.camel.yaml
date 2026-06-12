@@ -1,0 +1,17 @@
+# Apache Camel route: hold-release automation → portfolio webhook + notifications
+- route:
+    id: hold-release
+    from:
+      uri: kafka:casantris.automation.actions
+      parameters:
+        brokers: "{{env:KAFKA_BOOTSTRAP_SERVERS}}"
+        groupId: casantris-camel-hold-release
+    steps:
+      - filter:
+          simple: "${body[action_type]} == 'hold_release_workflow'"
+      - to:
+          uri: direct:hold-release-workflow
+      - to:
+          uri: "{{body[hold_release_webhook_url]}}"
+          parameters:
+            httpMethod: POST

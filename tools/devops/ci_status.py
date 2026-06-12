@@ -105,6 +105,12 @@ async def _direct_get_ci_status(ctx: ToolContext) -> ToolResult:
 
 
 async def get_ci_status(ctx: ToolContext) -> ToolResult:
+    from tools.context import get_cached_tool_result
+
+    cached = get_cached_tool_result(ctx, "get_ci_status")
+    if cached is not None:
+        return cached
+
     from tools.mcp.router import run_with_transport
 
     return await run_with_transport(

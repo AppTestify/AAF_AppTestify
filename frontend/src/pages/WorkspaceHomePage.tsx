@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   fetchCases,
   fetchConsensusSummary,
-  fetchDashboardSummary,
   fetchExecutiveSummaries,
   fetchGovernanceRun,
   fetchGovernanceRuns,
@@ -11,23 +10,36 @@ import {
   fetchIntelligenceIncidents,
   fetchObservabilitySummary,
   fetchReleaseGovernance,
+  fetchRunsTimeseries,
   runGovernanceWorkflow,
   runRarIteration,
   type ConsensusSummary,
-  type DashboardSummary,
   type ExecutiveSummary,
   type IntelligenceIncident,
   type ObservabilitySummary,
   type ReleaseGovernance,
+  type RunsTimeseries,
   type UserPublic,
   type GovernanceCase,
   type WorkflowRun,
 } from "../api";
+import { CaseStatusBar } from "../components/charts/CaseStatusBar";
+import { ConnectorHealthDonut } from "../components/charts/ConnectorHealthDonut";
+import { LlmCostBar } from "../components/charts/LlmCostBar";
+import { RunsTrendLine } from "../components/charts/RunsTrendLine";
+import { RunStatusDonut } from "../components/charts/RunStatusDonut";
+import { SloBurnChart } from "../components/charts/SloBurnChart";
 import { AIRecommendationCard } from "../components/governance/AIRecommendationCard";
 import { DecisionFlowTrace } from "../components/governance/DecisionFlowTrace";
+import { ConnectorHealthCards } from "../components/governance/ConnectorHealthCards";
 import { RecentDecisionsList } from "../components/governance/RecentDecisionsList";
+import { RecentRunsList } from "../components/governance/RecentRunsList";
 import { RiskMetricCard } from "../components/governance/RiskMetricCard";
 import { IncidentFindingsPanel } from "../components/IncidentFindingsPanel";
+import { WorkspacePageShell } from "../components/layout/WorkspacePageShell";
+import { EmptyState } from "../components/ui/EmptyState";
+import { KpiStrip } from "../components/ui/KpiStrip";
+import { useDashboardSummary } from "../hooks/useDashboardSummary";
 import {
   deriveDecisionFlow,
   deriveRecentDecisions,
@@ -43,7 +55,8 @@ type WorkspaceHomePageProps = {
 };
 
 export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const { summary, loading: summaryLoading, error: summaryError } = useDashboardSummary();
+  const [timeseries, setTimeseries] = useState<RunsTimeseries | null>(null);
   const [obs, setObs] = useState<ObservabilitySummary | null>(null);
   const [consensus, setConsensus] = useState<ConsensusSummary | null>(null);
   const [incidents, setIncidents] = useState<IntelligenceIncident[]>([]);
@@ -53,11 +66,11 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const [parsedRun, setParsedRun] = useState<ParsedRunContext | null>(null);
   const [cases, setCases] = useState<GovernanceCase[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [opsLoading, setOpsLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      fetchDashboardSummary(),
+      fetchRunsTimeseries(7),
       fetchObservabilitySummary(),
       fetchConsensusSummary(),
       fetchIntelligenceIncidents(6),
@@ -67,21 +80,23 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
       fetchCases(20),
       fetchGovernanceRuns({ status: "succeeded", limit: 1 }),
     ])
-      .then(async ([a, b, c, d, e, f, g, caseRows, runs]) => {
-        setSummary(a);
+      .then(async ([ts, b, c, d, e, f, g, casePage, runPage]) => {
+        setTimeseries(ts);
         setObs(b);
         setConsensus(c);
         setIncidents(d);
         setExecSummaries(e);
         setReleaseGov(f);
         setWorkflowRuns(g);
-        setCases(caseRows);
+        setCases(Array.isArray(casePage) ? casePage : casePage.items);
+        const runs = Array.isArray(runPage) ? runPage : runPage.items;
         if (runs.length) {
           const full = await fetchGovernanceRun(runs[0].id);
           setParsedRun(parseGovernanceRunResult(full));
         }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load command center"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load command center"))
+      .finally(() => setOpsLoading(false));
   }, []);
 
   const runWorkflow = async (workflowType: string) => {
@@ -112,25 +127,53 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const recentDecisions = deriveRecentDecisions(summary, cases);
   const flowSteps = deriveDecisionFlow(parsedRun, parsedRun?.run.status);
   const liveTrace = parsedRun ? isLiveTrace(parsedRun.run.status, parsedRun.run.finished_at) : false;
-
-  const maxRunCount = Math.max(1, ...Object.values(summary?.run_status_counts ?? { empty: 1 }));
-  const maxCaseCount = Math.max(1, ...Object.values(summary?.case_status_counts ?? { empty: 1 }));
+  const displayError = error ?? summaryError;
+  const chartsLoading = summaryLoading || opsLoading;
 
   return (
-    <div className="app dashboard-page">
-      <header className="gov-hub-header">
-        <p className="gov-hub-eyebrow">Command Center</p>
-        <h1 className="gov-hub-title">AI governance for software delivery, cost, and operational risk</h1>
-        <p className="gov-hub-lead">
-          Real-time decision cockpit synthesizing GitHub, Jira, and FinOps signals into one trustworthy recommendation.
-        </p>
-      </header>
-
-      {error ? (
+    <WorkspacePageShell
+      variant="governance"
+      dashboard
+      eyebrow="Command Center"
+      title="AI governance for software delivery, cost, and operational risk"
+      subtitle="Real-time decision cockpit synthesizing GitHub, Jira, and FinOps signals into one trustworthy recommendation."
+    >
+      {displayError ? (
         <div className="alert alert-error" role="alert">
-          {error}
+          {displayError}
         </div>
       ) : null}
+
+      <KpiStrip
+        loading={chartsLoading}
+        items={[
+          { label: "Runs (24h)", value: summary?.runs_24h ?? "…" },
+          { label: "Success (24h)", value: summary?.runs_success_24h ?? "…", tone: "good" },
+          { label: "Open cases", value: summary?.cases_open ?? "…", tone: "warn" },
+          { label: "Alerts (24h)", value: summary?.alerts_24h ?? "…", tone: "bad" },
+          { label: "Req/min", value: obs?.requests_per_min ?? "…" },
+          {
+            label: "Consensus",
+            value: consensus ? consensus.avg_consensus_score.toFixed(2) : "…",
+          },
+        ]}
+      />
+
+      <ConnectorHealthCards connectors={summary?.connector_health} />
+
+      <RecentRunsList runs={summary?.recent_runs} />
+
+      <div className="dashboard-charts-row">
+        <RunStatusDonut counts={summary?.run_status_counts} />
+        <CaseStatusBar counts={summary?.case_status_counts} />
+        <ConnectorHealthDonut connectors={summary?.connector_health} />
+      </div>
+
+      <div className="dashboard-charts-row">
+        <RunsTrendLine data={timeseries} loading={chartsLoading} />
+        <SloBurnChart slo={obs?.slo_burn_rate} loading={chartsLoading} />
+        <LlmCostBar invocation={obs?.llm_invocation} loading={chartsLoading} />
+      </div>
 
       <RiskMetricCard cards={riskCards} />
 
@@ -157,170 +200,110 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
 
       <DecisionFlowTrace steps={flowSteps} live={liveTrace} />
 
-      <details className="card" style={{ marginTop: "1rem" }} open={showAdvanced} onToggle={(e) => setShowAdvanced(e.currentTarget.open)}>
-        <summary style={{ cursor: "pointer", fontWeight: 600 }}>Advanced operations</summary>
-        <section className="dashboard-section" style={{ marginTop: "1rem" }}>
-          <div className="metrics dashboard-kpis">
-            <div className="metric">
-              <div className="label">Runs (24h)</div>
-              <div className="value">{summary?.runs_24h ?? "…"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Success (24h)</div>
-              <div className="value good">{summary?.runs_success_24h ?? "…"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Open cases</div>
-              <div className="value warn">{summary?.cases_open ?? "…"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Alerts (24h)</div>
-              <div className="value bad">{summary?.alerts_24h ?? "…"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Req/min</div>
-              <div className="value">{obs?.requests_per_min ?? "…"}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Consensus</div>
-              <div className="value">{consensus ? consensus.avg_consensus_score.toFixed(2) : "…"}</div>
-            </div>
+      <div className="card">
+        <div className="dashboard-card-toolbar">
+          <h2>Cross-agent incidents</h2>
+          <div className="actions">
+            <button className="btn btn-ghost" type="button" onClick={rerunRar} disabled={!incidents.length}>
+              RAR Re-analyze
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("cost_spike")}>
+              Cost spike workflow
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("security_governance")}>
+              Security workflow
+            </button>
           </div>
-        </section>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Severity</th>
+                <th>Consensus</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incidents.map((i) => (
+                <tr key={i.id}>
+                  <td>{i.title}</td>
+                  <td>
+                    <span className={`status-chip ${i.severity === "critical" ? "failed" : "running"}`}>{i.severity}</span>
+                  </td>
+                  <td>{i.consensus_score.toFixed(2)}</td>
+                  <td>{i.confidence.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {incidents[0] ? (
+          <div style={{ marginTop: "1rem" }}>
+            <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem" }}>Agent findings (latest incident)</h3>
+            <IncidentFindingsPanel incident={incidents[0]} />
+          </div>
+        ) : null}
+      </div>
 
+      <div className="dashboard-grid">
         <div className="card">
-          <div className="dashboard-card-toolbar">
-            <h2>Cross-agent incidents</h2>
-            <div className="actions">
-              <button className="btn btn-ghost" type="button" onClick={rerunRar} disabled={!incidents.length}>
-                RAR Re-analyze
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("cost_spike")}>
-                Cost spike workflow
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("security_governance")}>
-                Security workflow
-              </button>
-            </div>
-          </div>
+          <h2>Executive summaries</h2>
+          {execSummaries.length ? (
+            <ul className="list-plain">
+              {execSummaries.map((s) => (
+                <li key={s.id}>
+                  <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState>No executive summaries yet.</EmptyState>
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-grid dashboard-grid-two">
+        <div className="card">
+          <h2>Workflow runs</h2>
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Severity</th>
-                  <th>Consensus</th>
-                  <th>Confidence</th>
+                  <th>Workflow</th>
+                  <th>Decision</th>
+                  <th>Score</th>
                 </tr>
               </thead>
               <tbody>
-                {incidents.map((i) => (
-                  <tr key={i.id}>
-                    <td>{i.title}</td>
-                    <td>
-                      <span className={`status-chip ${i.severity === "critical" ? "failed" : "running"}`}>{i.severity}</span>
-                    </td>
-                    <td>{i.consensus_score.toFixed(2)}</td>
-                    <td>{i.confidence.toFixed(2)}</td>
+                {workflowRuns.map((w) => (
+                  <tr key={w.id}>
+                    <td>{w.workflow_type}</td>
+                    <td>{w.decision ?? "—"}</td>
+                    <td>{w.score.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {incidents[0] ? (
-            <div style={{ marginTop: "1rem" }}>
-              <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem" }}>Agent findings (latest incident)</h3>
-              <IncidentFindingsPanel incident={incidents[0]} />
-            </div>
-          ) : null}
         </div>
-
-        <div className="dashboard-grid">
-          <div className="card">
-            <h2>Run status</h2>
-            <div className="chart-list">
-              {Object.entries(summary?.run_status_counts ?? {}).map(([k, v]) => (
-                <div key={k} className="chart-row">
-                  <div className="chart-label">{k}</div>
-                  <div className="chart-bar-wrap">
-                    <div className={`chart-bar ${k}`} style={{ width: `${(v / maxRunCount) * 100}%` }} />
-                  </div>
-                  <div className="chart-value">{v}</div>
-                </div>
+        <div className="card">
+          <h2>Alerts stream</h2>
+          {(summary?.recent_alerts ?? []).length ? (
+            <ul className="list-plain">
+              {(summary?.recent_alerts ?? []).map((e) => (
+                <li key={e.id}>
+                  <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
+                  {e.summary}
+                </li>
               ))}
-            </div>
-          </div>
-          <div className="card">
-            <h2>Case status</h2>
-            <div className="chart-list">
-              {Object.entries(summary?.case_status_counts ?? {}).map(([k, v]) => (
-                <div key={k} className="chart-row">
-                  <div className="chart-label">{k}</div>
-                  <div className="chart-bar-wrap">
-                    <div className={`chart-bar ${k}`} style={{ width: `${(v / maxCaseCount) * 100}%` }} />
-                  </div>
-                  <div className="chart-value">{v}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="card">
-            <h2>Executive summaries</h2>
-            {execSummaries.length ? (
-              <ul className="list-plain">
-                {execSummaries.map((s) => (
-                  <li key={s.id}>
-                    <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">No executive summaries yet.</div>
-            )}
-          </div>
+            </ul>
+          ) : (
+            <EmptyState>No recent alerts.</EmptyState>
+          )}
         </div>
-
-        <div className="dashboard-grid dashboard-grid-two">
-          <div className="card">
-            <h2>Workflow runs</h2>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Decision</th>
-                    <th>Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workflowRuns.map((w) => (
-                    <tr key={w.id}>
-                      <td>{w.workflow_type}</td>
-                      <td>{w.decision ?? "—"}</td>
-                      <td>{w.score.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="card">
-            <h2>Alerts stream</h2>
-            {(summary?.recent_alerts ?? []).length ? (
-              <ul className="list-plain">
-                {(summary?.recent_alerts ?? []).map((e) => (
-                  <li key={e.id}>
-                    <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
-                    {e.summary}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">No recent alerts.</div>
-            )}
-          </div>
-        </div>
-      </details>
-    </div>
+      </div>
+    </WorkspacePageShell>
   );
 }

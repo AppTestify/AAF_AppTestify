@@ -14,11 +14,13 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin
 from aaf.config import get_settings
-from app.models.config import ConfigAuditLog, TenantAIProviderConfig, TenantConnectorConfig, TenantNotificationConfig, TenantSettings
+from app.models.config import ConfigAuditLog, PlatformNotificationConfig, TenantAIProviderConfig, TenantConnectorConfig, TenantNotificationConfig, TenantSettings
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.security import decrypt_json, encrypt_json
 from app.services.email_runtime import resolved_templates, send_templated_email, test_smtp_connection
+from app.services.notification_router import DEFAULT_CHANNELS
+from app.services.smtp_resolver import resolve_smtp_dataclass
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
@@ -137,6 +139,21 @@ class NotificationTemplateOut(BaseModel):
     body: str
 
 
+class NotificationChannelToggles(BaseModel):
+    email: bool = True
+    slack: bool = False
+    teams: bool = False
+
+
+class DigestScheduleOut(BaseModel):
+    daily_enabled: bool = False
+    daily_time_utc: str = "08:00"
+    weekly_enabled: bool = False
+    weekly_day: str = "monday"
+    weekly_time_utc: str = "08:00"
+    recipients: list[str] = Field(default_factory=list)
+
+
 class NotificationConfigOut(BaseModel):
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -146,9 +163,14 @@ class NotificationConfigOut(BaseModel):
     use_tls: bool = True
     use_ssl: bool = False
     notifications_enabled: bool = False
+    using_platform_smtp: bool = False
+    platform_smtp_configured: bool = False
     slack_webhook_configured: bool = False
+    teams_webhook_configured: bool = False
     governance_notify_on_run_complete: bool = False
     governance_run_notify_emails: list[str] = Field(default_factory=list)
+    notification_channels: dict[str, NotificationChannelToggles] = Field(default_factory=dict)
+    digest_schedule: DigestScheduleOut = Field(default_factory=DigestScheduleOut)
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
     last_test_ok: Optional[bool] = None
     last_test_error: Optional[str] = None
@@ -166,8 +188,12 @@ class NotificationConfigIn(BaseModel):
     notifications_enabled: bool = False
     slack_incoming_webhook: Optional[str] = None
     clear_slack_incoming_webhook: bool = False
+    teams_incoming_webhook: Optional[str] = None
+    clear_teams_incoming_webhook: bool = False
     governance_notify_on_run_complete: bool = False
     governance_run_notify_emails: list[str] = Field(default_factory=list)
+    notification_channels: dict[str, NotificationChannelToggles] = Field(default_factory=dict)
+    digest_schedule: Optional[DigestScheduleOut] = None
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
 
 
@@ -684,6 +710,32 @@ def validate_ai_provider_config(
     )
 
 
+def _digest_schedule_out(raw: dict[str, Any] | None) -> DigestScheduleOut:
+    data = raw if isinstance(raw, dict) else {}
+    recipients = data.get("recipients")
+    return DigestScheduleOut(
+        daily_enabled=bool(data.get("daily_enabled", False)),
+        daily_time_utc=str(data.get("daily_time_utc") or "08:00"),
+        weekly_enabled=bool(data.get("weekly_enabled", False)),
+        weekly_day=str(data.get("weekly_day") or "monday"),
+        weekly_time_utc=str(data.get("weekly_time_utc") or "08:00"),
+        recipients=[str(x).strip() for x in recipients if str(x).strip()] if isinstance(recipients, list) else [],
+    )
+
+
+def _channels_out(row: TenantNotificationConfig | None) -> dict[str, NotificationChannelToggles]:
+    raw = row.notification_channels_json if row and isinstance(row.notification_channels_json, dict) else {}
+    out: dict[str, NotificationChannelToggles] = {}
+    for event_type, defaults in DEFAULT_CHANNELS.items():
+        event_cfg = raw.get(event_type) if isinstance(raw.get(event_type), dict) else {}
+        out[event_type] = NotificationChannelToggles(
+            email=bool(event_cfg.get("email", defaults.get("email", True))),
+            slack=bool(event_cfg.get("slack", defaults.get("slack", False))),
+            teams=bool(event_cfg.get("teams", defaults.get("teams", False))),
+        )
+    return out
+
+
 @router.get("/notifications", response_model=NotificationConfigOut)
 def get_notification_config(
     tenant_slug: Optional[str] = Query(default=None),
@@ -698,6 +750,14 @@ def get_notification_config(
         raw = row.governance_run_notify_emails_json
         if isinstance(raw, list):
             emails = [str(x).strip() for x in raw if str(x).strip()]
+    smtp = resolve_smtp_dataclass(db, tenant.id)
+    platform_row = db.execute(select(PlatformNotificationConfig).order_by(PlatformNotificationConfig.id.asc())).scalars().first()
+    platform_configured = bool(
+        platform_row
+        and platform_row.smtp_host
+        and platform_row.smtp_port
+        and platform_row.notifications_enabled
+    )
     return NotificationConfigOut(
         smtp_host=row.smtp_host if row else None,
         smtp_port=row.smtp_port if row else None,
@@ -707,10 +767,18 @@ def get_notification_config(
         use_tls=row.use_tls if row else True,
         use_ssl=row.use_ssl if row else False,
         notifications_enabled=row.notifications_enabled if row else False,
+        using_platform_smtp=smtp.source == "platform",
+        platform_smtp_configured=platform_configured,
         slack_webhook_configured=bool(row and row.slack_incoming_webhook_encrypted),
+        teams_webhook_configured=bool(row and row.teams_incoming_webhook_encrypted),
         governance_notify_on_run_complete=bool(row and row.governance_notify_on_run_complete),
         governance_run_notify_emails=emails,
-        templates={k: NotificationTemplateOut(**v) for k, v in templates.items()},
+        notification_channels=_channels_out(row),
+        digest_schedule=_digest_schedule_out(row.digest_schedule_json if row else None),
+        templates={
+            k: NotificationTemplateOut(subject=v["subject"], body=v.get("body_text") or v.get("body", ""))
+            for k, v in templates.items()
+        },
         last_test_ok=row.last_test_ok if row else None,
         last_test_error=row.last_test_error if row else None,
         last_tested_at=row.last_tested_at if row else None,
@@ -735,7 +803,14 @@ def put_notification_config(
     row.use_tls = body.use_tls
     row.use_ssl = body.use_ssl
     row.notifications_enabled = body.notifications_enabled
-    row.templates_json = {k: v.model_dump() for k, v in body.templates.items()}
+    row.templates_json = {
+        k: {
+            "subject": v.subject,
+            "body_text": v.body,
+            "body_html": v.body.replace("\n", "<br/>"),
+        }
+        for k, v in body.templates.items()
+    }
     if body.clear_slack_incoming_webhook:
         row.slack_incoming_webhook_encrypted = None
     elif body.slack_incoming_webhook:
@@ -743,8 +818,22 @@ def put_notification_config(
             {"url": body.slack_incoming_webhook.strip()},
             secret=get_settings().app_encryption_key,
         )
+    if body.clear_teams_incoming_webhook:
+        row.teams_incoming_webhook_encrypted = None
+    elif body.teams_incoming_webhook:
+        row.teams_incoming_webhook_encrypted = encrypt_json(
+            {"url": body.teams_incoming_webhook.strip()},
+            secret=get_settings().app_encryption_key,
+        )
     row.governance_notify_on_run_complete = body.governance_notify_on_run_complete
     row.governance_run_notify_emails_json = [e.strip().lower() for e in body.governance_run_notify_emails if e.strip()]
+    if body.notification_channels:
+        row.notification_channels_json = {
+            k: {"email": v.email, "slack": v.slack, "teams": v.teams}
+            for k, v in body.notification_channels.items()
+        }
+    if body.digest_schedule is not None:
+        row.digest_schedule_json = body.digest_schedule.model_dump()
     _audit(
         db,
         tenant_id=tenant.id,

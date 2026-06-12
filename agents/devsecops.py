@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aaf.schema import AgentOpinion, EvidenceRecord, RiskTheme
 from agents.base_agent import BaseAgent
@@ -107,14 +107,23 @@ async def run_async(
     tool_ctx: ToolContext | None = None,
     settings: Settings | None = None,
     llm_providers: list[ActiveProvider] | None = None,
+    refresh_tools: list[str] | None = None,
+    cost_tracker: Any | None = None,
 ) -> AgentOpinion:
     from aaf.config import get_settings
 
     ctx = tool_ctx or build_tool_context(settings or get_settings())
     package = EvidencePackage(records=evidence)
     if llm_providers:
-        return await _agent.run_with_llm(ctx, package, llm_providers=llm_providers)
-    return await _agent.run_async(ctx, package)
+        return await _agent.run_with_llm(
+            ctx,
+            package,
+            llm_providers=llm_providers,
+            settings=settings,
+            refresh_tools=refresh_tools,
+            cost_tracker=cost_tracker,
+        )
+    return await _agent.run_async(ctx, package, refresh_tools=refresh_tools)
 
 
 def run(

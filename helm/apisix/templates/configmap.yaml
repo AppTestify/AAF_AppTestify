@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-config
+data:
+  config.yaml: |
+    apisix:
+      node_listen: {{ .Values.service.port }}
+      enable_admin: true
+      admin_key:
+        - name: admin
+          key: casantris-k8s-admin-key
+          role: admin
+    deployment:
+      role: traditional
+      role_traditional:
+        config_provider: yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-routes
+data:
+  apisix.yaml: |
+    routes:
+      - uri: /api/*
+        name: casantris-api
+        upstream:
+          type: roundrobin
+          nodes:
+            "{{ .Values.upstream.apiHost }}:{{ .Values.upstream.apiPort }}": 1
+        plugins:
+          prometheus: {}
+          limit-req:
+            rate: {{ .Values.rateLimit.rate }}
+            burst: {{ .Values.rateLimit.burst }}
+            rejected_code: 429
+            key: remote_addr
+          cors:
+            allow_origins: "*"
+            allow_methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            allow_headers: "*"
+            allow_credential: true
+      - uri: /health
+        name: casantris-health
+        upstream:
+          type: roundrobin
+          nodes:
+            "{{ .Values.upstream.apiHost }}:{{ .Values.upstream.apiPort }}": 1
+    #END

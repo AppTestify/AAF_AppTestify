@@ -20,11 +20,19 @@ def global_search(
     limit: int = 50,
 ) -> dict[str, Any]:
     q = query.strip().lower()
-    since = datetime.now(timezone.utc) - timedelta(days=window_days)
-    like = f"%{q}%"
     results: dict[str, list[dict[str, Any]]] = {"decisions": [], "runs": [], "evidence": [], "cases": []}
     if not q:
         return {"query": query, "groups": results, "total": 0}
+
+    from app.services.search_index import search_opensearch
+
+    os_results = search_opensearch(tenant_id=tenant_id, query=query, limit=limit)
+    if os_results is not None:
+        total = sum(len(v) for v in os_results.values())
+        return {"query": query, "groups": os_results, "total": total, "backend": "opensearch"}
+
+    since = datetime.now(timezone.utc) - timedelta(days=window_days)
+    like = f"%{q}%"
 
     run_q = select(GovernanceRun).where(
         GovernanceRun.created_at >= since,

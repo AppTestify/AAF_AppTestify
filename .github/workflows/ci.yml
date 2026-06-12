@@ -42,7 +42,11 @@ jobs:
       - name: Run Alembic migrations against Postgres
         run: alembic upgrade head
       - name: Run pytest suite with coverage
-        run: python -m pytest tests -q --cov=app --cov=orchestrator --cov=agents --cov-report=term-missing --cov-fail-under=50
+        run: >-
+          python -m pytest tests -q
+          --cov=app --cov=orchestrator --cov=agents
+          --cov=connectors --cov=tools --cov=guardrails --cov=llm
+          --cov-report=term-missing --cov-fail-under=60
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -62,6 +66,27 @@ jobs:
         run: npm test
       - name: Lint and build
         run: npm run build
+
+  live-connector-tests:
+    runs-on: ubuntu-latest
+    if: vars.CONNECTOR_LIVE_CI == '1'
+    env:
+      CONNECTOR_LIVE_CI: "1"
+      GITHUB_TOKEN: ${{ secrets.CONNECTOR_GITHUB_TOKEN }}
+      GITHUB_REPO: ${{ vars.CONNECTOR_GITHUB_REPO }}
+      JIRA_URL: ${{ vars.CONNECTOR_JIRA_URL }}
+      JIRA_EMAIL: ${{ secrets.CONNECTOR_JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.CONNECTOR_JIRA_API_TOKEN }}
+      JIRA_PROJECT: ${{ vars.CONNECTOR_JIRA_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Run live connector tests
+        run: python -m pytest tests/test_connector_live_optional.py -m live_connector -q
 
   load-test-gate:
     runs-on: ubuntu-latest

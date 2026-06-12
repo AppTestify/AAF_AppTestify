@@ -1,0 +1,117 @@
+.table-wrap {
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.68rem 0.58rem;
+  text-align: left;
+}
+
+.data-table th {
+  color: color-mix(in srgb, var(--muted) 85%, var(--text) 15%);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: color-mix(in srgb, var(--surface2) 90%, transparent);
+}
+
+.data-table tbody tr {
+  cursor: pointer;
+}
+
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.data-table tbody tr.row-selected {
+  background: rgba(61, 139, 253, 0.14);
+}
+
+.table-empty {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.9rem 0.55rem;
+}
+
+.table-skeleton {
+  height: 58px;
+  margin: 0.35rem 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    90deg,
+    var(--surface2) 10%,
+    color-mix(in srgb, var(--surface2) 70%, var(--accent) 30%) 45%,
+    var(--surface2) 90%
+  );
+  background-size: 200% 100%;
+  animation: table-shimmer 1.1s linear infinite;
+}
+
+@keyframes table-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+.status-chip.queued,
+.status-chip.new {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.status-chip.running,
+.status-chip.in_review {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.status-chip.succeeded,
+.status-chip.approved {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.status-chip.failed,
+.status-chip.closed {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.dashboard-page .table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.dashboard-page .data-table th,
+.dashboard-page .data-table td {
+  padding: 0.58rem 0.52rem;
+}

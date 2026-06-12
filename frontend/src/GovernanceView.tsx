@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type {
   AgentOpinion,
@@ -87,6 +87,9 @@ export function GovernanceView(props: GovernanceViewProps) {
     batchResult,
   } = props;
 
+  const [searchParams] = useSearchParams();
+  const contextualRunId = Number(searchParams.get("run_id") || 0);
+
   const utility: UtilityResult | undefined = result?.utility;
   const xi = result?.explainability?.xi_score;
   const framing = result?.decision_framing as
@@ -156,6 +159,13 @@ export function GovernanceView(props: GovernanceViewProps) {
       {error ? (
         <div className="alert alert-error" role="alert">
           {error}
+        </div>
+      ) : null}
+
+      {contextualRunId > 0 ? (
+        <div className="alert alert-info" role="status">
+          Viewing run #{contextualRunId}.{" "}
+          <Link to={`/app/runs?run_id=${contextualRunId}`}>Open run detail</Link>
         </div>
       ) : null}
 
@@ -230,9 +240,15 @@ export function GovernanceView(props: GovernanceViewProps) {
           />
         </div>
         <div className="gov-ask-toolbar">
-          <Link to="/app/evidence" className={`btn btn-ghost btn-sm ${!result ? "disabled" : ""}`} aria-disabled={!result}>
-            View Evidence
-          </Link>
+          {result ? (
+            <Link to="/app/evidence" className="btn btn-ghost btn-sm">
+              View Evidence
+            </Link>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" disabled aria-disabled="true">
+              View Evidence
+            </button>
+          )}
           <Link to="/app/reports" className="btn btn-ghost btn-sm">
             Export Summary
           </Link>

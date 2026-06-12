@@ -12,24 +12,107 @@ on:
           - staging
           - production
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Build API image
-        run: docker build -t casantris/api:${{ github.sha }} .
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api"
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Configure kubeconfig (staging)
+        if: inputs.environment == 'staging'
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_STAGING }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
       - name: Deploy staging
         if: inputs.environment == 'staging'
+        env:
+          CORS_ORIGINS: ${{ secrets.STAGING_CORS_ORIGINS }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
         run: |
-          echo "helm upgrade --install casantris ./helm/casantris --set image.tag=${{ github.sha }}"
-      - name: Deploy production (manual gate)
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api"
+          helm upgrade --install casantris ./helm/casantris \
+            --namespace casantris-staging \
+            --create-namespace \
+            --set image.repository="${IMAGE}" \
+            --set image.tag="${{ github.sha }}" \
+            --set secrets.create=false \
+            --set secrets.existingSecretName=casantris-secrets \
+            --set corsOrigins="${CORS_ORIGINS}" \
+            --set database.url="${DATABASE_URL}" \
+            --set redis.url="${REDIS_URL}" \
+            --set celery.enabled=true \
+            --wait --timeout 5m
+
+      - name: Configure kubeconfig (production)
         if: inputs.environment == 'production'
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
         run: |
-          echo "Production deploy requires manual approval — image casantris/api:${{ github.sha }}"
-      - name: Smoke test
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy production
+        if: inputs.environment == 'production'
+        environment: production
+        env:
+          CORS_ORIGINS: ${{ secrets.PRODUCTION_CORS_ORIGINS }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.PRODUCTION_REDIS_URL }}
         run: |
-          docker-compose --profile prod up -d
-          sleep 10
-          bash scripts/smoke.sh
-          docker-compose --profile prod down
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api"
+          helm upgrade --install casantris ./helm/casantris \
+            --namespace casantris-prod \
+            --create-namespace \
+            --set image.repository="${IMAGE}" \
+            --set image.tag="${{ github.sha }}" \
+            --set secrets.create=false \
+            --set secrets.existingSecretName=casantris-secrets \
+            --set corsOrigins="${CORS_ORIGINS}" \
+            --set database.url="${DATABASE_URL}" \
+            --set redis.url="${REDIS_URL}" \
+            --set celery.enabled=true \
+            --wait --timeout 5m
+
+      - name: Post-deploy smoke test
+        if: inputs.environment == 'staging'
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_SMOKE_BASE_URL }}
+          SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+        run: |
+          if [ -n "${SMOKE_BASE_URL:-}" ]; then
+            bash scripts/smoke.sh
+          else
+            echo "STAGING_SMOKE_BASE_URL not set — skipping remote smoke test"
+          fi

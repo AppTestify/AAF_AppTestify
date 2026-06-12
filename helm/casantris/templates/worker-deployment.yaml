@@ -1,0 +1,67 @@
+{{- if .Values.celery.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-worker
+spec:
+  replicas: {{ .Values.celery.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}-worker
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}-worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
+          env:
+            - name: APP_ENV
+              value: prod
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casantris.secretName" . }}
+                  key: jwtSecret
+            - name: APP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casantris.secretName" . }}
+                  key: encryptionKey
+            {{- if .Values.database.url }}
+            - name: DATABASE_URL
+              value: {{ .Values.database.url | quote }}
+            {{- end }}
+            {{- if .Values.redis.url }}
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.celery.brokerUrl }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.celery.brokerUrl | quote }}
+            {{- else if .Values.redis.url }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.celery.resultBackend }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.celery.resultBackend | quote }}
+            {{- end }}
+            {{- if .Values.kafka.enabled }}
+            - name: KAFKA_ENABLED
+              value: "true"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            {{- end }}
+            {{- if .Values.opensearch.enabled }}
+            - name: OPENSEARCH_ENABLED
+              value: "true"
+            - name: OPENSEARCH_URL
+              value: {{ .Values.opensearch.url | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

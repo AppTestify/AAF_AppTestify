@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  fetchDashboardSummary,
   fetchEvidence,
   fetchGovernanceRun,
   fetchGovernanceRuns,
@@ -12,6 +11,9 @@ import {
 import { EvidenceSourceCards } from "../components/governance/EvidenceSourceCards";
 import { GovernanceFlowStepper } from "../components/governance/GovernanceFlowStepper";
 import { EvidenceTimelineTable } from "../components/governance/EvidenceTimelineTable";
+import { WorkspacePageShell } from "../components/layout/WorkspacePageShell";
+import { PaginationBar } from "../components/ui/PaginationBar";
+import { useDashboardSummary } from "../hooks/useDashboardSummary";
 import {
   deriveConnectorSummaries,
   deriveEvidenceTimeline,
@@ -32,7 +34,17 @@ export function WorkspaceEvidencePage() {
     setSearchParams(next, { replace: true });
   };
 
+  const syncRunIdToUrl = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v.trim()) next.set("run_id", v.trim());
+    else next.delete("run_id");
+    setSearchParams(next, { replace: true });
+  };
+
   const [rows, setRows] = useState<EvidenceRow[]>([]);
+  const [evidenceTotal, setEvidenceTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [connector, setConnector] = useState<string>("");
   const [runId, setRunId] = useState<string>(runIdParam);
@@ -40,7 +52,8 @@ export function WorkspaceEvidencePage() {
   const [error, setError] = useState<string>("");
   const [listLoading, setListLoading] = useState(false);
   const [parsedRun, setParsedRun] = useState<ParsedRunContext | null>(null);
-  const [connectorHealth, setConnectorHealth] = useState<Awaited<ReturnType<typeof fetchDashboardSummary>>["connector_health"] | null>(null);
+  const { summary: dashboardSummary } = useDashboardSummary();
+  const connectorHealth = dashboardSummary?.connector_health ?? null;
 
   useEffect(() => {
     setRunId(runIdParam);
@@ -50,12 +63,9 @@ export function WorkspaceEvidencePage() {
     fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-    fetchDashboardSummary()
-      .then((s) => setConnectorHealth(s.connector_health))
-      .catch(() => setConnectorHealth(null));
     fetchGovernanceRuns({ status: "succeeded", limit: 1 })
-      .then(async (runs) => {
-        const id = runIdParam ? Number(runIdParam) : runs[0]?.id;
+      .then(async (page) => {
+        const id = runIdParam ? Number(runIdParam) : page.items[0]?.id;
         if (id && Number.isFinite(id)) {
           const full = await fetchGovernanceRun(id);
           setParsedRun(parseGovernanceRunResult(full));
@@ -65,17 +75,25 @@ export function WorkspaceEvidencePage() {
   }, [runIdParam]);
 
   useEffect(() => {
+    setOffset(0);
+  }, [connector, runId, listProjectFilter]);
+
+  useEffect(() => {
     setListLoading(true);
     fetchEvidence({
       connector: connector || undefined,
       run_id: runId ? Number(runId) : undefined,
       portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
-      limit: 200,
+      limit: pageSize,
+      offset,
     })
-      .then(setRows)
+      .then((page) => {
+        setRows(page.items);
+        setEvidenceTotal(page.total);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load evidence"))
       .finally(() => setListLoading(false));
-  }, [connector, runId, listProjectFilter]);
+  }, [connector, runId, listProjectFilter, offset, pageSize]);
 
   const sourceCards = deriveConnectorSummaries(parsedRun, connectorHealth);
   const timeline = deriveEvidenceTimeline(rows, parsedRun?.result.normalized_evidence ?? []);
@@ -93,15 +111,13 @@ export function WorkspaceEvidencePage() {
   }, [rows]);
 
   return (
-    <div className="app">
+    <WorkspacePageShell
+      variant="governance"
+      eyebrow="Evidence Hub"
+      title="Live signals from GitHub, Jira, and FinOps"
+      subtitle="Every governance decision is grounded in fresh evidence pulled from the systems your teams already use."
+    >
       {parsedRun ? <GovernanceFlowStepper runId={parsedRun.run.id} activeStep="evidence" /> : null}
-      <header className="gov-hub-header">
-        <p className="gov-hub-eyebrow">Evidence Hub</p>
-        <h1 className="gov-hub-title">Live signals from GitHub, Jira, and FinOps</h1>
-        <p className="gov-hub-lead">
-          Every governance decision is grounded in fresh evidence pulled from the systems your teams already use.
-        </p>
-      </header>
 
       {error ? (
         <div className="alert alert-error" role="alert">
@@ -118,7 +134,15 @@ export function WorkspaceEvidencePage() {
         </div>
         <div className="form-row">
           <label htmlFor="run-filter">Run ID</label>
-          <input id="run-filter" value={runId} onChange={(e) => setRunId(e.target.value)} placeholder="e.g. 12" />
+          <input
+            id="run-filter"
+            value={runId}
+            onChange={(e) => {
+              setRunId(e.target.value);
+              syncRunIdToUrl(e.target.value);
+            }}
+            placeholder="e.g. 12"
+          />
         </div>
         <div className="form-row">
           <label htmlFor="evidence-project-filter">Project</label>
@@ -132,7 +156,7 @@ export function WorkspaceEvidencePage() {
           </select>
         </div>
         <span className="workspace-meta">
-          {evidenceStats.total} rows · {evidenceStats.connectors} connectors
+          {evidenceTotal} rows · {evidenceStats.connectors} connectors on this page
         </span>
       </div>
 
@@ -170,7 +194,15 @@ export function WorkspaceEvidencePage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          offset={offset}
+          pageSize={pageSize}
+          itemCount={rows.length}
+          totalCount={evidenceTotal}
+          onOffsetChange={setOffset}
+          onPageSizeChange={setPageSize}
+        />
       </div>
-    </div>
+    </WorkspacePageShell>
   );
 }

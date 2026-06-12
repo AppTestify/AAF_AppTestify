@@ -1,27 +1,63 @@
 import { useEffect, useState } from "react";
 import { acknowledgeAlert, fetchAuditEvents, type AuditEvent } from "../../api";
+import { PaginationBar } from "../ui/PaginationBar";
 
-export function AuditTrailPanel() {
+const DEFAULT_PAGE_SIZE = 50;
+
+export type AuditTrailPanelProps = {
+  pageSize?: number;
+  offset?: number;
+  onOffsetChange?: (offset: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+};
+
+export function AuditTrailPanel({
+  pageSize: pageSizeProp,
+  offset: offsetProp,
+  onOffsetChange,
+  onPageSizeChange,
+}: AuditTrailPanelProps = {}) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [area, setArea] = useState("");
   const [severity, setSeverity] = useState("");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [ackLoadingId, setAckLoadingId] = useState<number | null>(null);
+  const [internalOffset, setInternalOffset] = useState(0);
+  const [internalPageSize, setInternalPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const pageSize = pageSizeProp ?? internalPageSize;
+  const offset = offsetProp ?? internalOffset;
+  const setOffset = onOffsetChange ?? setInternalOffset;
+  const setPageSize = onPageSizeChange ?? setInternalPageSize;
 
   const load = () => {
     setListLoading(true);
-    fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 })
-      .then(setEvents)
+    fetchAuditEvents({
+      area: area || undefined,
+      severity: severity || undefined,
+      limit: pageSize,
+      offset,
+    })
+      .then((page) => {
+        setEvents(page.items);
+        setTotal(page.total);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load audit events"))
       .finally(() => setListLoading(false));
   };
 
   useEffect(() => {
-    load();
+    setOffset(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [area, severity]);
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [area, severity, offset, pageSize]);
 
   const onAcknowledge = async (id: number) => {
     try {
@@ -100,6 +136,14 @@ export function AuditTrailPanel() {
           </tbody>
         </table>
       </div>
+      <PaginationBar
+        offset={offset}
+        pageSize={pageSize}
+        itemCount={events.length}
+        totalCount={total}
+        onOffsetChange={setOffset}
+        onPageSizeChange={setPageSize}
+      />
       {selected ? (
         <pre className="json-preview" style={{ marginTop: "1rem" }}>
           {JSON.stringify(selected, null, 2)}

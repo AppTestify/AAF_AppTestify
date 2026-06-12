@@ -2,51 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PipelineResult
 from app.services.llm_runtime import ActiveProvider
-from connectors.evidence_normalizer import normalize_all
-from connectors.azure_connector import AzureDevOpsConnector
-from connectors.bitbucket_connector import BitbucketConnector
-from connectors.finops_connector import FinopsConnector
-from connectors.github_connector import GitHubConnector
-from connectors.gitlab_connector import GitLabConnector
-from connectors.jira_connector import JiraConnector
-from connectors.pagerduty_connector import PagerDutyConnector
+from guardrails.llm_cost_tracker import LlmCostTracker
 from guardrails.pipeline import run_input_guards, run_pm_prompt_guard
+from llm.intent_router import route_pm_intent
 from orchestrator.connector_router import route_connectors_semantic
+from orchestrator.evidence import collect_evidence
 from orchestrator.pipeline import run_pipeline
-from pm_interface.intent_classifier import classify_pm_intent
-from tools.context import build_tool_context
-
-
-async def _fetch_raw_evidence(settings: Settings, names: list[str], ctx: dict[str, str]) -> dict[str, dict[str, Any]]:
-    raw: dict[str, dict[str, Any]] = {}
-    if "github" in names:
-        gh = GitHubConnector(settings)
-        raw["github"] = await gh.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "jira" in names:
-        ji = JiraConnector(settings)
-        raw["jira"] = await ji.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "finops" in names:
-        fo = FinopsConnector(settings)
-        raw["finops"] = await fo.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "gitlab" in names:
-        gl = GitLabConnector(settings)
-        raw["gitlab"] = await gl.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "bitbucket" in names:
-        bb = BitbucketConnector(settings)
-        raw["bitbucket"] = await bb.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "pagerduty" in names:
-        pd = PagerDutyConnector(settings)
-        raw["pagerduty"] = await pd.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "azure_devops" in names:
-        az = AzureDevOpsConnector(settings)
-        raw["azure_devops"] = await az.fetch_evidence(ctx)  # type: ignore[arg-type]
-    return raw
 
 
 async def run_governance(
@@ -58,22 +24,22 @@ async def run_governance(
     tenant_ui_preferences: dict[str, Any] | None = None,
 ) -> PipelineResult:
     input_reports: list = []
+    cost_tracker = LlmCostTracker()
 
-    # PM prompt guard runs before connectors/agents (CAS-125)
     pm_outcome = run_pm_prompt_guard(prompt, settings)
     prompt = pm_outcome.prompt
     input_reports.extend(pm_outcome.reports)
 
-    intent_result = classify_pm_intent(prompt)
-    intent_payload = {
-        "category": intent_result.intent.value,
-        "agents_needed": intent_result.agents_needed,
-        "connectors": intent_result.connectors,
-        "confidence": intent_result.confidence,
-    }
+    router_result = route_pm_intent(
+        prompt,
+        settings=settings,
+        llm_providers=llm_providers,
+        cost_tracker=cost_tracker,
+    )
+    intent_payload = router_result.to_intent_payload(pipeline_phase=settings.pipeline_phase)
 
     names, _routing_confidence = route_connectors_semantic(prompt)
-    for connector in intent_result.connectors:
+    for connector in router_result.connectors:
         if connector not in names:
             names.append(connector)
     ctx: dict[str, str] = {
@@ -81,22 +47,14 @@ async def run_governance(
         "github_repo": settings.github_repo,
         "jira_project": settings.jira_project,
     }
-    tool_extra: dict[str, Any] = {}
-    if tenant_ui_preferences:
-        tool_extra["ui_preferences"] = tenant_ui_preferences
-    tool_ctx = build_tool_context(
-        settings,
-        github_repo=settings.github_repo,
-        jira_project=settings.jira_project,
-        jira_board_id=settings.jira_board_id,
-        extra=tool_extra,
+    raw, normalized, evidence_package, tool_ctx = await collect_evidence(
+        settings=settings,
+        prompt=prompt,
+        connector_names=names,
+        ctx=ctx,
+        tenant_ui_preferences=tenant_ui_preferences,
+        warm_tools=settings.pipeline_phase >= 3,
     )
-    raw = await _fetch_raw_evidence(settings, names, ctx)
-    fetched_at = datetime.now(timezone.utc).isoformat()
-    for payload in raw.values():
-        if isinstance(payload, dict):
-            payload["_fetched_at"] = fetched_at
-    normalized = normalize_all(raw)
     guard_outcome = run_input_guards(
         prompt,
         normalized,
@@ -107,16 +65,23 @@ async def run_governance(
     prompt = guard_outcome.prompt
     normalized = guard_outcome.evidence
     input_reports.extend(guard_outcome.reports)
+    evidence_package["records"] = [r.model_dump(mode="json") for r in normalized]
+    if tool_ctx.evidence_package is not None:
+        tool_ctx.evidence_package["records"] = evidence_package["records"]
 
     async def live_refresh_evidence() -> list[EvidenceRecord]:
-        raw_fresh = await _fetch_raw_evidence(settings, names, ctx)
-        for payload in raw_fresh.values():
-            if isinstance(payload, dict):
-                payload["_fetched_at"] = datetime.now(timezone.utc).isoformat()
-        fresh_normalized = normalize_all(raw_fresh)
+        raw_fresh, normalized_fresh, package_fresh, refreshed_ctx = await collect_evidence(
+            settings=settings,
+            prompt=prompt,
+            connector_names=names,
+            ctx=ctx,
+            tenant_ui_preferences=tenant_ui_preferences,
+            warm_tools=True,
+        )
+        del package_fresh, refreshed_ctx
         fresh_outcome = run_input_guards(
             prompt,
-            fresh_normalized,
+            normalized_fresh,
             raw_fresh,
             settings,
             pm_already_checked=True,
@@ -134,6 +99,8 @@ async def run_governance(
         live_refresh_evidence=live_refresh_evidence,
         tool_ctx=tool_ctx,
         input_guard_reports=input_reports,
-        agent_ids=intent_result.agents_needed,
+        agent_ids=router_result.agents_needed,
         intent=intent_payload,
+        cost_tracker=cost_tracker,
+        evidence_package=evidence_package,
     )

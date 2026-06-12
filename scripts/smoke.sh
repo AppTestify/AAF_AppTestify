@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BASE="${SMOKE_BASE_URL:-http://localhost:8000}"
+BASE="${APISIX_GATEWAY_URL:-${SMOKE_BASE_URL:-http://localhost:8000}}"
 API="${BASE}/api/v1"
 EMAIL="${SMOKE_EMAIL:-admin@localhost}"
 PASS="${SMOKE_PASSWORD:-changeme}"

@@ -25,12 +25,16 @@ async def run_llm_tool_loop(
     *,
     llm_providers: list[ActiveProvider],
     settings: Settings,
+    cost_tracker: LlmCostTracker | None = None,
 ) -> AgentOpinion:
     """Run up to max_tool_calls_per_agent tool invocations guided by LLM proposals."""
+    from guardrails.llm_cost_tracker import LlmCostTracker as TrackerCls
+
     callables = agent.tool_callables()
     tool_by_name = {fn.__name__: fn for fn in callables}
     allowlist = list(tool_by_name.keys())
     max_calls = settings.max_tool_calls_per_agent
+    tracker = cost_tracker or TrackerCls()
 
     tool_results: list[ToolResult] = []
     guardrail_events: list[dict[str, str]] = []
@@ -38,6 +42,8 @@ async def run_llm_tool_loop(
     done = False
 
     while call_index < max_calls and not done:
+        if len(tracker.calls) >= settings.max_llm_calls_per_run:
+            break
         proposal_prompt = _build_proposal_prompt(
             agent.agent_id,
             allowlist,
@@ -51,6 +57,13 @@ async def run_llm_tool_loop(
                 llm_providers,
                 proposal_prompt,
                 system_prompt=agent.system_prompt(),
+            )
+            tracker.record_from_meta(
+                phase="agent_tool_loop",
+                agent_id=agent.agent_id,
+                meta=_meta,
+                prompt_text=proposal_prompt,
+                completion_text=str(proposal),
             )
         except Exception:
             break
@@ -105,6 +118,9 @@ async def run_llm_tool_loop(
     theme = agent.determine_risk_theme(tool_results, confidence)
     refs = evidence[:12] or [f"{agent.agent_id}:baseline"]
     raw_signals = agent.merge_raw_signals(tool_results)
+    called = [r.tool_name for r in tool_results]
+    raw_signals["tools_called"] = called
+    raw_signals["tools_skipped"] = [name for name in allowlist if name not in called]
     for event in guardrail_events:
         raw_signals = append_tool_scope_event(
             raw_signals,

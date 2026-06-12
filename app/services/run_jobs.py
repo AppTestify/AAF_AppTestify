@@ -63,9 +63,34 @@ def stop_worker() -> None:
     _thread = None
 
 
-def _use_celery() -> bool:
+def use_celery() -> bool:
     settings = get_settings()
     return bool(settings.celery_broker_url or settings.redis_url)
+
+
+def _use_celery() -> bool:
+    return use_celery()
+
+
+def should_use_in_process_worker() -> bool:
+    """In-process thread queue only when Celery broker is not configured."""
+    return not use_celery()
+
+
+def get_run_queue_depth() -> int:
+    if use_celery():
+        try:
+            from app.celery_app import celery_app
+
+            inspect = celery_app.control.inspect()
+            if inspect is None:
+                return 0
+            reserved = inspect.reserved() or {}
+            scheduled = inspect.scheduled() or {}
+            return sum(len(v) for v in reserved.values()) + sum(len(v) for v in scheduled.values())
+        except Exception:  # noqa: BLE001
+            return 0
+    return _queue.qsize()
 
 
 def enqueue_run(run_id: int) -> None:
@@ -343,6 +368,14 @@ def process_run_sync(run_id: int) -> None:
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
         try:
+            from app.services.kafka_producer import publish_governance_run_event
+            from app.services.search_index import index_governance_run
+
+            publish_governance_run_event(run.id, run.tenant_id, status="succeeded")
+            index_governance_run(run)
+        except Exception:  # noqa: BLE001
+            _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
+        try:
             deliver_run_complete_notifications(run.id)
         except Exception:  # noqa: BLE001
             _log.exception("governance_delivery_failed", extra={"run_id": run.id})
@@ -378,6 +411,12 @@ def process_run_sync(run_id: int) -> None:
         db.commit()
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
+        try:
+            from app.services.notification_router import deliver_run_failed
+
+            deliver_run_failed(run.id)
+        except Exception:  # noqa: BLE001
+            _log.exception("governance_failed_notify_error", extra={"run_id": run.id})
     finally:
         db.close()
 

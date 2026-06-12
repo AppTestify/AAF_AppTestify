@@ -36,6 +36,16 @@ def _agent_tool_plans() -> dict[str, list[str]]:
     }
 
 
+def _refresh_tools_from_opinions(opinions: list[Any]) -> list[str] | None:
+    names: list[str] = []
+    for opinion in opinions:
+        called = opinion.raw_signals.get("tools_called")
+        if isinstance(called, list):
+            names.extend(str(name) for name in called if name)
+    deduped = list(dict.fromkeys(names))
+    return deduped or None
+
+
 async def run_pipeline(
     *,
     prompt: str,
@@ -50,37 +60,52 @@ async def run_pipeline(
     input_guard_reports: list[GuardrailResult] | None = None,
     agent_ids: list[str] | None = None,
     intent: dict[str, Any] | None = None,
+    cost_tracker: LlmCostTracker | None = None,
+    evidence_package: dict[str, Any] | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
     ctx = tool_ctx or build_tool_context(settings)
+    if evidence_package and ctx.evidence_package is None:
+        ctx.evidence_package = evidence_package
     all_guard_reports: list[GuardrailResult] = list(input_guard_reports or [])
-    cost_tracker = LlmCostTracker()
+    tracker = cost_tracker or LlmCostTracker()
 
     activated = agent_ids or ["devops", "finops", "devsecops", "project_management"]
     plans = _agent_tool_plans()
     filtered_plans = {aid: plans[aid] for aid in activated if aid in plans}
     all_guard_reports.extend(run_tool_scope_guards_for_agents(filtered_plans, settings))
 
-    async def _run_agents(ev: list[EvidenceRecord]) -> list[Any]:
+    async def _run_agents(
+        ev: list[EvidenceRecord],
+        *,
+        refresh_tools: list[str] | None = None,
+    ) -> list[Any]:
         return await run_agents_async(
             ev,
             activated,
             tool_ctx=ctx,
             settings=settings,
             llm_providers=llm_providers,
+            refresh_tools=refresh_tools,
+            cost_tracker=tracker,
         )
 
+    latest_opinions: list[Any] = []
+
     async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
-        ops = await _run_agents(ev)
+        refresh = _refresh_tools_from_opinions(latest_opinions or initial_opinions)
+        ops = await _run_agents(ev, refresh_tools=refresh)
         guarded, reports = apply_agent_output_guards(ops, settings)
         all_guard_reports.extend(reports)
+        latest_opinions.clear()
+        latest_opinions.extend(guarded)
         return guarded
 
     lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
 
     def llm_reground(opinions: list[Any], evidence: list[EvidenceRecord]) -> str:
-        if not llm_providers:
+        if not llm_providers or len(tracker.calls) >= settings.max_llm_calls_per_run:
             return ""
         reground_prompt = (
             "Agents disagree on risk themes. Summarize the conflict and what additional evidence "
@@ -88,7 +113,7 @@ async def run_pipeline(
             + str({"opinions": [o.model_dump() for o in opinions], "evidence_count": len(evidence)})
         )
         try:
-            text, _ = cost_tracker.invoke_tracked(
+            text, _ = tracker.invoke_tracked(
                 llm_providers,
                 reground_prompt,
                 phase="rar_reground",
@@ -101,6 +126,7 @@ async def run_pipeline(
     initial_opinions_raw = await _run_agents(normalized_evidence)
     initial_opinions, initial_guard_reports = apply_agent_output_guards(initial_opinions_raw, settings)
     all_guard_reports.extend(initial_guard_reports)
+    latest_opinions.extend(initial_opinions)
 
     opinions, rar_result, consensus_result = await run_rar_loop_async(
         initial_evidence=normalized_evidence,
@@ -123,7 +149,7 @@ async def run_pipeline(
     )
     explanation = deterministic_explanation
     llm_meta: dict[str, Any] = {"status": "degraded", "reason": "no_active_provider"}
-    if llm_providers:
+    if llm_providers and len(tracker.calls) < settings.max_llm_calls_per_run:
         llm_prompt = (
             "Create a concise executive governance explanation in markdown with sections: "
             "What we evaluated, Consensus, Recommended action, Why trustworthy. "
@@ -139,7 +165,7 @@ async def run_pipeline(
             )
         )
         try:
-            llm_text, meta = cost_tracker.invoke_tracked(
+            llm_text, meta = tracker.invoke_tracked(
                 llm_providers,
                 llm_prompt,
                 phase="explanation",
@@ -174,7 +200,9 @@ async def run_pipeline(
         utility=utility_result,
         explanation_text=explanation,
     )
-    llm_cost = cost_tracker.snapshot()
+    llm_cost = tracker.snapshot()
+    llm_cost["max_llm_calls_per_run"] = settings.max_llm_calls_per_run
+    llm_cost["budget_exhausted"] = len(tracker.calls) >= settings.max_llm_calls_per_run
 
     placeholder_pm = PMFormattedDecision(title="", summary_markdown="", detail_json={})
     result = PipelineResult(
@@ -195,6 +223,7 @@ async def run_pipeline(
         llm_cost=llm_cost,
         intent=intent or {},
         agents_activated=activated,
+        pipeline_phase=settings.pipeline_phase,
     )
     updated = result.model_copy(update={"pm_view": to_pm_decision(result)})
     from pm_interface.decision_formatter import build_governance_brief_from_result

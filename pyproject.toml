@@ -37,3 +37,6 @@ include = ["aaf*", "app*", "agents*", "orchestrator*", "connectors*", "llm*", "m
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live_connector: optional live GitHub/Jira connector health checks (CONNECTOR_LIVE_CI=1)",
+]

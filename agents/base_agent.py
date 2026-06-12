@@ -98,6 +98,7 @@ class BaseAgent(ABC):
         correlation_boost: float = 0.0,
         refresh_tools: list[str] | None = None,
         settings: Any | None = None,
+        cost_tracker: Any | None = None,
     ) -> AgentOpinion:
         """Run LLM tool loop when providers present; else deterministic tools + optional claim LLM."""
         from aaf.config import get_settings
@@ -113,6 +114,7 @@ class BaseAgent(ABC):
                     package,
                     llm_providers=llm_providers,
                     settings=cfg,
+                    cost_tracker=cost_tracker,
                 )
             except Exception:
                 pass
@@ -135,6 +137,13 @@ class BaseAgent(ABC):
         )
         llm_opinion.evidence = base.evidence or llm_opinion.evidence
         llm_opinion.raw_signals = {**base.raw_signals, **llm_opinion.raw_signals}
+        called = base.raw_signals.get("tools_called")
+        if called:
+            llm_opinion.raw_signals["tools_called"] = called
+            allowlist = [fn.__name__ for fn in self.tool_callables()]
+            llm_opinion.raw_signals["tools_skipped"] = [
+                name for name in allowlist if name not in called
+            ]
         return llm_opinion
 
     async def run_async(
@@ -162,6 +171,12 @@ class BaseAgent(ABC):
 
         from agents.display import resolve_display_id
 
+        allowlist = [fn.__name__ for fn in self.tool_callables()]
+        called = [r.tool_name for r in tool_results]
+        raw_signals = self.merge_raw_signals(tool_results)
+        raw_signals["tools_called"] = called
+        raw_signals["tools_skipped"] = [name for name in allowlist if name not in called]
+
         return AgentOpinion(
             agent_id=self.agent_id,
             display_id=resolve_display_id(self.agent_id),
@@ -170,7 +185,7 @@ class BaseAgent(ABC):
             evidence_refs=refs,
             evidence=evidence,
             risk_theme=theme,
-            raw_signals=self.merge_raw_signals(tool_results),
+            raw_signals=raw_signals,
         )
 
     def stale_tool_names(self, tool_results: list[ToolResult]) -> list[str]:

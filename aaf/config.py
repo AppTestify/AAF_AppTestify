@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     tau_consensus: float = 0.55
     max_rar_loops: int = 2
     rar_live_refresh_enabled: bool = True
+    pipeline_phase: int = 1
+    max_llm_calls_per_run: int = 9
     w_perf: float = 0.4
     w_cost: float = 0.3
     w_risk: float = 0.3
@@ -33,6 +35,7 @@ class Settings(BaseSettings):
     connector_mode: ConnectorMode = ConnectorMode.SIM
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "fixtures"
     github_token: str = ""
+    github_webhook_secret: str = ""
     github_repo: str = "owner/repo"
     jira_url: str = ""
     jira_email: str = ""
@@ -77,6 +80,24 @@ class Settings(BaseSettings):
     redis_url: str = ""
     celery_broker_url: str = ""
     celery_result_backend: str = ""
+
+    # Apache Kafka event bus (optional; enables async webhooks + automation at scale)
+    kafka_bootstrap_servers: str = ""
+    kafka_enabled: bool = False
+    kafka_client_id: str = "casantris-api"
+    kafka_dlq_topic: str = "casantris.dlq"
+
+    # Apache OpenSearch (optional; replaces ILIKE search when enabled)
+    opensearch_url: str = ""
+    opensearch_enabled: bool = False
+    opensearch_index_prefix: str = "casantris"
+
+    # Apache APISIX gateway (ops / CD smoke base URL)
+    apisix_gateway_url: str = ""
+    apisix_admin_url: str = ""
+
+    # Integration execution: python (in-process) or camel (Kafka → integration worker)
+    integration_mode: str = "python"
 
     # Evidence normalization cap per connector source
     max_evidence_per_source: int = 50
@@ -130,22 +151,39 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def _encryption_key_entropy_ok(key: str) -> bool:
+    if len(key) < 32:
+        return False
+    unique = len(set(key))
+    if unique < 8:
+        return False
+    if len(set(key[i : i + 3] for i in range(len(key) - 2))) < max(8, len(key) // 4):
+        return False
+    return True
+
+
 def validate_runtime_safety(settings: Settings) -> None:
     """Fail fast in production when dangerous defaults are used."""
     if settings.app_env.lower() not in {"prod", "production"}:
         return
-    if settings.jwt_secret.startswith("change-me") or len(settings.jwt_secret) < 24:
+    if settings.jwt_secret.startswith("change-me") or len(settings.jwt_secret) < 32:
         raise RuntimeError("Unsafe JWT_SECRET for production")
     bad_pw = {"changeme", "password", "admin", "12345678"}
     if settings.superadmin_password.lower() in bad_pw or settings.admin_password.lower() in bad_pw:
         raise RuntimeError("Unsafe bootstrap admin password for production")
     if settings.public_tenant_signup_enabled:
-        raise RuntimeError("PUBLIC_TENANT_SIGNUP_ENABLED must be false in production")
+        raise RuntimeError("PUBLIC_TENANT_SIGNUP_ENABLED must be false")
     if settings.metrics_public_enabled:
         raise RuntimeError("METRICS_PUBLIC_ENABLED must be false in production")
-    if settings.app_encryption_key.startswith("change-me") or len(settings.app_encryption_key) < 24:
+    if settings.app_encryption_key.startswith("change-me") or not _encryption_key_entropy_ok(
+        settings.app_encryption_key
+    ):
         raise RuntimeError("Unsafe APP_ENCRYPTION_KEY for production")
+    if not (settings.celery_broker_url or settings.redis_url):
+        raise RuntimeError("CELERY_BROKER_URL or REDIS_URL required in production")
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if not origins:
+        raise RuntimeError("CORS_ORIGINS must be set in production")
     if "*" in origins:
         raise RuntimeError("CORS_ORIGINS must not contain wildcard in production")
     for origin in origins:

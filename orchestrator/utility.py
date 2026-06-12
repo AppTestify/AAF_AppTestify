@@ -87,6 +87,11 @@ def score_actions(
     def u_patch_block() -> float:
         return w_r * risk + w_p * 0.4 * perf + w_c * 0.2 * cost
 
+    def u_hold_release() -> float:
+        if opinions:
+            return w_p * p_index + w_c * ci_index + w_r * r_index
+        return w_r * risk + w_p * 0.35 * perf + w_c * 0.15 * cost
+
     def u_observe() -> float:
         inv = (perf + cost + risk) / 3.0
         return w_p * (1 - perf) * 0.3 + w_c * (1 - cost) * 0.3 + w_r * (1 - risk) * 0.3 + 0.2 * (1 - inv)
@@ -96,6 +101,7 @@ def score_actions(
         GovernanceAction.MITIGATE_MONITOR.value: u_mitigate(),
         GovernanceAction.SCALE_ADJUST.value: u_scale(),
         GovernanceAction.PATCH_BLOCK_RELEASE.value: u_patch_block(),
+        GovernanceAction.HOLD_RELEASE.value: u_hold_release(),
         GovernanceAction.OBSERVE.value: u_observe(),
     }
 

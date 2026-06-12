@@ -335,6 +335,8 @@ export type GovernanceRunResult = {
   governance_brief?: GovernanceBrief;
   intent?: Record<string, unknown>;
   agents_activated?: string[];
+  /** 1 = static agents; 3 = LLM intent router + tool-calling loops */
+  pipeline_phase?: number;
 };
 
 export { formatAgentLabel, parseIncidentFindings } from "./agentLabels";
@@ -510,7 +512,9 @@ export async function validateProviderConfig(
   const r = await fetch(
     `${API}/tenant/ai/providers/${encodeURIComponent(providerName)}/validate${tenantQuery(tenantSlug)}`,
     {
-      method: "POST"}
+      method: "POST",
+      credentials: "include",
+    }
   );
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<ProviderConfig>;
@@ -609,6 +613,22 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   const r = await fetch(`${API}/telemetry/summary`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<DashboardSummary>;
+}
+
+export type RunsTimeseriesDayPoint = {
+  date: string;
+  counts: Record<string, number>;
+};
+
+export type RunsTimeseries = {
+  days: number;
+  series: RunsTimeseriesDayPoint[];
+};
+
+export async function fetchRunsTimeseries(days = 7): Promise<RunsTimeseries> {
+  const r = await fetch(`${API}/telemetry/runs-timeseries?days=${days}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<RunsTimeseries>;
 }
 
 export type ObservabilitySummary = {
@@ -858,6 +878,84 @@ export async function fetchGovernanceRun(runId: number): Promise<GovernanceRunV1
   return r.json() as Promise<GovernanceRunV1>;
 }
 
+export type PublicShareSnapshot = {
+  run_id: number;
+  prompt: string;
+  finished_at: string | null;
+  recommended_action: string | null;
+  consensus_score: number | null;
+  utility_score: number | null;
+  xi_score: number | null;
+  incident_title: string | null;
+  executive_title: string | null;
+  executive_content: string | null;
+  pdf_path: string;
+};
+
+export async function fetchPublicShareSnapshot(token: string): Promise<PublicShareSnapshot> {
+  const r = await fetch(`${API}/public/share/${encodeURIComponent(token)}/snapshot`);
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PublicShareSnapshot>;
+}
+
+export type GovernanceRunStreamHandlers = {
+  onStatus?: (data: { status: string; run_id: number }) => void;
+  onEvidenceFetched?: (data: { run_id: number }) => void;
+  onResultReady?: (data: { run_id: number; consensus?: number }) => void;
+  onTimeout?: (data: { run_id: number }) => void;
+  onError?: (data: { error?: string }) => void;
+};
+
+export function streamGovernanceRun(runId: number, handlers: GovernanceRunStreamHandlers): () => void {
+  const es = new EventSource(`${API}/governance/runs/${runId}/stream`, { withCredentials: true });
+
+  const bind = (event: string, handler?: (data: Record<string, unknown>) => void) => {
+    if (!handler) return;
+    es.addEventListener(event, (ev) => {
+      try {
+        handler(JSON.parse((ev as MessageEvent).data) as Record<string, unknown>);
+      } catch {
+        handler({});
+      }
+    });
+  };
+
+  bind("status", handlers.onStatus as (data: Record<string, unknown>) => void);
+  bind("evidence_fetched", handlers.onEvidenceFetched as (data: Record<string, unknown>) => void);
+  bind("result_ready", handlers.onResultReady as (data: Record<string, unknown>) => void);
+  bind("timeout", handlers.onTimeout as (data: Record<string, unknown>) => void);
+  bind("error", handlers.onError as (data: Record<string, unknown>) => void);
+  es.onerror = () => handlers.onError?.({ error: "stream_error" });
+
+  return () => es.close();
+}
+
+export type DecisionAction = {
+  id: number;
+  decision_id: number;
+  action_type: string;
+  state: string;
+  payload_json: Record<string, unknown>;
+  result_json?: Record<string, unknown> | null;
+  created_at: string;
+  finished_at?: string | null;
+};
+
+export async function executeGovernanceRunActions(runId: number): Promise<DecisionAction[]> {
+  const r = await fetch(`${API}/governance/runs/${runId}/execute-actions`, {
+    credentials: "include",
+    method: "POST",
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<DecisionAction[]>;
+}
+
+export async function fetchDecisionActions(decisionId: number): Promise<DecisionAction[]> {
+  const r = await fetch(`${API}/governance/decisions/${decisionId}/actions`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<DecisionAction[]>;
+}
+
 export type GovernanceShareLink = {
   url: string;
   expires_at: string;
@@ -875,9 +973,16 @@ export async function createGovernanceRunShareLink(
   return r.json() as Promise<GovernanceShareLink>;
 }
 
+export type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export async function fetchGovernanceRuns(
   params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
-): Promise<GovernanceRunV1[]> {
+): Promise<PaginatedResponse<GovernanceRunV1>> {
   const search = new URLSearchParams();
   if (params?.status) search.set("status", params.status);
   if (params?.limit) search.set("limit", String(params.limit));
@@ -889,7 +994,7 @@ export async function fetchGovernanceRuns(
   const suffix = search.toString() ? `?${search.toString()}` : "";
   const r = await fetch(`${API}/governance/runs${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  return r.json() as Promise<GovernanceRunV1[]>;
+  return r.json() as Promise<PaginatedResponse<GovernanceRunV1>>;
 }
 
 export async function createCase(
@@ -909,15 +1014,21 @@ export async function createCase(
   return r.json() as Promise<GovernanceCase>;
 }
 
-export async function fetchCases(limit = 100): Promise<GovernanceCase[]> {
+export async function fetchCases(limit = 100): Promise<PaginatedResponse<GovernanceCase>> {
   const r = await fetch(`${API}/governance/cases?limit=${limit}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  return r.json() as Promise<GovernanceCase[]>;
+  return r.json() as Promise<PaginatedResponse<GovernanceCase>>;
+}
+
+export async function fetchCase(caseId: number): Promise<GovernanceCase> {
+  const r = await fetch(`${API}/governance/cases/${caseId}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<GovernanceCase>;
 }
 
 export async function fetchCasesAdvanced(
   params?: { status?: string; limit?: number; offset?: number; query?: string; portfolio_project_id?: number }
-): Promise<GovernanceCase[]> {
+): Promise<PaginatedResponse<GovernanceCase>> {
   const q = new URLSearchParams();
   if (params?.status) q.set("status", params.status);
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
@@ -929,7 +1040,7 @@ export async function fetchCasesAdvanced(
   const suffix = q.toString() ? `?${q.toString()}` : "";
   const r = await fetch(`${API}/governance/cases${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  return r.json() as Promise<GovernanceCase[]>;
+  return r.json() as Promise<PaginatedResponse<GovernanceCase>>;
 }
 
 export async function updateCase(
@@ -974,16 +1085,17 @@ export async function approveDecision(
 }
 
 export async function fetchAuditEvents(
-  params?: { area?: string; severity?: string; limit?: number }
-): Promise<AuditEvent[]> {
+  params?: { area?: string; severity?: string; limit?: number; offset?: number }
+): Promise<PaginatedResponse<AuditEvent>> {
   const q = new URLSearchParams();
   if (params?.area) q.set("area", params.area);
   if (params?.severity) q.set("severity", params.severity);
   if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+  if (typeof params?.offset === "number") q.set("offset", String(params.offset));
   const suffix = q.toString() ? `?${q.toString()}` : "";
   const r = await fetch(`${API}/governance/audit-events${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  return r.json() as Promise<AuditEvent[]>;
+  return r.json() as Promise<PaginatedResponse<AuditEvent>>;
 }
 
 export type EvidenceRow = {
@@ -996,7 +1108,7 @@ export type EvidenceRow = {
 
 export async function fetchEvidence(
   params?: { connector?: string; run_id?: number; portfolio_project_id?: number; limit?: number; offset?: number }
-): Promise<EvidenceRow[]> {
+): Promise<PaginatedResponse<EvidenceRow>> {
   const q = new URLSearchParams();
   if (params?.connector) q.set("connector", params.connector);
   if (typeof params?.run_id === "number") q.set("run_id", String(params.run_id));
@@ -1008,7 +1120,7 @@ export async function fetchEvidence(
   const suffix = q.toString() ? `?${q.toString()}` : "";
   const r = await fetch(`${API}/governance/evidence${suffix}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  return r.json() as Promise<EvidenceRow[]>;
+  return r.json() as Promise<PaginatedResponse<EvidenceRow>>;
 }
 
 export async function acknowledgeAlert(eventId: number): Promise<AuditEvent> {
@@ -1018,8 +1130,14 @@ export async function acknowledgeAlert(eventId: number): Promise<AuditEvent> {
   return r.json() as Promise<AuditEvent>;
 }
 
+export type ReportExportFormat = "json" | "csv" | "xlsx" | "pdf";
+
+function isReportBinaryFormat(format: ReportExportFormat): boolean {
+  return format === "csv" || format === "xlsx" || format === "pdf";
+}
+
 export async function fetchRunSummaryReport(
-  format: "json" | "csv",
+  format: ReportExportFormat,
   limit = 200,
   status?: string,
   portfolioProjectId?: number
@@ -1031,7 +1149,7 @@ export async function fetchRunSummaryReport(
   if (typeof portfolioProjectId === "number") q.set("portfolio_project_id", String(portfolioProjectId));
   const r = await fetch(`${API}/reports/runs/summary?${q.toString()}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  if (format === "csv") return r.blob();
+  if (isReportBinaryFormat(format)) return r.blob();
   return r.json();
 }
 
@@ -1055,7 +1173,7 @@ export async function fetchSingleRunExport(
 }
 
 export async function fetchAuditExport(
-  format: "json" | "csv",
+  format: ReportExportFormat,
   area?: string
 ): Promise<{ count: number; items: Record<string, unknown>[] } | Blob> {
   const q = new URLSearchParams();
@@ -1063,8 +1181,19 @@ export async function fetchAuditExport(
   if (area) q.set("area", area);
   const r = await fetch(`${API}/reports/audit-events?${q.toString()}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));
-  if (format === "csv") return r.blob();
+  if (isReportBinaryFormat(format)) return r.blob();
   return r.json();
+}
+
+export async function fetchPortfolioExecutiveExport(
+  format: "json" | "xlsx" | "pdf"
+): Promise<ExecutivePortfolioReport | Blob> {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  const r = await fetch(`${API}/reports/portfolio/executive?${q.toString()}`, { credentials: "include"});
+  if (!r.ok) throw new Error(await parseError(r));
+  if (format === "xlsx" || format === "pdf") return r.blob();
+  return r.json() as Promise<ExecutivePortfolioReport>;
 }
 
 export type PortfolioProject = {
@@ -1191,6 +1320,84 @@ export type NotificationTemplate = {
   body: string;
 };
 
+export type PlatformNotificationTemplate = {
+  subject: string;
+  body_text: string;
+  body_html: string;
+};
+
+export type PlatformNotificationConfig = {
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_password_configured: boolean;
+  smtp_from_email: string | null;
+  smtp_from_name: string | null;
+  use_tls: boolean;
+  use_ssl: boolean;
+  notifications_enabled: boolean;
+  templates: Record<string, PlatformNotificationTemplate>;
+  last_test_ok: boolean | null;
+  last_test_error: string | null;
+  last_tested_at: string | null;
+};
+
+export async function fetchPlatformNotificationConfig(): Promise<PlatformNotificationConfig> {
+  const r = await fetch(`${API}/platform/notifications`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PlatformNotificationConfig>;
+}
+
+export async function savePlatformNotificationConfig(body: {
+  smtp_host?: string | null;
+  smtp_port?: number | null;
+  smtp_username?: string | null;
+  smtp_password?: string | null;
+  smtp_from_email?: string | null;
+  smtp_from_name?: string | null;
+  use_tls?: boolean;
+  use_ssl?: boolean;
+  notifications_enabled?: boolean;
+  templates?: Record<string, { subject: string; body_text: string; body_html?: string }>;
+}): Promise<PlatformNotificationConfig> {
+  const r = await fetch(`${API}/platform/notifications`, {
+    credentials: "include",
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<PlatformNotificationConfig>;
+}
+
+export async function testPlatformNotificationConfig(body: {
+  to_email?: string | null;
+}): Promise<{ ok: boolean; message: string }> {
+  const r = await fetch(`${API}/platform/notifications/test`, {
+    credentials: "include",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<{ ok: boolean; message: string }>;
+}
+
+export type NotificationChannelToggles = {
+  email: boolean;
+  slack: boolean;
+  teams: boolean;
+};
+
+export type DigestSchedule = {
+  daily_enabled: boolean;
+  daily_time_utc: string;
+  weekly_enabled: boolean;
+  weekly_day: string;
+  weekly_time_utc: string;
+  recipients: string[];
+};
+
 export type TenantNotificationConfig = {
   smtp_host: string | null;
   smtp_port: number | null;
@@ -1200,9 +1407,14 @@ export type TenantNotificationConfig = {
   use_tls: boolean;
   use_ssl: boolean;
   notifications_enabled: boolean;
+  using_platform_smtp: boolean;
+  platform_smtp_configured: boolean;
   slack_webhook_configured: boolean;
+  teams_webhook_configured: boolean;
   governance_notify_on_run_complete: boolean;
   governance_run_notify_emails: string[];
+  notification_channels: Record<string, NotificationChannelToggles>;
+  digest_schedule: DigestSchedule;
   templates: Record<string, NotificationTemplate>;
   last_test_ok: boolean | null;
   last_test_error: string | null;
@@ -1227,8 +1439,12 @@ export async function saveNotificationConfig(
     notifications_enabled?: boolean;
     slack_incoming_webhook?: string | null;
     clear_slack_incoming_webhook?: boolean;
+    teams_incoming_webhook?: string | null;
+    clear_teams_incoming_webhook?: boolean;
     governance_notify_on_run_complete?: boolean;
     governance_run_notify_emails?: string[];
+    notification_channels?: Record<string, NotificationChannelToggles>;
+    digest_schedule?: DigestSchedule;
     templates?: Record<string, NotificationTemplate>;
   },
   tenantSlug?: string | null
@@ -1251,6 +1467,26 @@ export async function testNotificationConfig(
     body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<{ ok: boolean; message: string }>;
+}
+
+export type ReportEmailRequest = {
+  report_type: "runs_summary" | "audit_events" | "portfolio_executive";
+  format: "xlsx" | "pdf";
+  recipients: string[];
+  status?: string;
+  area?: string;
+  limit?: number;
+};
+
+export async function emailReport(body: ReportEmailRequest): Promise<{ ok: boolean; sent_to: string[]; attachment: string }> {
+  const r = await fetch(`${API}/reports/email`, {
+    credentials: "include",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<{ ok: boolean; sent_to: string[]; attachment: string }>;
 }
 
 export type AdminUser = {

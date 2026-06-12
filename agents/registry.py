@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aaf.schema import AgentOpinion, EvidenceRecord
 from agents import devops, devsecops, finops, pm_agent
@@ -35,6 +35,8 @@ async def run_agents_async(
     tool_ctx: ToolContext | None = None,
     settings: Settings | None = None,
     llm_providers: list[ActiveProvider] | None = None,
+    refresh_tools: list[str] | None = None,
+    cost_tracker: Any | None = None,
 ) -> list[AgentOpinion]:
     ctx = tool_ctx
     if ctx is None:
@@ -48,7 +50,14 @@ async def run_agents_async(
         if runner is None:
             continue
         tasks.append(
-            runner(evidence, tool_ctx=ctx, settings=settings, llm_providers=llm_providers)
+            runner(
+                evidence,
+                tool_ctx=ctx,
+                settings=settings,
+                llm_providers=llm_providers,
+                refresh_tools=refresh_tools,
+                cost_tracker=cost_tracker,
+            )
         )
     if not tasks:
         return []

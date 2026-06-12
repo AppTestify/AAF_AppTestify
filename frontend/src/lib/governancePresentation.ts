@@ -59,7 +59,8 @@ export function parseGovernanceRunResult(run: GovernanceRunV1): ParsedRunContext
 export function formatActionLabel(action: string | null | undefined): string {
   if (!action) return "Pending review";
   const map: Record<string, string> = {
-    patch_block_release: "Hold Release",
+    hold_release: "Hold Release",
+    patch_block_release: "Block Release",
     rollback: "Rollback",
     mitigate_monitor: "Mitigate & Monitor",
     scale_adjust: "Scale Adjust",
@@ -68,6 +69,96 @@ export function formatActionLabel(action: string | null | undefined): string {
     approved: "Approved",
   };
   return map[action] ?? action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function isHoldReleaseAction(action: string | null | undefined): boolean {
+  return action === "hold_release";
+}
+
+const RAW_SIGNAL_META_KEYS = new Set([
+  "guardrail_events",
+  "degraded",
+  "transport",
+  "tool_calls_used",
+  "tool_calls_max",
+]);
+
+/** Shipped tool catalog sizes per agent (Phase 3 selective tool-calling). */
+const AGENT_TOOL_CATALOG: Record<string, number> = {
+  devops: 7,
+  finops: 7,
+  devsecops: 7,
+  project_management: 10,
+  pm: 10,
+};
+
+export function countToolCallsFromRawSignals(
+  rawSignals: Record<string, unknown> | undefined,
+  agentId?: string
+): { used: number; max: number | null } {
+  if (!rawSignals || typeof rawSignals !== "object") {
+    return { used: 0, max: agentId ? (AGENT_TOOL_CATALOG[agentId] ?? null) : null };
+  }
+  const explicitUsed = rawSignals.tool_calls_used;
+  const explicitMax = rawSignals.tool_calls_max;
+  if (typeof explicitUsed === "number") {
+    return {
+      used: explicitUsed,
+      max:
+        typeof explicitMax === "number"
+          ? explicitMax
+          : agentId
+            ? (AGENT_TOOL_CATALOG[agentId] ?? null)
+            : null,
+    };
+  }
+  const used = Object.keys(rawSignals).filter(
+    (key) => !key.startsWith("_") && !RAW_SIGNAL_META_KEYS.has(key)
+  ).length;
+  return { used, max: agentId ? (AGENT_TOOL_CATALOG[agentId] ?? null) : null };
+}
+
+export function formatToolCallLabel(
+  rawSignals: Record<string, unknown> | undefined,
+  agentId: string
+): string | null {
+  const { used, max } = countToolCallsFromRawSignals(rawSignals, agentId);
+  if (used === 0 && max == null) return null;
+  const agentShort = formatAgentLabel(agentId);
+  return max != null ? `${agentShort} ${used}/${max}` : `${agentShort} ${used}`;
+}
+
+export type TransportKind = "mcp" | "direct_api" | "sim";
+
+export function deriveTransportFromRawSignals(
+  rawSignals: Record<string, unknown> | undefined
+): TransportKind | null {
+  if (!rawSignals || typeof rawSignals !== "object") return null;
+  const top = rawSignals.transport;
+  if (top === "mcp" || top === "direct_api" || top === "sim") return top;
+
+  let sawMcp = false;
+  let sawDirect = false;
+  let sawSim = false;
+  for (const [key, value] of Object.entries(rawSignals)) {
+    if (key.startsWith("_") || RAW_SIGNAL_META_KEYS.has(key)) continue;
+    if (!value || typeof value !== "object") continue;
+    const transport = (value as Record<string, unknown>).transport;
+    if (transport === "mcp") sawMcp = true;
+    else if (transport === "direct_api") sawDirect = true;
+    else if (transport === "sim") sawSim = true;
+  }
+  if (sawMcp) return "mcp";
+  if (sawDirect) return "direct_api";
+  if (sawSim) return "sim";
+  return null;
+}
+
+function resolvePipelinePhase(result: GovernanceRunResult, framing: DecisionFraming): number | undefined {
+  const fromResult = (result as GovernanceRunResult & { pipeline_phase?: number }).pipeline_phase;
+  if (typeof fromResult === "number") return fromResult;
+  const fromFraming = (framing as DecisionFraming & { pipeline_phase?: number }).pipeline_phase;
+  return typeof fromFraming === "number" ? fromFraming : undefined;
 }
 
 export function formatRelativeTime(iso: string): string {
@@ -245,8 +336,21 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
   const done = status === "succeeded";
   const secopsActive = (framing.agents_activated ?? result.agents_activated ?? []).includes("devsecops");
   const secopsOpinion = result.agent_opinions?.find((o) => o.agent_id === "devsecops");
-  return [
-    { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""), completed: true },
+  const pipelinePhase = resolvePipelinePhase(result, framing);
+  const intentCategory =
+    framing.intent_category ??
+    (typeof result.intent?.category === "string" ? result.intent.category : undefined);
+  const intentStep: FlowStep | null =
+    pipelinePhase === 3
+      ? {
+          id: "intent",
+          label: "LLM Intent Router",
+          detail: intentCategory?.replace(/_/g, " ") ?? "Semantic routing",
+          completed: done || !running,
+          active: running,
+        }
+      : null;
+  const connectorSteps: FlowStep[] = [
     { id: "github", label: "GitHub", detail: "Evidence", completed: done || !running },
     { id: "jira", label: "Jira", detail: "Evidence", completed: done || !running },
     { id: "finops", label: "FinOps", detail: "Evidence", completed: done || !running },
@@ -257,6 +361,8 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
       completed: done && secopsActive,
       active: running && secopsActive,
     },
+  ];
+  const tailSteps: FlowStep[] = [
     {
       id: "agents",
       label: "AI Agents",
@@ -267,6 +373,12 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
     { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done, active: running },
     { id: "brief", label: "Brief", detail: result.governance_brief ? "Ready" : "Pending", completed: done, active: false },
     { id: "decision", label: "Decision", detail: action, active: done, completed: done },
+  ];
+  return [
+    { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""), completed: true },
+    ...(intentStep ? [intentStep] : []),
+    ...connectorSteps,
+    ...tailSteps,
   ];
 }
 
@@ -412,6 +524,8 @@ export type AgentCardView = {
   confidence: number;
   evidence: string[];
   isOrchestrator?: boolean;
+  toolCallLabel?: string | null;
+  transport?: TransportKind | null;
 };
 
 const AGENT_DOMAINS: Record<string, string> = {
@@ -434,6 +548,8 @@ export function deriveAgentGrid(
     claim: o.claim,
     confidence: o.confidence,
     evidence: o.evidence?.length ? o.evidence : [o.claim],
+    toolCallLabel: formatToolCallLabel(o.raw_signals, o.agent_id),
+    transport: deriveTransportFromRawSignals(o.raw_signals),
   }));
 
   const orch = framing.orchestration;

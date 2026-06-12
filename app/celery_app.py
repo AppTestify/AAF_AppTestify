@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from aaf.config import get_settings
 
@@ -21,6 +22,16 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_default_retry_delay=30,
     task_max_retries=2,
+    beat_schedule={
+        "report-digest-daily": {
+            "task": "reports.send_daily_digests",
+            "schedule": crontab(minute="*"),
+        },
+        "report-digest-weekly": {
+            "task": "reports.send_weekly_digests",
+            "schedule": crontab(minute="*"),
+        },
+    },
 )
 
 
@@ -33,3 +44,19 @@ def process_run_task(self, run_id: int) -> str:
         return f"ok:{run_id}"
     except Exception as exc:
         raise self.retry(exc=exc)
+
+
+@celery_app.task(name="reports.send_daily_digests")
+def send_daily_digests_task() -> str:
+    from app.tasks.report_digests import send_scheduled_digests
+
+    count = send_scheduled_digests("daily")
+    return f"daily:{count}"
+
+
+@celery_app.task(name="reports.send_weekly_digests")
+def send_weekly_digests_task() -> str:
+    from app.tasks.report_digests import send_scheduled_digests
+
+    count = send_scheduled_digests("weekly")
+    return f"weekly:{count}"

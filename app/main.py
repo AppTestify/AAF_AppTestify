@@ -32,6 +32,7 @@ from app.routers import (
     governance_policy,
     leads,
     metrics,
+    platform_config,
     portfolio,
     governance_v1,
     prompts,
@@ -47,7 +48,7 @@ from app.routers import (
 )
 from app.services.observability import record_request, record_span, render_prometheus, request_started
 from app.services.otel import configure_otel, instrument_fastapi, shutdown_otel
-from app.services.run_jobs import start_worker, stop_worker
+from app.services.run_jobs import should_use_in_process_worker, start_worker, stop_worker
 
 
 @asynccontextmanager
@@ -59,18 +60,24 @@ async def lifespan(app: FastAPI):
     if settings.database_url.startswith("sqlite") and ":memory:" not in settings.database_url:
         Path("data").mkdir(parents=True, exist_ok=True)
     init_db(settings.database_url)
-    create_tables()
-    ensure_portfolio_project_link_columns()
-    ensure_tenant_notification_delivery_columns()
+    # Postgres production schema is owned by Alembic; SQLite dev uses create_all + legacy patches.
+    if settings.database_url.startswith("sqlite"):
+        create_tables()
+        ensure_portfolio_project_link_columns()
+        ensure_tenant_notification_delivery_columns()
     db = db_mod.SessionLocal()
     try:
         bootstrap_tenancy(db, settings)
     finally:
         db.close()
     instrument_fastapi(app)
-    start_worker()
+    if should_use_in_process_worker():
+        start_worker()
+    else:
+        _log.info("celery_broker_configured; skipping in-process governance thread worker")
     yield
-    stop_worker()
+    if should_use_in_process_worker():
+        stop_worker()
     shutdown_otel()
     # dispose engine on shutdown (helps tests / reload)
     get_engine().dispose()
@@ -151,6 +158,7 @@ app.include_router(reports.router, prefix=settings.api_v1_prefix)
 app.include_router(telemetry.router, prefix=settings.api_v1_prefix)
 app.include_router(prompts.router, prefix=settings.api_v1_prefix)
 app.include_router(tenant_config.router, prefix=settings.api_v1_prefix)
+app.include_router(platform_config.router, prefix=settings.api_v1_prefix)
 app.include_router(leads.router, prefix=settings.api_v1_prefix)
 app.include_router(portfolio.router, prefix=settings.api_v1_prefix)
 app.include_router(metrics.router, prefix=settings.api_v1_prefix)

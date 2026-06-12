@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { acknowledgeAlert, fetchAuditEvents, type AuditEvent } from "../api";
+import { WorkspacePageShell } from "../components/layout/WorkspacePageShell";
+import { PaginationBar } from "../components/ui/PaginationBar";
 
 type WorkspaceAlertsPageProps = {
   };
 
+const DEFAULT_PAGE_SIZE = 50;
+
 export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [area, setArea] = useState<string>("");
   const [severity, setSeverity] = useState<string>("");
@@ -13,6 +18,9 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [ackLoadingId, setAckLoadingId] = useState<number | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   const alertStats = useMemo(() => {
     const info = events.filter((e) => e.severity === "info").length;
     const warning = events.filter((e) => e.severity === "warning").length;
@@ -20,20 +28,37 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
     return { info, warning, critical };
   }, [events]);
 
+  const loadEvents = () =>
+    fetchAuditEvents({
+      area: area || undefined,
+      severity: severity || undefined,
+      limit: pageSize,
+      offset,
+    });
+
+  useEffect(() => {
+    setOffset(0);
+  }, [area, severity]);
+
   useEffect(() => {
     setListLoading(true);
-    fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 })
-      .then(setEvents)
+    loadEvents()
+      .then((page) => {
+        setEvents(page.items);
+        setTotal(page.total);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load audit events"))
       .finally(() => setListLoading(false));
-  }, [area, severity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [area, severity, offset, pageSize]);
 
   const onAcknowledge = async (id: number) => {
     try {
       setAckLoadingId(id);
       await acknowledgeAlert(id);
-      const next = await fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 });
-      setEvents(next);
+      const page = await loadEvents();
+      setEvents(page.items);
+      setTotal(page.total);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Acknowledge failed");
     } finally {
@@ -47,8 +72,9 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
     setError(null);
     try {
       await Promise.all(events.map((e) => acknowledgeAlert(e.id)));
-      const next = await fetchAuditEvents({ area: area || undefined, severity: severity || undefined, limit: 200 });
-      setEvents(next);
+      const page = await loadEvents();
+      setEvents(page.items);
+      setTotal(page.total);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk acknowledge failed");
     } finally {
@@ -57,13 +83,11 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
   };
 
   return (
-    <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Alerts & Audit</h1>
-          <span>Recent governance and configuration actions</span>
-        </div>
-      </header>
+    <WorkspacePageShell
+      variant="operational"
+      title="Alerts & Audit"
+      subtitle="Recent governance and configuration actions"
+    >
       {error ? (
         <div className="alert alert-error" role="alert">
           {error}
@@ -71,19 +95,19 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
       ) : null}
       <div className="workspace-kpi-strip">
         <div className="metric">
-          <div className="label">Visible alerts</div>
-          <div className="value">{events.length}</div>
+          <div className="label">Matching alerts</div>
+          <div className="value">{total}</div>
         </div>
         <div className="metric">
-          <div className="label">Critical</div>
+          <div className="label">Critical (page)</div>
           <div className="value bad">{alertStats.critical}</div>
         </div>
         <div className="metric">
-          <div className="label">Warning</div>
+          <div className="label">Warning (page)</div>
           <div className="value warn">{alertStats.warning}</div>
         </div>
         <div className="metric">
-          <div className="label">Info</div>
+          <div className="label">Info (page)</div>
           <div className="value">{alertStats.info}</div>
         </div>
       </div>
@@ -93,7 +117,9 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
             <h2>Recent events</h2>
             <p>Triage audit and governance signals with bulk or individual acknowledge actions.</p>
           </div>
-          <div className="workspace-meta">Last {events.length} events shown</div>
+          <div className="workspace-meta">
+            {total} matching · showing {events.length} on this page
+          </div>
         </div>
         <div className="workspace-toolbar">
           <div className="form-row">
@@ -156,6 +182,14 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          offset={offset}
+          pageSize={pageSize}
+          itemCount={events.length}
+          totalCount={total}
+          onOffsetChange={setOffset}
+          onPageSizeChange={setPageSize}
+        />
       </div>
       {selected ? (
         <div className="card">
@@ -171,6 +205,6 @@ export function WorkspaceAlertsPage({}: WorkspaceAlertsPageProps) {
           <pre className="json-preview">{JSON.stringify(selected, null, 2)}</pre>
         </div>
       ) : null}
-    </div>
+    </WorkspacePageShell>
   );
 }

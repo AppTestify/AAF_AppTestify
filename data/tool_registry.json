@@ -285,6 +285,32 @@
       "display_agent": "PM"
     },
     {
+      "function_name": "create_blocker",
+      "agent_id": "project_management",
+      "method": "direct_api",
+      "implementation_status": "shipped",
+      "weight": 0.0,
+      "jira_task": "T-181",
+      "system": "JIRA REST API v3",
+      "auth": "Basic auth — email + API token",
+      "api_endpoints": [
+        "POST /rest/api/3/issue"
+      ],
+      "mcp_mappings": [],
+      "fires_when": "Governance automation executes hold_release or patch_block_release.",
+      "returns": [
+        "key",
+        "url",
+        "simulated"
+      ],
+      "pm_scenario": {
+        "title": "Hold release",
+        "narrative": "Creates Jira blocker when governance approves hold_release."
+      },
+      "id": "project_management:create_blocker",
+      "display_agent": "PM"
+    },
+    {
       "function_name": "get_open_defects",
       "agent_id": "project_management",
       "method": "api_mcp",

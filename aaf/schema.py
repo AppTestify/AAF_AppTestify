@@ -27,6 +27,7 @@ class GovernanceAction(str, Enum):
     MITIGATE_MONITOR = "mitigate_monitor"
     SCALE_ADJUST = "scale_adjust"
     PATCH_BLOCK_RELEASE = "patch_block_release"
+    HOLD_RELEASE = "hold_release"
     OBSERVE = "observe"
 
 
@@ -123,3 +124,4 @@ class PipelineResult(BaseModel):
     governance_brief: Optional[GovernanceBrief] = None
     intent: Dict[str, Any] = Field(default_factory=dict)
     agents_activated: List[str] = Field(default_factory=list)
+    pipeline_phase: int = 1

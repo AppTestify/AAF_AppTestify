@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
+import { DonutChart } from "../components/charts/DonutChart";
+import { SegmentedTabs } from "../components/ui/SegmentedTabs";
+import { DeepLinkCopyBar } from "../components/ui/DeepLinkCopyBar";
 import {
   createPortfolioProject,
   createPortfolioRelease,
@@ -19,6 +22,15 @@ type WorkspacePortfolioPageProps = {
   canManage: boolean;
 };
 
+const PORTFOLIO_TABS = [
+  { id: "projects", label: "Projects" },
+  { id: "releases", label: "Releases" },
+  { id: "operations", label: "Operations" },
+  { id: "executive", label: "Executive report" },
+] as const;
+
+type PortfolioTab = (typeof PORTFOLIO_TABS)[number]["id"];
+
 const OPS_LINKS: { to: string; label: string; blurb: string }[] = [
   { to: "/app/dashboard", label: "Dashboard", blurb: "Tenant KPIs, recent runs, connector health — same scope as the numbers below." },
   { to: "/app/overview", label: "Overview", blurb: "Run governance prompts and batch checks; feeds Runs and Evidence." },
@@ -29,6 +41,7 @@ const OPS_LINKS: { to: string; label: string; blurb: string }[] = [
 ];
 
 export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [releases, setReleases] = useState<PortfolioRelease[]>([]);
   const [report, setReport] = useState<ExecutivePortfolioReport | null>(null);
@@ -51,7 +64,61 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
   const [releaseConsensus, setReleaseConsensus] = useState("");
   const [releaseRunId, setReleaseRunId] = useState("");
 
-  const [filterProjectId, setFilterProjectId] = useState<string>("all");
+  const [filterProjectId, setFilterProjectId] = useState<string>(
+    () => searchParams.get("project_id") ?? "all"
+  );
+  const [activeTab, setActiveTab] = useState<PortfolioTab>(
+    () => (searchParams.get("tab") as PortfolioTab) || "projects"
+  );
+
+  const syncUrlState = (patch: { projectId?: string; tab?: PortfolioTab }) => {
+    const next = new URLSearchParams(searchParams);
+    const projectId = patch.projectId ?? filterProjectId;
+    const tab = patch.tab ?? activeTab;
+    if (projectId && projectId !== "all") next.set("project_id", projectId);
+    else next.delete("project_id");
+    if (tab && tab !== "projects") next.set("tab", tab);
+    else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
+
+  const syncProjectFilterToUrl = (v: string) => {
+    setFilterProjectId(v);
+    syncUrlState({ projectId: v });
+  };
+
+  const syncTabToUrl = (tab: PortfolioTab) => {
+    setActiveTab(tab);
+    syncUrlState({ tab });
+  };
+
+  const portfolioPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (filterProjectId && filterProjectId !== "all") params.set("project_id", filterProjectId);
+    if (activeTab !== "projects") params.set("tab", activeTab);
+    const qs = params.toString();
+    return `/app/portfolio${qs ? `?${qs}` : ""}`;
+  }, [filterProjectId, activeTab]);
+
+  const syncReleaseProjectToUrl = (projectId: number) => {
+    setReleaseProjectId(projectId);
+    const next = new URLSearchParams(searchParams);
+    if (projectId > 0) next.set("release_project_id", String(projectId));
+    else next.delete("release_project_id");
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    const releaseProjectIdParam = searchParams.get("release_project_id");
+    if (releaseProjectIdParam) {
+      const id = Number(releaseProjectIdParam);
+      if (Number.isFinite(id) && id > 0) setReleaseProjectId(id);
+    }
+    const projectIdParam = searchParams.get("project_id");
+    if (projectIdParam) setFilterProjectId(projectIdParam);
+    const tabParam = searchParams.get("tab") as PortfolioTab | null;
+    if (tabParam && PORTFOLIO_TABS.some((t) => t.id === tabParam)) setActiveTab(tabParam);
+  }, [searchParams]);
 
   const load = async () => {
     setLoading(true);
@@ -69,7 +136,10 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
       setReport(summary);
       setOps(opCtx);
       setLifecycle(lc);
-      if (p.length > 0 && releaseProjectId === 0) setReleaseProjectId(p[0].id);
+      if (p.length > 0 && releaseProjectId === 0) {
+        const fromUrl = Number(searchParams.get("release_project_id") || 0);
+        setReleaseProjectId(fromUrl > 0 ? fromUrl : p[0].id);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load portfolio");
     } finally {
@@ -104,6 +174,20 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
     }
     return m;
   }, [releases]);
+
+  const releaseStatusDonut = useMemo(() => {
+    if (!report) return [];
+    const other = Math.max(
+      0,
+      report.releases_total - report.releases_planned - report.releases_approved - report.releases_blocked
+    );
+    return [
+      { name: "Planned", value: report.releases_planned, color: "#3d8bfd" },
+      { name: "Go", value: report.releases_approved, color: "#22c55e" },
+      { name: "Hold", value: report.releases_blocked, color: "#f59e0b" },
+      ...(other > 0 ? [{ name: "Other", value: other, color: "#94a3b8" }] : []),
+    ];
+  }, [report]);
 
   const addProject = async () => {
     if (!projectKey.trim() || !projectName.trim()) return;
@@ -178,6 +262,260 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
       ) : null}
       {loading ? <div className="card">Loading portfolio…</div> : null}
 
+      <DeepLinkCopyBar path={portfolioPath} />
+      <SegmentedTabs tabs={[...PORTFOLIO_TABS]} activeId={activeTab} onChange={(id) => syncTabToUrl(id as PortfolioTab)} />
+
+      {activeTab === "projects" ? (
+        <div className="card portfolio-projects-card">
+          <div className="workspace-section-intro">
+            <div>
+              <h2>Projects</h2>
+              <p>Select a project — selection syncs to the URL so refresh keeps context.</p>
+            </div>
+            {canManage ? (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => document.getElementById("portfolio-add-project")?.scrollIntoView({ behavior: "smooth" })}>
+                + New project
+              </button>
+            ) : null}
+          </div>
+          <div className="table-wrap">
+            <table className="data-table portfolio-project-table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th>Releases</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((p) => {
+                  const releaseCount = releases.filter((r) => r.project_id === p.id).length;
+                  const isSelected = filterProjectId === String(p.id);
+                  return (
+                    <tr
+                      key={p.id}
+                      className={isSelected ? "portfolio-project-row--selected" : ""}
+                      onClick={() => syncProjectFilterToUrl(String(p.id))}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") syncProjectFilterToUrl(String(p.id));
+                      }}
+                    >
+                      <td>
+                        <strong>{p.key}</strong> · {p.name}
+                      </td>
+                      <td>
+                        <span className={`status-chip ${p.status === "active" ? "succeeded" : "queued"}`}>{p.status}</span>
+                      </td>
+                      <td>
+                        {releaseCount} release{releaseCount === 1 ? "" : "s"} →
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "releases" ? (
+        <div className="card">
+          <div className="workspace-section-intro portfolio-release-head">
+            <div>
+              <h2>Release register</h2>
+              <p>Filtered by selected project; open Runs to correlate run IDs.</p>
+            </div>
+            <div className="form-row portfolio-filter-row">
+              <label htmlFor="portfolio-release-filter">Project</label>
+              <select
+                id="portfolio-release-filter"
+                value={filterProjectId}
+                onChange={(e) => syncProjectFilterToUrl(e.target.value)}
+              >
+                <option value="all">All projects</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.key}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Version</th>
+                  <th>Target</th>
+                  <th>Status</th>
+                  <th>Decision</th>
+                  <th>Conf.</th>
+                  <th>Consensus</th>
+                  <th>Risk</th>
+                  <th>Run</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReleases.slice(0, 100).map((r) => {
+                  const p = projects.find((x) => x.id === r.project_id);
+                  return (
+                    <tr key={r.id}>
+                      <td>{p ? p.key : r.project_id}</td>
+                      <td>{r.version}</td>
+                      <td>{r.target_date ? new Date(r.target_date).toLocaleString() : "—"}</td>
+                      <td>{r.status}</td>
+                      <td>{r.release_decision ?? "—"}</td>
+                      <td>{r.decision_confidence != null ? (r.decision_confidence * 100).toFixed(0) + "%" : "—"}</td>
+                      <td>{r.consensus_score != null ? (r.consensus_score * 100).toFixed(0) + "%" : "—"}</td>
+                      <td>{r.risk_level ?? "—"}</td>
+                      <td>
+                        {r.run_id != null ? (
+                          <NavLink to={`/app/runs?run_id=${r.run_id}`} className="portfolio-inline-link">
+                            #{r.run_id}
+                          </NavLink>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{new Date(r.updated_at).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "operations" ? (
+        <>
+          <div className="portfolio-kpi-section">
+            <h3 className="portfolio-kpi-heading">Operations snapshot (same tenant as Dashboard)</h3>
+            <div className="workspace-kpi-strip portfolio-kpi-strip">
+              <div className="metric">
+                <div className="label">Runs (total)</div>
+                <div className="value">{ops?.runs_total ?? "…"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Runs (24h)</div>
+                <div className="value">{ops?.runs_24h ?? "…"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Succeeded (24h)</div>
+                <div className="value good">{ops?.runs_success_24h ?? "…"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Open cases</div>
+                <div className="value">{ops?.cases_open ?? "…"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Alerts (24h)</div>
+                <div className="value warn">{ops?.alerts_24h ?? "…"}</div>
+              </div>
+              <div className="metric">
+                <div className="label">Releases linked to runs</div>
+                <div className="value">
+                  {ops ? `${ops.portfolio_releases_linked_to_run} / ${ops.portfolio_releases_total} (${linkRate}%)` : "…"}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="card portfolio-explainer">
+            <h2>How portfolio links to operations</h2>
+            <div className="table-wrap portfolio-ops-link-table">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Operations area</th>
+                    <th>What it provides to portfolio decisions</th>
+                    <th>Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {OPS_LINKS.map((row) => (
+                    <tr key={row.to}>
+                      <td>{row.label}</td>
+                      <td>{row.blurb}</td>
+                      <td>
+                        <NavLink to={row.to} className="portfolio-inline-link">
+                          Go →
+                        </NavLink>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {activeTab === "executive" ? (
+        <>
+          <div className="card portfolio-distribution">
+            <h2>Release posture</h2>
+            <div className="portfolio-chart-grid">
+              <DonutChart data={releaseStatusDonut} title="Release status" emptyMessage="No releases in portfolio report yet." />
+              <div className="portfolio-confidence-strip">
+                <div className="metric">
+                  <div className="label">Avg confidence</div>
+                  <div className="value">{((report?.avg_confidence ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div className="metric">
+                  <div className="label">Avg consensus</div>
+                  <div className="value">{((report?.avg_consensus ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div className="metric">
+                  <div className="label">Critical risk open</div>
+                  <div className="value warn">{report?.high_risk_open ?? 0}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <h2>Executive project breakdown</h2>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Project</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Releases</th>
+                    <th>Go</th>
+                    <th>Hold</th>
+                    <th>Avg confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report?.project_breakdown ?? []).map((row) => {
+                    const proj = projects.find((x) => x.id === row.project_id);
+                    return (
+                      <tr key={row.project_id}>
+                        <td>
+                          {row.project_key} — {row.project_name}
+                        </td>
+                        <td>{proj?.owner ?? "—"}</td>
+                        <td>{proj?.status ?? "—"}</td>
+                        <td>{row.releases_total}</td>
+                        <td>{row.go_count}</td>
+                        <td>{row.hold_count}</td>
+                        <td>{(row.avg_confidence * 100).toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {activeTab === "projects" ? (
       <div className="card portfolio-explainer">
         <h2>How this works — and how it links to Operations</h2>
         <p className="portfolio-explainer-lead">
@@ -235,7 +573,9 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
           </table>
         </div>
       </div>
+      ) : null}
 
+      {activeTab === "projects" ? (
       <div className="portfolio-kpi-section">
         <h3 className="portfolio-kpi-heading">Program KPIs</h3>
         <div className="workspace-kpi-strip portfolio-kpi-strip">
@@ -321,8 +661,9 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
           </div>
         </div>
       </div>
+      ) : null}
 
-      {lifecycle ? (
+      {activeTab === "projects" && lifecycle ? (
         <div className="card portfolio-lifecycle-card">
           <h2>Decision lifecycle (Integrations + telemetry)</h2>
           <p className="workspace-meta">
@@ -360,8 +701,30 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
         </div>
       ) : null}
 
+      {activeTab === "projects" ? (
       <div className="card portfolio-distribution">
         <h2>Release posture</h2>
+        <div className="portfolio-chart-grid">
+          <DonutChart data={releaseStatusDonut} title="Release status" emptyMessage="No releases in portfolio report yet." />
+          <div className="portfolio-confidence-strip">
+            <div className="metric">
+              <div className="label">Avg confidence</div>
+              <div className="value">{((report?.avg_confidence ?? 0) * 100).toFixed(1)}%</div>
+            </div>
+            <div className="metric">
+              <div className="label">Avg consensus</div>
+              <div className="value">{((report?.avg_consensus ?? 0) * 100).toFixed(1)}%</div>
+            </div>
+            <div className="metric">
+              <div className="label">Critical risk open</div>
+              <div className="value warn">{report?.high_risk_open ?? 0}</div>
+            </div>
+            <div className="metric">
+              <div className="label">Total releases</div>
+              <div className="value">{report?.releases_total ?? 0}</div>
+            </div>
+          </div>
+        </div>
         <div className="portfolio-distribution-cols">
           <div>
             <h3>Decisions</h3>
@@ -395,10 +758,11 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
           </div>
         </div>
       </div>
+      ) : null}
 
-      {canManage ? (
+      {activeTab === "projects" && canManage ? (
         <div className="card-group">
-          <div className="card">
+          <div className="card" id="portfolio-add-project">
             <h2>Add project</h2>
             <p className="workspace-meta">Stable program identifier (key) and display name. Does not auto-create runs — use Overview / Runs for execution.</p>
             <div className="config-columns">
@@ -430,7 +794,7 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
             <div className="config-columns">
               <div className="form-row">
                 <label>Project</label>
-                <select value={releaseProjectId} onChange={(e) => setReleaseProjectId(Number(e.target.value))}>
+                <select value={releaseProjectId} onChange={(e) => syncReleaseProjectToUrl(Number(e.target.value))}>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.key} — {p.name}
@@ -492,136 +856,6 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
           </div>
         </div>
       ) : null}
-
-      <div className="card">
-        <h2>Executive project breakdown</h2>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Owner</th>
-                <th>Status</th>
-                <th>Releases</th>
-                <th>Go</th>
-                <th>Hold</th>
-                <th>Avg confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report?.project_breakdown ?? []).map((row) => {
-                const proj = projects.find((x) => x.id === row.project_id);
-                return (
-                  <tr key={row.project_id}>
-                    <td>
-                      {row.project_key} — {row.project_name}
-                    </td>
-                    <td>{proj?.owner ?? "—"}</td>
-                    <td>{proj?.status ?? "—"}</td>
-                    <td>{row.releases_total}</td>
-                    <td>{row.go_count}</td>
-                    <td>{row.hold_count}</td>
-                    <td>{(row.avg_confidence * 100).toFixed(1)}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Project directory</h2>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Key</th>
-                <th>Name</th>
-                <th>Owner</th>
-                <th>Status</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.key}</td>
-                  <td>{p.name}</td>
-                  <td>{p.owner ?? "—"}</td>
-                  <td>{p.status}</td>
-                  <td>{new Date(p.updated_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="workspace-section-intro portfolio-release-head">
-          <div>
-            <h2>Release register</h2>
-            <p>Filter by project; open <NavLink to="/app/runs">Runs</NavLink> to correlate run IDs.</p>
-          </div>
-          <div className="form-row portfolio-filter-row">
-            <label htmlFor="portfolio-release-filter">Filter</label>
-            <select id="portfolio-release-filter" value={filterProjectId} onChange={(e) => setFilterProjectId(e.target.value)}>
-              <option value="all">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.key}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Version</th>
-                <th>Target</th>
-                <th>Status</th>
-                <th>Decision</th>
-                <th>Conf.</th>
-                <th>Consensus</th>
-                <th>Risk</th>
-                <th>Run</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReleases.slice(0, 100).map((r) => {
-                const p = projects.find((x) => x.id === r.project_id);
-                return (
-                  <tr key={r.id}>
-                    <td>{p ? p.key : r.project_id}</td>
-                    <td>{r.version}</td>
-                    <td>{r.target_date ? new Date(r.target_date).toLocaleString() : "—"}</td>
-                    <td>{r.status}</td>
-                    <td>{r.release_decision ?? "—"}</td>
-                    <td>{r.decision_confidence != null ? (r.decision_confidence * 100).toFixed(0) + "%" : "—"}</td>
-                    <td>{r.consensus_score != null ? (r.consensus_score * 100).toFixed(0) + "%" : "—"}</td>
-                    <td>{r.risk_level ?? "—"}</td>
-                    <td>
-                      {r.run_id != null ? (
-                        <NavLink to="/app/runs" className="portfolio-inline-link" title="Open Runs to locate this run ID">
-                          #{r.run_id}
-                        </NavLink>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{new Date(r.updated_at).toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

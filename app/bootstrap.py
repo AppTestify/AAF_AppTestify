@@ -95,7 +95,7 @@ def ensure_portfolio_project_link_columns() -> None:
 
 
 def ensure_tenant_notification_delivery_columns() -> None:
-    """Add Slack + governance digest columns to tenant_notification_configs when missing."""
+    """Add Slack/Teams, digest, and channel columns to tenant_notification_configs when missing."""
     from sqlalchemy import inspect
 
     engine = get_engine()
@@ -103,42 +103,50 @@ def ensure_tenant_notification_delivery_columns() -> None:
     if not insp.has_table("tenant_notification_configs"):
         return
     cols = {c["name"] for c in insp.get_columns("tenant_notification_configs")}
-    need_slack = "slack_incoming_webhook_encrypted" not in cols
-    need_flag = "governance_notify_on_run_complete" not in cols
-    need_emails = "governance_run_notify_emails_json" not in cols
-    if not need_slack and not need_flag and not need_emails:
+    patches: list[tuple[str, str]] = []
+    dialect = engine.dialect.name
+
+    def _add(name: str, sqlite_sql: str, pg_sql: str) -> None:
+        if name not in cols:
+            patches.append((name, sqlite_sql if dialect == "sqlite" else pg_sql))
+
+    _add(
+        "slack_incoming_webhook_encrypted",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN slack_incoming_webhook_encrypted TEXT",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS slack_incoming_webhook_encrypted TEXT",
+    )
+    _add(
+        "governance_notify_on_run_complete",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN governance_notify_on_run_complete INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_notify_on_run_complete BOOLEAN NOT NULL DEFAULT false",
+    )
+    _add(
+        "governance_run_notify_emails_json",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN governance_run_notify_emails_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_run_notify_emails_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+    )
+    _add(
+        "teams_incoming_webhook_encrypted",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN teams_incoming_webhook_encrypted TEXT",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS teams_incoming_webhook_encrypted TEXT",
+    )
+    _add(
+        "notification_channels_json",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN notification_channels_json TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS notification_channels_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+    )
+    _add(
+        "digest_schedule_json",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN digest_schedule_json TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS digest_schedule_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+    )
+
+    if not patches:
         return
 
-    dialect = engine.dialect.name
-    _log.info("Patching tenant_notification_configs for share/delivery fields (in-place schema patch)")
-    ddl: list[str] = []
-    if need_slack:
-        ddl.append(
-            "ALTER TABLE tenant_notification_configs ADD COLUMN slack_incoming_webhook_encrypted TEXT"
-            if dialect == "sqlite"
-            else "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS slack_incoming_webhook_encrypted TEXT"
-        )
-    if need_flag:
-        if dialect == "sqlite":
-            ddl.append(
-                "ALTER TABLE tenant_notification_configs ADD COLUMN governance_notify_on_run_complete INTEGER NOT NULL DEFAULT 0"
-            )
-        else:
-            ddl.append(
-                "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_notify_on_run_complete BOOLEAN NOT NULL DEFAULT false"
-            )
-    if need_emails:
-        if dialect == "sqlite":
-            ddl.append(
-                "ALTER TABLE tenant_notification_configs ADD COLUMN governance_run_notify_emails_json TEXT NOT NULL DEFAULT '[]'"
-            )
-        else:
-            ddl.append(
-                "ALTER TABLE tenant_notification_configs ADD COLUMN IF NOT EXISTS governance_run_notify_emails_json JSONB NOT NULL DEFAULT '[]'::jsonb"
-            )
-
+    _log.info("Patching tenant_notification_configs for notification delivery fields")
     with engine.begin() as conn:
-        for stmt in ddl:
+        for _, stmt in patches:
             conn.execute(text(stmt))
 
 

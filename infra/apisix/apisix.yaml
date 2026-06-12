@@ -1,0 +1,29 @@
+routes:
+  - uri: /api/*
+    name: casantris-api
+    upstream:
+      type: roundrobin
+      nodes:
+        "api:8000": 1
+    plugins:
+      prometheus: {}
+      limit-req:
+        rate: 120
+        burst: 60
+        rejected_code: 429
+        key: remote_addr
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+        allow_headers: "*"
+        allow_credential: true
+  - uri: /health
+    name: casantris-health
+    upstream:
+      type: roundrobin
+      nodes:
+        "api:8000": 1
+    plugins:
+      prometheus: {}
+
+#END

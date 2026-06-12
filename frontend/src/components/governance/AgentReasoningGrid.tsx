@@ -20,7 +20,19 @@ export function AgentReasoningGrid({ agents, rarLoops = 0 }: AgentReasoningGridP
               <h3>{agent.name}</h3>
               <p>{agent.domain}</p>
             </div>
-            {agent.isOrchestrator ? <span className="gov-pill gov-pill--info">Orchestrator</span> : null}
+            <div className="gov-agent-card-badges">
+              {agent.toolCallLabel ? (
+                <span className="gov-pill gov-pill--neutral" title="Tools invoked in this run">
+                  {agent.toolCallLabel}
+                </span>
+              ) : null}
+              {agent.transport === "mcp" ? (
+                <span className="gov-pill gov-pill--mcp" title="Evidence fetched via MCP transport">
+                  MCP
+                </span>
+              ) : null}
+              {agent.isOrchestrator ? <span className="gov-pill gov-pill--info">Orchestrator</span> : null}
+            </div>
           </div>
           <p className="gov-agent-claim-label">Claim</p>
           <p className="gov-agent-claim">{agent.claim}</p>

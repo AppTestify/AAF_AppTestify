@@ -8,7 +8,7 @@ from typing import Any
 from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PMFormattedDecision, PipelineResult
 from agents import devops, devsecops, finops, pm_agent
-from agents.registry import run_all_agents_async
+from agents.registry import run_agents_async
 from tools.context import ToolContext, build_tool_context
 from connectors.evidence_normalizer import enrich_for_rar
 from llm.deterministic_explainer import build_explanation
@@ -48,6 +48,8 @@ async def run_pipeline(
     live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
     tool_ctx: ToolContext | None = None,
     input_guard_reports: list[GuardrailResult] | None = None,
+    agent_ids: list[str] | None = None,
+    intent: dict[str, Any] | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
@@ -55,15 +57,22 @@ async def run_pipeline(
     all_guard_reports: list[GuardrailResult] = list(input_guard_reports or [])
     cost_tracker = LlmCostTracker()
 
-    all_guard_reports.extend(run_tool_scope_guards_for_agents(_agent_tool_plans(), settings))
+    activated = agent_ids or ["devops", "finops", "devsecops", "project_management"]
+    plans = _agent_tool_plans()
+    filtered_plans = {aid: plans[aid] for aid in activated if aid in plans}
+    all_guard_reports.extend(run_tool_scope_guards_for_agents(filtered_plans, settings))
 
-    async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
-        ops = await run_all_agents_async(
+    async def _run_agents(ev: list[EvidenceRecord]) -> list[Any]:
+        return await run_agents_async(
             ev,
+            activated,
             tool_ctx=ctx,
             settings=settings,
             llm_providers=llm_providers,
         )
+
+    async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
+        ops = await _run_agents(ev)
         guarded, reports = apply_agent_output_guards(ops, settings)
         all_guard_reports.extend(reports)
         return guarded
@@ -89,12 +98,7 @@ async def run_pipeline(
         except Exception:
             return ""
 
-    initial_opinions_raw = await run_all_agents_async(
-        normalized_evidence,
-        tool_ctx=ctx,
-        settings=settings,
-        llm_providers=llm_providers,
-    )
+    initial_opinions_raw = await _run_agents(normalized_evidence)
     initial_opinions, initial_guard_reports = apply_agent_output_guards(initial_opinions_raw, settings)
     all_guard_reports.extend(initial_guard_reports)
 
@@ -189,5 +193,11 @@ async def run_pipeline(
         llm_invocation=llm_meta,
         guardrails=guardrail_report_dict(all_guard_reports, settings=settings),
         llm_cost=llm_cost,
+        intent=intent or {},
+        agents_activated=activated,
     )
-    return result.model_copy(update={"pm_view": to_pm_decision(result)})
+    updated = result.model_copy(update={"pm_view": to_pm_decision(result)})
+    from pm_interface.decision_formatter import build_governance_brief_from_result
+
+    brief = build_governance_brief_from_result(updated)
+    return updated.model_copy(update={"governance_brief": brief})

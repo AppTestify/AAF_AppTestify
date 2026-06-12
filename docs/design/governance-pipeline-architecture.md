@@ -176,7 +176,9 @@ Epic **[CAS-116](https://apptestify.atlassian.net/browse/CAS-116)** — Architec
 | Brief output guard | Shipped (CAS-122) |
 | LLM cost tracker | Shipped (CAS-123) |
 | Budget cap + alert | Shipped (CAS-124) |
-| Tool scope guard | Shipped (CAS-120) |
+| Tool scope guard + LLM tool loop | Shipped (CAS-120) |
 | Full pipeline wiring | Shipped (CAS-125) |
-| LLM cost tracker + budget | Planned |
-| 5-screen PM UX | Audit pending (CAS-127) |
+| Schema/API parity (`GovernanceBrief`, `agent_outputs`) | Shipped (CAS-126) |
+| 5-screen PM UX (stepper, Brief, guardrail panel) | Shipped (CAS-127) |
+| SecOps intent routing + selective agents | Shipped (CAS-128) |
+| LLM cost tracker + budget UI | Shipped |

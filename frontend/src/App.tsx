@@ -33,6 +33,7 @@ import { WorkspacePortfolioPage } from "./pages/WorkspacePortfolioPage";
 import { RequestAccessPage } from "./pages/RequestAccessPage";
 import { WorkspaceReportsPage } from "./pages/WorkspaceReportsPage";
 import { WorkspaceRunsPage } from "./pages/WorkspaceRunsPage";
+import { WorkspaceBriefPage } from "./pages/WorkspaceBriefPage";
 import { WorkspaceSettingsPage } from "./pages/WorkspaceSettingsPage";
 import { WorkspaceLeadsPage } from "./pages/WorkspaceLeadsPage";
 import { WorkspaceTenantsPage } from "./pages/WorkspaceTenantsPage";
@@ -243,6 +244,7 @@ function AppRoutes() {
         <Route path="home" element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<WorkspaceHomePage user={user as UserPublic} />} />
         <Route path="runs" element={<WorkspaceRunsPage tenantSlug={user?.tenant_slug} />} />
+        <Route path="brief" element={<WorkspaceBriefPage />} />
         <Route
           path="overview"
           element={

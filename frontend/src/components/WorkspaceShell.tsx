@@ -43,6 +43,7 @@ export function WorkspaceShell({ user, onLogout, theme, onToggleTheme }: Workspa
           <NavLink to="/app/evidence">Evidence Hub</NavLink>
           <NavLink to="/app/runs">Agentic Governance</NavLink>
           <NavLink to="/app/cases">Decision & Audit</NavLink>
+          <NavLink to="/app/brief">Executive Brief</NavLink>
           <p className="workspace-nav-group">Control plane</p>
           <NavLink to="/app/alerts">Alerts</NavLink>
           <NavLink to="/app/integrations">Integrations</NavLink>

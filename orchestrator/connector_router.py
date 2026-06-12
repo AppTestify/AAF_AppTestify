@@ -7,7 +7,27 @@ import re
 from pm_interface.router import route_connectors as keyword_route
 
 _CONNECTOR_VECTORS: dict[str, set[str]] = {
-    "github": {"github", "pull", "request", "workflow", "ci", "cd", "build", "commit", "release", "merge", "repo"},
+    "github": {
+        "github",
+        "pull",
+        "request",
+        "workflow",
+        "ci",
+        "cd",
+        "build",
+        "commit",
+        "release",
+        "merge",
+        "repo",
+        "cve",
+        "secret",
+        "vulnerability",
+        "security",
+        "policy",
+        "compliance",
+        "audit",
+        "dependency",
+    },
     "jira": {"jira", "sprint", "ticket", "story", "epic", "blocked", "backlog", "defect", "delivery"},
     "finops": {"cost", "finops", "budget", "spend", "cloud", "bill", "aws", "azure", "gcp", "capacity", "scale"},
     "gitlab": {"gitlab", "merge", "request", "pipeline"},

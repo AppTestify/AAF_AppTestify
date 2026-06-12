@@ -52,6 +52,11 @@ export function AIRecommendationCard({ recommendation }: AIRecommendationCardPro
         <Link to={`/app/runs${runQ}`} className="btn btn-ghost btn-sm">
           Agent Reasoning
         </Link>
+        {recommendation.runId ? (
+          <Link to={`/app/brief?run_id=${recommendation.runId}`} className="btn btn-ghost btn-sm">
+            Executive Brief
+          </Link>
+        ) : null}
       </div>
     </article>
   );

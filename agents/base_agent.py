@@ -97,9 +97,25 @@ class BaseAgent(ABC):
         llm_providers: list | None = None,
         correlation_boost: float = 0.0,
         refresh_tools: list[str] | None = None,
+        settings: Any | None = None,
     ) -> AgentOpinion:
-        """Run tools then optionally synthesize claim via LLM; fallback to deterministic opinion."""
+        """Run LLM tool loop when providers present; else deterministic tools + optional claim LLM."""
+        from aaf.config import get_settings
         from agents.base import run_agent_llm_flow
+        from agents.llm_tool_loop import run_llm_tool_loop
+
+        cfg = settings or get_settings()
+        if llm_providers and cfg.guardrails_enabled:
+            try:
+                return await run_llm_tool_loop(
+                    self,
+                    ctx,
+                    package,
+                    llm_providers=llm_providers,
+                    settings=cfg,
+                )
+            except Exception:
+                pass
 
         base = await self.run_async(
             ctx, package, correlation_boost=correlation_boost, refresh_tools=refresh_tools
@@ -144,8 +160,11 @@ class BaseAgent(ABC):
         theme = self.determine_risk_theme(tool_results, confidence)
         refs = evidence[:12] or [f"{self.agent_id}:baseline"]
 
+        from agents.display import resolve_display_id
+
         return AgentOpinion(
             agent_id=self.agent_id,
+            display_id=resolve_display_id(self.agent_id),
             claim=claim,
             confidence=confidence,
             evidence_refs=refs,

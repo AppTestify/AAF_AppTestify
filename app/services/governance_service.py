@@ -19,6 +19,7 @@ from connectors.pagerduty_connector import PagerDutyConnector
 from guardrails.pipeline import run_input_guards, run_pm_prompt_guard
 from orchestrator.connector_router import route_connectors_semantic
 from orchestrator.pipeline import run_pipeline
+from pm_interface.intent_classifier import classify_pm_intent
 from tools.context import build_tool_context
 
 
@@ -61,7 +62,18 @@ async def run_governance(
     prompt = pm_outcome.prompt
     input_reports.extend(pm_outcome.reports)
 
+    intent_result = classify_pm_intent(prompt)
+    intent_payload = {
+        "category": intent_result.intent.value,
+        "agents_needed": intent_result.agents_needed,
+        "connectors": intent_result.connectors,
+        "confidence": intent_result.confidence,
+    }
+
     names, _routing_confidence = route_connectors_semantic(prompt)
+    for connector in intent_result.connectors:
+        if connector not in names:
+            names.append(connector)
     ctx: dict[str, str] = {
         "prompt": prompt,
         "github_repo": settings.github_repo,
@@ -116,4 +128,6 @@ async def run_governance(
         live_refresh_evidence=live_refresh_evidence,
         tool_ctx=tool_ctx,
         input_guard_reports=input_reports,
+        agent_ids=intent_result.agents_needed,
+        intent=intent_payload,
     )

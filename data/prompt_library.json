@@ -19,6 +19,11 @@
       "id": "holistic",
       "text": "Summarize delivery risk, release readiness, and cloud cost impact for this week.",
       "tags": ["github", "jira", "finops"]
+    },
+    {
+      "id": "security-gate",
+      "text": "Are there CVEs, secret leaks, or policy violations that should block release?",
+      "tags": ["security", "secops", "github"]
     }
   ]
 }

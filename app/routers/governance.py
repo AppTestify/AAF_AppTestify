@@ -22,8 +22,8 @@ from app.services.config_resolver import (
     resolve_effective_settings,
     resolve_tenant_for_user,
 )
-from app.services.decision_framing import build_decision_framing
-from guardrails.budget_cap import check_budget_cap, enforce_budget_cap
+from app.services.run_payload import enrich_run_payload
+from guardrails.budget_cap import enforce_budget_cap
 from guardrails.exceptions import GuardrailBlockedError
 from guardrails.pm_prompt_guard import check_pm_prompt
 from app.services.governance_service import run_governance
@@ -93,7 +93,6 @@ async def governance_run(
             },
         ) from exc
     out = pipeline_result_to_jsonable(result)
-    out["decision_framing"] = build_decision_framing(out)
     out["runtime_config"] = {
         "tenant_slug": tenant.slug if tenant else None,
         "connector_mode": effective.connector_mode.value,
@@ -104,13 +103,7 @@ async def governance_run(
         "status": "degraded",
         "reason": "no_active_provider",
     }
-    if tenant:
-        budget_report = check_budget_cap(db, tenant.id, ts_row, effective)
-        out["llm_budget"] = {
-            **budget_report.metadata,
-            "violations": [v.model_dump() for v in budget_report.violations],
-        }
-    return out
+    return enrich_run_payload(out, db=db, tenant=tenant, settings=effective, ts_row=ts_row)
 
 
 @router.post("/batch")

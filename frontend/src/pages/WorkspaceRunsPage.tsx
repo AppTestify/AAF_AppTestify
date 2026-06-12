@@ -13,6 +13,8 @@ import {
 } from "../api";
 import { AgentReasoningGrid } from "../components/governance/AgentReasoningGrid";
 import { ConsensusDecisionPanel } from "../components/governance/ConsensusDecisionPanel";
+import { GovernanceFlowStepper } from "../components/governance/GovernanceFlowStepper";
+import { GuardrailStatusPanel } from "../components/governance/GuardrailStatusPanel";
 import { deriveAgentGrid, parseGovernanceRunResult } from "../lib/governancePresentation";
 
 type WorkspaceRunsPageProps = {
@@ -159,6 +161,7 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
       setPromptId("");
       setCreateProjectId("");
       setSelectedRun(created);
+      syncRunIdToUrl(created.id);
       setToast(`Run #${created.id} queued`);
       setTimeout(() => setToast(""), 2000);
       await loadRuns();
@@ -270,12 +273,21 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
             agents={agentGrid}
             rarLoops={parsedSelected.result.rar?.rar_loops ?? 0}
           />
+          <GovernanceFlowStepper runId={parsedSelected.run.id} activeStep="runs" />
           <ConsensusDecisionPanel result={parsedSelected.result} framing={parsedSelected.framing} />
+          <GuardrailStatusPanel
+            guardrails={parsedSelected.result.guardrails}
+            llmCost={parsedSelected.result.llm_cost}
+            llmBudget={parsedSelected.result.llm_budget}
+          />
           <div className="gov-recommendation-actions" style={{ marginBottom: "1rem" }}>
             <Link to={`/app/evidence?run_id=${parsedSelected.run.id}`} className="btn btn-ghost btn-sm">
               Evidence Hub
             </Link>
-            <Link to="/app/cases" className="btn btn-ghost btn-sm">
+            <Link to={`/app/brief?run_id=${parsedSelected.run.id}`} className="btn btn-primary btn-sm">
+              Executive Brief
+            </Link>
+            <Link to={`/app/cases?run_id=${parsedSelected.run.id}`} className="btn btn-ghost btn-sm">
               Decision & Audit
             </Link>
           </div>
@@ -308,8 +320,14 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
       <div className="card">
         <div className="workspace-section-intro">
           <div>
-            <h2>Create run</h2>
-            <p>Submit a governance run and monitor status from the run console.</p>
+            <h2>Create run (advanced)</h2>
+            <p>
+              Prefer the guided prompt on{" "}
+              <Link to="/app/overview" className="btn btn-ghost btn-sm">
+                Ask Casantris AI
+              </Link>{" "}
+              — use this form for async queue runs with portfolio linkage.
+            </p>
           </div>
           <div className="workspace-meta">Inputs are tenant-scoped</div>
         </div>

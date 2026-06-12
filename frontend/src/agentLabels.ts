@@ -4,15 +4,17 @@ const LABELS: Record<string, string> = {
   devops: "DevOps",
   project_management: "PM",
   finops: "FinOps",
-  devsecops: "DevSecOps",
+  devsecops: "SecOps",
+  secops: "SecOps",
   DevOpsAgent: "DevOps",
   PMAgent: "PM",
   FinOpsAgent: "FinOps",
-  DevSecOpsAgent: "DevSecOps",
+  DevSecOpsAgent: "SecOps",
   SREAgent: "PM (legacy)",
 };
 
-export function formatAgentLabel(agentIdOrName: string): string {
+export function formatAgentLabel(agentIdOrName: string, displayId?: string | null): string {
+  if (displayId && LABELS[displayId]) return LABELS[displayId];
   return LABELS[agentIdOrName] ?? agentIdOrName;
 }
 

@@ -20,6 +20,10 @@ export type DecisionFraming = {
     consensus_after?: number;
     recommended_action?: string;
     utility_score?: number;
+    global_utility?: number;
+    perf_index?: number;
+    cost_index?: number;
+    risk_index?: number;
     xi_score?: number;
     reground_notes?: string[];
   };
@@ -29,6 +33,8 @@ export type DecisionFraming = {
     conflict_detected?: boolean;
   };
   primary_recommendation_source?: string;
+  intent_category?: string;
+  agents_activated?: string[];
 };
 
 export type ParsedRunContext = {
@@ -224,8 +230,10 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
       { id: "github", label: "GitHub", detail: "Evidence" },
       { id: "jira", label: "Jira", detail: "Evidence" },
       { id: "finops", label: "FinOps", detail: "Evidence" },
+      { id: "secops", label: "SecOps", detail: "Security" },
       { id: "agents", label: "AI Agents", detail: "Reasoning" },
       { id: "consensus", label: "Consensus", detail: "—" },
+      { id: "brief", label: "Brief", detail: "Executive" },
       { id: "decision", label: "Decision", detail: "Pending", active: true },
     ];
   }
@@ -235,19 +243,29 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
   const status = runStatus ?? parsed.run.status;
   const running = status === "running" || status === "queued";
   const done = status === "succeeded";
+  const secopsActive = (framing.agents_activated ?? result.agents_activated ?? []).includes("devsecops");
+  const secopsOpinion = result.agent_opinions?.find((o) => o.agent_id === "devsecops");
   return [
     { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""), completed: true },
     { id: "github", label: "GitHub", detail: "Evidence", completed: done || !running },
     { id: "jira", label: "Jira", detail: "Evidence", completed: done || !running },
     { id: "finops", label: "FinOps", detail: "Evidence", completed: done || !running },
     {
+      id: "secops",
+      label: "SecOps",
+      detail: secopsActive ? (secopsOpinion ? "Active" : "Queued") : "Skipped",
+      completed: done && secopsActive,
+      active: running && secopsActive,
+    },
+    {
       id: "agents",
       label: "AI Agents",
-      detail: `${result.agent_opinions?.length ?? 4} agents`,
+      detail: `${result.agent_opinions?.length ?? framing.agents_activated?.length ?? 3} agents`,
       active: running,
       completed: done,
     },
     { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done, active: running },
+    { id: "brief", label: "Brief", detail: result.governance_brief ? "Ready" : "Pending", completed: done, active: false },
     { id: "decision", label: "Decision", detail: action, active: done, completed: done },
   ];
 }
@@ -289,6 +307,11 @@ export function deriveConnectorSummaries(
   const spendDelta = String(aws.wow_delta_pct ?? aws.spend_increase_pct ?? "—");
   const finBadge = Number(spendDelta) > 20 ? "Cost Watch" : "Stable";
 
+  const secopsOpinion = parsed?.result.agent_opinions?.find((o) => o.agent_id === "devsecops");
+  const secSignals = secopsOpinion?.raw_signals ?? {};
+  const cveCount = Number((secSignals.scan_cves as Record<string, unknown> | undefined)?.critical_count ?? secSignals.cve_count ?? 0);
+  const secBadge = cveCount > 0 ? "Security Risk" : secopsOpinion ? "Reviewed" : "Not activated";
+
   const ghOk = connectorHealth?.find((c) => c.connector_name === "github")?.last_validation_ok;
 
   return [
@@ -329,6 +352,19 @@ export function deriveConnectorSummaries(
         { label: "Budget variance", value: numSignal(aws, "budget_variance_pct", "—") },
         { label: "Top cost driver", value: numSignal(aws, "top_cost_driver", "App compute") },
         { label: "Cost trend", value: Number(spendDelta) > 15 ? "Rising" : "Stable" },
+      ],
+    },
+    {
+      id: "secops",
+      title: "SecOps Evidence",
+      subtitle: "CVE, secrets & policy",
+      badge: secBadge,
+      badgeVariant: cveCount > 0 ? "action" : secopsOpinion ? "healthy" : "watch",
+      metrics: [
+        { label: "Critical CVEs", value: String(cveCount), dot: cveCount > 0 ? "red" : "green" },
+        { label: "Agent confidence", value: secopsOpinion ? secopsOpinion.confidence.toFixed(2) : "—" },
+        { label: "Policy violations", value: numSignal(secSignals as Record<string, unknown>, "policy_violations", "0") },
+        { label: "Status", value: secopsOpinion ? "Activated" : "Skipped for prompt" },
       ],
     },
   ];
@@ -393,7 +429,7 @@ export function deriveAgentGrid(
 ): AgentCardView[] {
   const agents = opinions.map((o) => ({
     id: o.agent_id,
-    name: formatAgentLabel(o.agent_id),
+    name: formatAgentLabel(o.agent_id, o.display_id),
     domain: AGENT_DOMAINS[o.agent_id] ?? "Governance domain",
     claim: o.claim,
     confidence: o.confidence,
@@ -421,6 +457,7 @@ export function deriveAgentGrid(
 export type AskRecommendationColumns = {
   deliveryRisk: string;
   costRisk: string;
+  securityRisk: string;
   confidence: string;
   recommendation: string;
   why: string;
@@ -436,6 +473,13 @@ export function deriveAskColumns(result: GovernanceRunResult): AskRecommendation
 
   const deliveryRisk = perf < 0.45 ? "High" : perf < 0.65 ? "Medium" : "Low";
   const costRisk = cost < 0.45 ? "High" : cost < 0.65 ? "Medium" : "Low";
+  const secOpinion = result.agent_opinions?.find((o) => o.agent_id === "devsecops");
+  const securityRisk =
+    !secOpinion && !(result.agents_activated ?? []).includes("devsecops")
+      ? "N/A"
+      : secOpinion && secOpinion.confidence >= 0.65
+        ? "Elevated"
+        : "Watch";
   const confidence = conf >= 0.75 ? "High" : conf >= 0.5 ? "Medium" : "Low";
 
   const action = formatActionLabel(utility?.recommended_action);
@@ -449,6 +493,7 @@ export function deriveAskColumns(result: GovernanceRunResult): AskRecommendation
   return {
     deliveryRisk,
     costRisk,
+    securityRisk,
     confidence,
     recommendation,
     why: lines[0]?.replace(/^[-*#]+\s*/, "") || "Multiple agent signals indicate elevated delivery risk.",

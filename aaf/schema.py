@@ -44,6 +44,7 @@ class AgentOpinion(BaseModel):
     """Single domain agent output."""
 
     agent_id: str
+    display_id: Optional[str] = None
     claim: str
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_refs: List[str] = Field(default_factory=list)
@@ -89,6 +90,18 @@ class PMFormattedDecision(BaseModel):
     detail_json: Dict[str, Any] = Field(default_factory=dict)
 
 
+class GovernanceBrief(BaseModel):
+    markdown: str
+    executive_title: str
+    executive_summary: str
+    audit_detail: Dict[str, Any] = Field(default_factory=dict)
+    source: str = "deterministic"
+
+
+# Canonical alias — AgentOutput is the same shape as AgentOpinion
+AgentOutput = AgentOpinion
+
+
 class PipelineResult(BaseModel):
     """Full run output for API and UI."""
 
@@ -107,3 +120,6 @@ class PipelineResult(BaseModel):
     llm_invocation: Dict[str, Any] = Field(default_factory=dict)
     guardrails: Dict[str, Any] = Field(default_factory=dict)
     llm_cost: Dict[str, Any] = Field(default_factory=dict)
+    governance_brief: Optional[GovernanceBrief] = None
+    intent: Dict[str, Any] = Field(default_factory=dict)
+    agents_activated: List[str] = Field(default_factory=list)

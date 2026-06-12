@@ -33,7 +33,8 @@ from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
 from app.services.observability import record_connector_call, record_dead_letter, record_llm_invocation, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
-from app.services.decision_framing import build_decision_framing, orchestration_snapshot_from_run_payload
+from app.services.decision_framing import orchestration_snapshot_from_run_payload
+from app.services.run_payload import enrich_run_payload
 from app.services.governance_delivery import deliver_run_complete_notifications
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
@@ -256,7 +257,7 @@ def process_run_sync(run_id: int) -> None:
         }
         record_llm_invocation(out["llm_invocation"]["status"])
 
-        out["decision_framing"] = build_decision_framing(out)
+        out = enrich_run_payload(out, db=db, tenant=tenant, settings=effective, ts_row=settings_row)
 
         run.result_json = out
         run.status = "succeeded"

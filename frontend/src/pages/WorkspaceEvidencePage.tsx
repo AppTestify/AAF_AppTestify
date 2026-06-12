@@ -10,6 +10,7 @@ import {
   type PortfolioProject,
 } from "../api";
 import { EvidenceSourceCards } from "../components/governance/EvidenceSourceCards";
+import { GovernanceFlowStepper } from "../components/governance/GovernanceFlowStepper";
 import { EvidenceTimelineTable } from "../components/governance/EvidenceTimelineTable";
 import {
   deriveConnectorSummaries,
@@ -93,6 +94,7 @@ export function WorkspaceEvidencePage() {
 
   return (
     <div className="app">
+      {parsedRun ? <GovernanceFlowStepper runId={parsedRun.run.id} activeStep="evidence" /> : null}
       <header className="gov-hub-header">
         <p className="gov-hub-eyebrow">Evidence Hub</p>
         <h1 className="gov-hub-title">Live signals from GitHub, Jira, and FinOps</h1>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aaf.config import Settings
-from guardrails.tool_scope_guard import check_tool_call, validate_agent_tool_plan
+from guardrails.tool_scope_guard import append_tool_scope_event, check_tool_call, validate_agent_tool_plan
 
 
 def test_allows_devops_tools():
@@ -22,3 +22,8 @@ def test_validates_full_agent_plan():
         Settings(),
     )
     assert result.passed
+
+
+def test_append_tool_scope_event():
+    raw = append_tool_scope_event({}, tool_name="bad_tool", message="blocked")
+    assert raw["guardrail_events"][0]["guard"] == "tool_scope_guard"

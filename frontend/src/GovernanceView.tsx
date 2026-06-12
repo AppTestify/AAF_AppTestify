@@ -10,6 +10,7 @@ import type {
   UtilityResult,
 } from "./api";
 import { askAssistant, formatAgentLabel } from "./api";
+import { GuardrailStatusPanel } from "./components/governance/GuardrailStatusPanel";
 import { deriveAskColumns } from "./lib/governancePresentation";
 
 export type GovernanceViewProps = {
@@ -41,7 +42,7 @@ function AgentOpinionCard({ opinion }: { opinion: AgentOpinion }) {
   return (
     <li className="agent-opinion-card">
       <div className="agent-opinion-head">
-        <strong>{formatAgentLabel(opinion.agent_id)}</strong>
+        <strong>{formatAgentLabel(opinion.agent_id, opinion.display_id)}</strong>
         <span className="status-chip running">{opinion.risk_theme.replace(/_/g, " ")}</span>
         <span className="field-hint">confidence {opinion.confidence.toFixed(2)}</span>
       </div>
@@ -105,9 +106,9 @@ export function GovernanceView(props: GovernanceViewProps) {
     return "bad";
   }, [orchConsensus]);
 
-  const [activeResultTab, setActiveResultTab] = useState<"executive" | "evidence" | "agents" | "explainability">(
-    "executive"
-  );
+  const [activeResultTab, setActiveResultTab] = useState<
+    "executive" | "evidence" | "agents" | "explainability" | "integrity"
+  >("executive");
   const [showAdmin, setShowAdmin] = useState(false);
   const [followUp, setFollowUp] = useState("");
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; text: string; confidence?: number }[]>(
@@ -256,6 +257,7 @@ export function GovernanceView(props: GovernanceViewProps) {
             <div className="gov-ask-risk-pills">
               <span className="gov-pill gov-pill--high">Delivery Risk: {askColumns.deliveryRisk}</span>
               <span className="gov-pill gov-pill--medium">Cost Risk: {askColumns.costRisk}</span>
+              <span className="gov-pill gov-pill--medium">Security: {askColumns.securityRisk}</span>
               <span className="gov-pill gov-pill--healthy">Confidence: {askColumns.confidence}</span>
             </div>
           </div>
@@ -311,14 +313,14 @@ export function GovernanceView(props: GovernanceViewProps) {
       {result ? (
         <div className="card">
           <div className="gov-tabs">
-            {(["executive", "evidence", "agents", "explainability"] as const).map((tab) => (
+            {(["executive", "evidence", "agents", "explainability", "integrity"] as const).map((tab) => (
               <button
                 key={tab}
                 className={`btn btn-ghost btn-sm ${activeResultTab === tab ? "active" : ""}`}
                 type="button"
                 onClick={() => setActiveResultTab(tab)}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "integrity" ? "Run integrity" : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
@@ -384,7 +386,23 @@ export function GovernanceView(props: GovernanceViewProps) {
               <ReactMarkdown>{result.explanation ?? ""}</ReactMarkdown>
             </div>
           ) : null}
+          {activeResultTab === "integrity" ? (
+            <GuardrailStatusPanel
+              guardrails={result.guardrails}
+              llmCost={result.llm_cost}
+              llmBudget={result.llm_budget}
+            />
+          ) : null}
         </div>
+      ) : null}
+
+      {result?.guardrails?.enabled && activeResultTab !== "integrity" ? (
+        <GuardrailStatusPanel
+          guardrails={result.guardrails}
+          llmCost={result.llm_cost}
+          llmBudget={result.llm_budget}
+          compact
+        />
       ) : null}
 
       {batchResult ? (

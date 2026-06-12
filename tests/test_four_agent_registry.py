@@ -1,7 +1,7 @@
 import asyncio
 
 from aaf.schema import EvidenceRecord
-from agents.registry import run_all_agents_async
+from agents.registry import run_agents_async, run_all_agents_async
 
 
 def test_four_agents_dispatch():
@@ -13,3 +13,16 @@ def test_four_agents_dispatch():
     assert len(opinions) == 4
     agent_ids = {o.agent_id for o in opinions}
     assert agent_ids == {"devops", "finops", "devsecops", "project_management"}
+
+
+def test_selective_agents_dispatch():
+    evidence = [
+        EvidenceRecord(source="github", kind="ci", summary="CI failed on main", severity=0.7),
+    ]
+    opinions = asyncio.run(
+        run_agents_async(evidence, ["devops", "project_management", "finops"])
+    )
+    assert len(opinions) == 3
+    agent_ids = {o.agent_id for o in opinions}
+    assert "devsecops" not in agent_ids
+    assert agent_ids == {"devops", "finops", "project_management"}

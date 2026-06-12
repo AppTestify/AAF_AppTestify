@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   approveDecision,
   createCase,
@@ -11,6 +11,7 @@ import {
   type PortfolioProject,
 } from "../api";
 import { AuditTrailPanel } from "../components/governance/AuditTrailPanel";
+import { GovernanceFlowStepper } from "../components/governance/GovernanceFlowStepper";
 
 type WorkspaceCasesPageProps = {
   tenantSlug?: string | null;
@@ -20,6 +21,7 @@ type WorkspaceCasesPageProps = {
 export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
+  const runIdParam = searchParams.get("run_id") ?? "";
   const setListProjectFilter = (v: string) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set("portfolio_project_id", v);
@@ -67,6 +69,10 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
         const caseId = searchParams.get("case_id");
         if (caseId) {
           const match = rows.find((c) => c.id === Number(caseId));
+          if (match) setSelectedCase(match);
+        } else if (runIdParam) {
+          const runId = Number(runIdParam);
+          const match = rows.find((c) => c.latest_run_id === runId);
           if (match) setSelectedCase(match);
         }
       })
@@ -146,6 +152,9 @@ export function WorkspaceCasesPage({ tenantSlug, canManage }: WorkspaceCasesPage
 
   return (
     <div className="app">
+      {runIdParam && Number.isFinite(Number(runIdParam)) ? (
+        <GovernanceFlowStepper runId={Number(runIdParam)} activeStep="cases" />
+      ) : null}
       <header className="gov-hub-header">
         <p className="gov-hub-eyebrow">Decision & Audit</p>
         <h1 className="gov-hub-title">Formal decisions with audit-ready traceability</h1>

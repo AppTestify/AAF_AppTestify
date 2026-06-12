@@ -215,6 +215,7 @@ export type EvidenceRecord = {
 
 export type AgentOpinion = {
   agent_id: string;
+  display_id?: string;
   claim: string;
   confidence: number;
   evidence_refs: string[];
@@ -260,6 +261,58 @@ export type PMFormattedDecision = {
   detail_json?: Record<string, unknown>;
 };
 
+export type GuardrailViolation = {
+  rule: string;
+  severity: string;
+  message: string;
+};
+
+export type GuardrailStage = {
+  guard_name: string;
+  passed: boolean;
+  blocked?: boolean;
+  violations?: GuardrailViolation[];
+};
+
+export type GuardrailReport = {
+  enabled: boolean;
+  pipeline_order: string[];
+  stages: GuardrailStage[];
+  all_passed: boolean;
+  any_blocked?: boolean;
+  input_blocked?: boolean;
+  summary: { stage_count: number; passed: number; warned: number; blocked: number };
+};
+
+export type LlmCostSnapshot = {
+  totals?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost_usd: number;
+    call_count: number;
+  };
+  by_phase?: Record<string, number>;
+  by_agent?: Record<string, number>;
+  calls?: Record<string, unknown>[];
+};
+
+export type LlmBudgetStatus = {
+  enabled?: boolean;
+  budget_usd?: number;
+  spent_usd?: number;
+  utilization?: number;
+  alert_ratio?: number;
+  status?: string;
+};
+
+export type GovernanceBrief = {
+  markdown: string;
+  executive_title: string;
+  executive_summary: string;
+  audit_detail?: Record<string, unknown>;
+  source?: string;
+};
+
 export type GovernanceRunResult = {
   prompt: string;
   prompt_id?: string | null;
@@ -267,6 +320,7 @@ export type GovernanceRunResult = {
   raw_evidence_by_connector: Record<string, unknown>;
   normalized_evidence: EvidenceRecord[];
   agent_opinions: AgentOpinion[];
+  agent_outputs?: AgentOpinion[];
   consensus: ConsensusResult;
   rar: RARResult;
   utility: UtilityResult;
@@ -275,6 +329,12 @@ export type GovernanceRunResult = {
   pm_view?: PMFormattedDecision;
   decision_framing?: Record<string, unknown>;
   llm_invocation?: Record<string, unknown>;
+  guardrails?: GuardrailReport;
+  llm_cost?: LlmCostSnapshot;
+  llm_budget?: LlmBudgetStatus;
+  governance_brief?: GovernanceBrief;
+  intent?: Record<string, unknown>;
+  agents_activated?: string[];
 };
 
 export { formatAgentLabel, parseIncidentFindings } from "./agentLabels";

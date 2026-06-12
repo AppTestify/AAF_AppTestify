@@ -41,6 +41,13 @@ AGENT_TOOL_ALLOWLIST: dict[str, frozenset[str]] = {
 _WRITE_TOOL_PREFIXES = ("create_", "delete_", "update_", "post_", "put_", "patch_", "mutate_")
 
 
+def append_tool_scope_event(raw_signals: dict, *, tool_name: str, message: str) -> dict:
+    """Append a tool_scope_guard event to agent raw_signals for audit/UI."""
+    events = list(raw_signals.get("guardrail_events") or [])
+    events.append({"guard": "tool_scope_guard", "tool_name": tool_name, "message": message})
+    return {**raw_signals, "guardrail_events": events}
+
+
 def check_tool_call(
     agent_id: str,
     tool_name: str,
@@ -105,12 +112,33 @@ def validate_agent_tool_plan(
     settings: Optional[Settings] = None,
 ) -> GuardrailResult:
     """Validate the full static tool plan for an agent before execution."""
+    from aaf.config import Settings as SettingsCls
+
+    cfg = settings or SettingsCls()
     violations: list[GuardrailViolation] = []
     blocked = False
-    for idx, name in enumerate(tool_names):
-        result = check_tool_call(agent_id, name, call_index=idx, settings=settings)
-        violations.extend(result.violations)
-        if result.blocked:
+    if not cfg.guardrails_enabled:
+        return GuardrailResult(guard_name="tool_scope_guard", passed=True, violations=[])
+
+    allowlist = AGENT_TOOL_ALLOWLIST.get(agent_id)
+    for name in tool_names:
+        if allowlist is not None and name not in allowlist:
+            violations.append(
+                GuardrailViolation(
+                    rule="tool_not_allowed",
+                    severity="block",
+                    message=f"Tool '{name}' is not in allowlist for agent '{agent_id}'",
+                )
+            )
+            blocked = True
+        if any(name.startswith(prefix) for prefix in _WRITE_TOOL_PREFIXES):
+            violations.append(
+                GuardrailViolation(
+                    rule="write_tool_blocked",
+                    severity="block",
+                    message=f"Mutating tool '{name}' is not permitted in governance runs",
+                )
+            )
             blocked = True
     return GuardrailResult(
         guard_name="tool_scope_guard",

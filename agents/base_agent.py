@@ -65,12 +65,25 @@ class BaseAgent(ABC):
         return 0.0
 
     async def run_tools(self, ctx: ToolContext, *, refresh_tools: list[str] | None = None) -> list[ToolResult]:
+        from aaf.config import get_settings
+        from guardrails.tool_scope_guard import filter_allowed_tools
+
         callables = self.tool_callables()
         if refresh_tools:
             name_set = set(refresh_tools)
             callables = [c for c in callables if c.__name__ in name_set]
         if not callables:
             callables = self.tool_callables()
+
+        settings = get_settings()
+        tool_names = [fn.__name__ for fn in callables]
+        allowed_names, scope_report = filter_allowed_tools(self.agent_id, tool_names, settings)
+        if scope_report.blocked:
+            raise RuntimeError(
+                f"tool_scope_guard blocked agent {self.agent_id}: "
+                + "; ".join(v.message for v in scope_report.violations)
+            )
+        callables = [fn for fn in callables if fn.__name__ in allowed_names]
         return list(await asyncio.gather(*[fn(ctx) for fn in callables]))
 
     def system_prompt(self) -> str:

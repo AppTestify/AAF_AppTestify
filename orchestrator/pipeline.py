@@ -7,19 +7,33 @@ from typing import Any
 
 from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PMFormattedDecision, PipelineResult
+from agents import devops, devsecops, finops, pm_agent
 from agents.registry import run_all_agents_async
 from tools.context import ToolContext, build_tool_context
 from connectors.evidence_normalizer import enrich_for_rar
 from llm.deterministic_explainer import build_explanation
 from app.services.llm_runtime import ActiveProvider
 from metrics.explainability import compute_xi
-from guardrails.brief_output_guard import guard_brief_output
 from guardrails.llm_cost_tracker import LlmCostTracker
-from guardrails.pipeline import apply_agent_output_guards, guardrail_report_dict
+from guardrails.brief_output_guard import guard_brief_output
+from guardrails.pipeline import (
+    apply_agent_output_guards,
+    guardrail_report_dict,
+    run_tool_scope_guards_for_agents,
+)
 from guardrails.types import GuardrailResult
 from orchestrator.rar import run_rar_loop_async
 from orchestrator.utility import score_actions
 from pm_interface.decision_formatter import to_pm_decision
+
+
+def _agent_tool_plans() -> dict[str, list[str]]:
+    return {
+        devops.DevOpsAgent.agent_id: [fn.__name__ for fn in devops.DevOpsAgent().tool_callables()],
+        finops.FinOpsAgent.agent_id: [fn.__name__ for fn in finops.FinOpsAgent().tool_callables()],
+        devsecops.DevSecOpsAgent.agent_id: [fn.__name__ for fn in devsecops.DevSecOpsAgent().tool_callables()],
+        pm_agent.PMAgent.agent_id: [fn.__name__ for fn in pm_agent.PMAgent().tool_callables()],
+    }
 
 
 async def run_pipeline(
@@ -38,10 +52,10 @@ async def run_pipeline(
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
     ctx = tool_ctx or build_tool_context(settings)
-
-    agent_guard_reports: list[GuardrailResult] = []
     all_guard_reports: list[GuardrailResult] = list(input_guard_reports or [])
     cost_tracker = LlmCostTracker()
+
+    all_guard_reports.extend(run_tool_scope_guards_for_agents(_agent_tool_plans(), settings))
 
     async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
         ops = await run_all_agents_async(
@@ -51,7 +65,7 @@ async def run_pipeline(
             llm_providers=llm_providers,
         )
         guarded, reports = apply_agent_output_guards(ops, settings)
-        agent_guard_reports.extend(reports)
+        all_guard_reports.extend(reports)
         return guarded
 
     lr = live_refresh_evidence if settings.rar_live_refresh_enabled else None
@@ -59,7 +73,7 @@ async def run_pipeline(
     def llm_reground(opinions: list[Any], evidence: list[EvidenceRecord]) -> str:
         if not llm_providers:
             return ""
-        prompt = (
+        reground_prompt = (
             "Agents disagree on risk themes. Summarize the conflict and what additional evidence "
             "would resolve it in one sentence. Context: "
             + str({"opinions": [o.model_dump() for o in opinions], "evidence_count": len(evidence)})
@@ -67,7 +81,7 @@ async def run_pipeline(
         try:
             text, _ = cost_tracker.invoke_tracked(
                 llm_providers,
-                prompt,
+                reground_prompt,
                 phase="rar_reground",
                 agent_id="orchestrator",
             )
@@ -82,7 +96,8 @@ async def run_pipeline(
         llm_providers=llm_providers,
     )
     initial_opinions, initial_guard_reports = apply_agent_output_guards(initial_opinions_raw, settings)
-    agent_guard_reports.extend(initial_guard_reports)
+    all_guard_reports.extend(initial_guard_reports)
+
     opinions, rar_result, consensus_result = await run_rar_loop_async(
         initial_evidence=normalized_evidence,
         initial_opinions=initial_opinions,
@@ -136,6 +151,7 @@ async def run_pipeline(
                 "reason": "invocation_failed",
                 "providers_attempted": [p.provider_name for p in llm_providers],
             }
+
     explanation, brief_guard_report = guard_brief_output(
         explanation,
         deterministic_explanation=deterministic_explanation,
@@ -145,7 +161,6 @@ async def run_pipeline(
         evidence=normalized_evidence,
         settings=settings,
     )
-    all_guard_reports.extend(agent_guard_reports)
     all_guard_reports.append(brief_guard_report)
 
     xi = compute_xi(
@@ -172,7 +187,7 @@ async def run_pipeline(
         explainability=xi,
         pm_view=placeholder_pm,
         llm_invocation=llm_meta,
-        guardrails=guardrail_report_dict(all_guard_reports) if all_guard_reports else {},
+        guardrails=guardrail_report_dict(all_guard_reports, settings=settings),
         llm_cost=llm_cost,
     )
     return result.model_copy(update={"pm_view": to_pm_decision(result)})

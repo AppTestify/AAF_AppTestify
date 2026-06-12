@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from aaf.config import Settings
@@ -15,9 +16,7 @@ from connectors.github_connector import GitHubConnector
 from connectors.gitlab_connector import GitLabConnector
 from connectors.jira_connector import JiraConnector
 from connectors.pagerduty_connector import PagerDutyConnector
-from datetime import datetime, timezone
-
-from guardrails.pipeline import run_input_guards
+from guardrails.pipeline import run_input_guards, run_pm_prompt_guard
 from orchestrator.connector_router import route_connectors_semantic
 from orchestrator.pipeline import run_pipeline
 from tools.context import build_tool_context
@@ -55,6 +54,13 @@ async def run_governance(
     settings: Settings,
     llm_providers: list[ActiveProvider] | None = None,
 ) -> PipelineResult:
+    input_reports: list = []
+
+    # PM prompt guard runs before connectors/agents (CAS-125)
+    pm_outcome = run_pm_prompt_guard(prompt, settings)
+    prompt = pm_outcome.prompt
+    input_reports.extend(pm_outcome.reports)
+
     names, _routing_confidence = route_connectors_semantic(prompt)
     ctx: dict[str, str] = {
         "prompt": prompt,
@@ -73,9 +79,16 @@ async def run_governance(
         if isinstance(payload, dict):
             payload["_fetched_at"] = fetched_at
     normalized = normalize_all(raw)
-    guard_outcome = run_input_guards(prompt, normalized, raw, settings)
+    guard_outcome = run_input_guards(
+        prompt,
+        normalized,
+        raw,
+        settings,
+        pm_already_checked=True,
+    )
     prompt = guard_outcome.prompt
     normalized = guard_outcome.evidence
+    input_reports.extend(guard_outcome.reports)
 
     async def live_refresh_evidence() -> list[EvidenceRecord]:
         raw_fresh = await _fetch_raw_evidence(settings, names, ctx)
@@ -83,7 +96,13 @@ async def run_governance(
             if isinstance(payload, dict):
                 payload["_fetched_at"] = datetime.now(timezone.utc).isoformat()
         fresh_normalized = normalize_all(raw_fresh)
-        fresh_outcome = run_input_guards(prompt, fresh_normalized, raw_fresh, settings)
+        fresh_outcome = run_input_guards(
+            prompt,
+            fresh_normalized,
+            raw_fresh,
+            settings,
+            pm_already_checked=True,
+        )
         return fresh_outcome.evidence
 
     return await run_pipeline(
@@ -96,5 +115,5 @@ async def run_governance(
         llm_providers=llm_providers or [],
         live_refresh_evidence=live_refresh_evidence,
         tool_ctx=tool_ctx,
-        input_guard_reports=guard_outcome.reports,
+        input_guard_reports=input_reports,
     )

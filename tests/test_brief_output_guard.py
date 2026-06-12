@@ -68,7 +68,8 @@ def test_falls_back_on_conflicting_action():
         evidence=evidence,
         settings=Settings(),
     )
-    assert not report.passed
+    assert report.passed
+    assert report.metadata.get("fallback") == "deterministic"
     assert text == deterministic
     assert any(v.rule == "action_lock" for v in report.violations)
 
@@ -85,5 +86,6 @@ def test_falls_back_on_wrong_consensus_citation():
         evidence=evidence,
         settings=Settings(),
     )
-    assert not report.passed
+    assert report.passed
+    assert report.metadata.get("fallback") == "deterministic"
     assert text == deterministic

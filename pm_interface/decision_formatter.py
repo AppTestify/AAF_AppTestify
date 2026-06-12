@@ -28,6 +28,8 @@ def to_pm_decision(result: PipelineResult) -> PMFormattedDecision:
         "utility_score": result.utility.utility_score,
         "xi_score": result.explainability.xi_score,
         "connectors": result.connectors_used,
+        "guardrails": result.guardrails,
+        "llm_cost": result.llm_cost,
     }
     return PMFormattedDecision(title=title, summary_markdown=summary, detail_json=detail)
 

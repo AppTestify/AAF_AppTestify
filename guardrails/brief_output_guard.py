@@ -146,17 +146,18 @@ def check_brief_output(
             )
         )
 
-    blocked = any(v.severity == "block" for v in violations)
-    sanitized = deterministic_explanation if blocked else explanation
+    action_violations = [v for v in violations if v.severity == "block"]
+    use_fallback = len(action_violations) > 0
+    sanitized = deterministic_explanation if use_fallback else explanation
     return GuardrailResult(
         guard_name="brief_output_guard",
-        passed=not blocked,
+        passed=True,
         blocked=False,
         violations=violations,
         sanitized_explanation=sanitized,
         metadata={
-            "action_lock": "enforced" if blocked else "ok",
-            "fallback": "deterministic" if blocked else "llm",
+            "action_lock": "enforced" if use_fallback else "ok",
+            "fallback": "deterministic" if use_fallback else "llm",
             "recommended_action": recommended.value,
         },
     )

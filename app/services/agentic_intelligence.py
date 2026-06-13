@@ -7,7 +7,7 @@ from typing import Any
 
 from aaf.schema import AgentOpinion, RiskTheme
 from app.services.llm_runtime import ActiveProvider, LLMInvocationError, invoke_json_with_failover
-from orchestrator.consensus import compute_consensus
+from orchestrator.consensus import compute_consensus as _pipeline_compute_consensus
 
 
 def _clamp(v: float) -> float:
@@ -180,7 +180,7 @@ def compute_consensus_from_findings(findings: list[dict[str, Any]]) -> dict[str,
                 risk_theme=theme_map.get(domain, RiskTheme.UNKNOWN),
             )
         )
-    result = compute_consensus(opinions)
+    result = _pipeline_compute_consensus(opinions)
     severities = {str(f.get("severity", "info")) for f in findings}
     conflict = "critical" in severities and "info" in severities
     return {

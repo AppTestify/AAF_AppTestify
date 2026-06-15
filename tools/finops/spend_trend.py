@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.finops._aws_data import load_finops_bundle
 
 
+@cached_tool("get_spend_trend")
 async def get_spend_trend(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_finops_bundle(ctx)

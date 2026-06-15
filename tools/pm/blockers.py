@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.pm._sprint_data import load_sprint_issues
 
 
@@ -55,6 +55,7 @@ async def _direct_count_blockers(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("count_blockers")
 async def count_blockers(ctx: ToolContext) -> ToolResult:
     from tools.mcp.router import run_with_transport
 

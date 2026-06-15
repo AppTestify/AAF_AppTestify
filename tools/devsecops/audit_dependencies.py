@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.devsecops._security_data import load_security_bundle
 
 
+@cached_tool("audit_dependencies")
 async def audit_dependencies(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_security_bundle(ctx)

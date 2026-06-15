@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_github_fixture
 
@@ -104,6 +104,7 @@ async def _direct_get_ci_status(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("get_ci_status")
 async def get_ci_status(ctx: ToolContext) -> ToolResult:
     from tools.context import get_cached_tool_result
 

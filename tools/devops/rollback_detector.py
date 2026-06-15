@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
 
+@cached_tool("detect_rollbacks")
 async def detect_rollbacks(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

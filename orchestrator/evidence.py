@@ -108,6 +108,7 @@ async def _warm_tool_cache(tool_ctx: ToolContext, tool_names: list[str]) -> dict
 
 def _tool_module_for_name(tool_name: str) -> tuple[str, str] | None:
     mapping: dict[str, tuple[str, str]] = {
+        # DevOps
         "get_ci_status": ("tools.devops.ci_status", "get_ci_status"),
         "get_deploy_history": ("tools.devops.deploy_history", "get_deploy_history"),
         "detect_rollbacks": ("tools.devops.rollback_detector", "detect_rollbacks"),
@@ -115,11 +116,33 @@ def _tool_module_for_name(tool_name: str) -> tuple[str, str] | None:
         "get_pr_status": ("tools.devops.pr_status", "get_pr_status"),
         "get_commit_activity": ("tools.devops.commit_activity", "get_commit_activity"),
         "check_pipeline_config": ("tools.devops.pipeline_config", "check_pipeline_config"),
+        # PM
+        "get_sprint_status": ("tools.pm.sprint_status", "get_sprint_status"),
         "count_blockers": ("tools.pm.blockers", "count_blockers"),
         "get_open_defects": ("tools.pm.open_defects", "get_open_defects"),
-        "get_sprint_status": ("tools.pm.sprint_status", "get_sprint_status"),
+        "calc_velocity_risk": ("tools.pm.velocity_risk", "calc_velocity_risk"),
+        "get_story_cycle_time": ("tools.pm.story_cycle_time", "get_story_cycle_time"),
+        "get_scope_change": ("tools.pm.scope_change", "get_scope_change"),
+        "get_team_capacity": ("tools.pm.team_capacity", "get_team_capacity"),
+        "check_latency": ("tools.pm.latency_check", "check_latency"),
+        "check_error_rate": ("tools.pm.error_rate", "check_error_rate"),
+        "check_queue_depth": ("tools.pm.queue_depth", "check_queue_depth"),
+        # FinOps
         "get_spend_trend": ("tools.finops.spend_trend", "get_spend_trend"),
+        "check_budget_pace": ("tools.finops.budget_pace", "check_budget_pace"),
         "detect_scaling_anomaly": ("tools.finops.scaling_anomaly", "detect_scaling_anomaly"),
+        "calc_unit_cost": ("tools.finops.unit_cost", "calc_unit_cost"),
+        "get_ri_coverage": ("tools.finops.ri_coverage", "get_ri_coverage"),
+        "get_cost_by_tag": ("tools.finops.cost_by_tag", "get_cost_by_tag"),
+        "get_cost_forecast": ("tools.finops.cost_forecast", "get_cost_forecast"),
+        # DevSecOps
+        "scan_cves": ("tools.devsecops.scan_cves", "scan_cves"),
+        "scan_secrets": ("tools.devsecops.scan_secrets", "scan_secrets"),
+        "check_policy_violations": ("tools.devsecops.check_policy_violations", "check_policy_violations"),
+        "audit_dependencies": ("tools.devsecops.audit_dependencies", "audit_dependencies"),
+        "check_ssl_expiry": ("tools.devsecops.ssl_expiry", "check_ssl_expiry"),
+        "get_sast_results": ("tools.devsecops.sast_results", "get_sast_results"),
+        "check_compliance_posture": ("tools.devsecops.compliance_posture", "check_compliance_posture"),
     }
     return mapping.get(tool_name)
 

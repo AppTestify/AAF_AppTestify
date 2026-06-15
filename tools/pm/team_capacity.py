@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.sim_data import load_tools_fixture
 
 
@@ -16,6 +16,7 @@ def _capacity_prefs(ctx: ToolContext) -> dict[str, Any]:
     return cap if isinstance(cap, dict) else {}
 
 
+@cached_tool("get_team_capacity")
 async def get_team_capacity(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

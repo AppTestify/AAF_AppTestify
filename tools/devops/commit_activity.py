@@ -6,13 +6,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
 _HIGH_RISK_PREFIXES = ("payment/", "payments/", "auth/", "billing/")
 
 
+@cached_tool("get_commit_activity")
 async def get_commit_activity(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     since = (now - timedelta(hours=24)).isoformat().replace("+00:00", "Z")

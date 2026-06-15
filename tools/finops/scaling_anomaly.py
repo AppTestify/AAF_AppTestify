@@ -7,10 +7,11 @@ from typing import Any
 
 from agents.schemas import ToolResult
 from tools.aws_client import get_aws_client
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.finops._aws_data import load_finops_bundle
 
 
+@cached_tool("detect_scaling_anomaly")
 async def detect_scaling_anomaly(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_finops_bundle(ctx)

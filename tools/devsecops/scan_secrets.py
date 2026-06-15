@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.devsecops._security_data import load_security_bundle
 
 
@@ -36,6 +36,7 @@ async def _direct_scan_secrets(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("scan_secrets")
 async def scan_secrets(ctx: ToolContext) -> ToolResult:
     from tools.mcp.router import run_with_transport
 

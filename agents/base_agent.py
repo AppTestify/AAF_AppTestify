@@ -67,6 +67,7 @@ class BaseAgent(ABC):
     async def run_tools(self, ctx: ToolContext, *, refresh_tools: list[str] | None = None) -> list[ToolResult]:
         from aaf.config import get_settings
         from guardrails.tool_scope_guard import filter_allowed_tools
+        import dataclasses
 
         callables = self.tool_callables()
         if refresh_tools:
@@ -84,6 +85,12 @@ class BaseAgent(ABC):
                 + "; ".join(v.message for v in scope_report.violations)
             )
         callables = [fn for fn in callables if fn.__name__ in allowed_names]
+
+        if refresh_tools:
+            ctx = dataclasses.replace(ctx, extra={**ctx.extra, "refresh_tools": set(refresh_tools)})
+        else:
+            ctx = dataclasses.replace(ctx, extra={k: v for k, v in ctx.extra.items() if k != "refresh_tools"})
+
         return list(await asyncio.gather(*[fn(ctx) for fn in callables]))
 
     def system_prompt(self) -> str:

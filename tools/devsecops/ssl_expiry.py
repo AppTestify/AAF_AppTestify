@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.sim_data import load_tools_fixture
 
 
@@ -37,6 +37,7 @@ def _check_domain_expiry(hostname: str) -> dict[str, Any] | None:
         return None
 
 
+@cached_tool("check_ssl_expiry")
 async def check_ssl_expiry(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     prefs = ctx.extra.get("ui_preferences") if isinstance(ctx.extra.get("ui_preferences"), dict) else {}

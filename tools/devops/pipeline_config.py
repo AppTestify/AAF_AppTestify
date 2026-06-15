@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
 
+@cached_tool("check_pipeline_config")
 async def check_pipeline_config(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     prefs = ctx.extra.get("ui_preferences") if isinstance(ctx.extra.get("ui_preferences"), dict) else {}

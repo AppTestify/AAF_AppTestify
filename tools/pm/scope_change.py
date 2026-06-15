@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.pm._sprint_data import load_sprint_issues
 from tools.sim_data import load_tools_fixture
 
@@ -23,6 +23,7 @@ def _story_points(issue: dict[str, Any]) -> float:
     return 1.0
 
 
+@cached_tool("get_scope_change")
 async def get_scope_change(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

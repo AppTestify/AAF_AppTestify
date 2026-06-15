@@ -7,10 +7,11 @@ from typing import Any
 
 from agents.schemas import ToolResult
 from tools.aws_client import get_aws_client
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.finops._aws_data import load_finops_bundle
 
 
+@cached_tool("check_budget_pace")
 async def check_budget_pace(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_finops_bundle(ctx)

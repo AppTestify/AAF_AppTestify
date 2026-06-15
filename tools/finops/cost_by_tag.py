@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.sim_data import load_tools_fixture
 
 
+@cached_tool("get_cost_by_tag")
 async def get_cost_by_tag(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

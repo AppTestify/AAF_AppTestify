@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.pm._sprint_data import load_sprint_issues, story_points
 
 
+@cached_tool("calc_velocity_risk")
 async def calc_velocity_risk(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     sprint, issues = await load_sprint_issues(ctx)

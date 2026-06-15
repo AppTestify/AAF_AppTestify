@@ -102,12 +102,26 @@ def _from_keyword_fallback(prompt: str) -> IntentRouterResult:
     )
 
 
+from pydantic import BaseModel, Field
+
+class LLMIntentPayload(BaseModel):
+    intent: str = Field(default="release_readiness")
+    agents_needed: list[str] = Field(default_factory=list)
+    reasoning: str = Field(default="LLM intent router classification.")
+
 def _from_llm_json(prompt: str, payload: dict[str, Any]) -> IntentRouterResult:
-    intent = str(payload.get("intent") or "release_readiness").strip().lower()
-    if intent not in _INTENT_VALUES:
+    try:
+        parsed = LLMIntentPayload(**payload)
+        intent = parsed.intent.strip().lower()
+        if intent not in _INTENT_VALUES:
+            intent = "cross_domain"
+        agents = _normalize_agents(parsed.agents_needed, intent)
+        reasoning = parsed.reasoning.strip() or "LLM intent router classification."
+    except Exception:
         intent = "cross_domain"
-    agents = _normalize_agents(payload.get("agents_needed"), intent)
-    reasoning = str(payload.get("reasoning") or "").strip() or "LLM intent router classification."
+        agents = _normalize_agents([], intent)
+        reasoning = "LLM intent router classification fallback due to schema error."
+
     return IntentRouterResult(
         intent=intent,
         agents_needed=agents,

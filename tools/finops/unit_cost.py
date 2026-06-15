@@ -7,10 +7,11 @@ from typing import Any
 
 from agents.schemas import ToolResult
 from tools.aws_client import get_aws_client
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.finops._aws_data import load_finops_bundle
 
 
+@cached_tool("calc_unit_cost")
 async def calc_unit_cost(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     bundle = await load_finops_bundle(ctx)

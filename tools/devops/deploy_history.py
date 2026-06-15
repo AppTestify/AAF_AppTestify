@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_github_fixture, load_tools_fixture
 
@@ -98,6 +98,7 @@ async def _direct_get_deploy_history(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("get_deploy_history")
 async def get_deploy_history(ctx: ToolContext) -> ToolResult:
     from tools.mcp.router import run_with_transport
 

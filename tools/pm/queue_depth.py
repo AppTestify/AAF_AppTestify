@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 
 
+@cached_tool("check_queue_depth")
 async def check_queue_depth(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     try:

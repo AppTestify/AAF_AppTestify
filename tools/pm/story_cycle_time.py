@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.jira_client import jira_get
 from tools.pm._sprint_data import load_sprint_issues
 from tools.sim_data import load_tools_fixture
@@ -36,6 +36,7 @@ def _cycle_days_from_changelog(changelog: dict[str, Any]) -> float | None:
     return None
 
 
+@cached_tool("get_story_cycle_time")
 async def get_story_cycle_time(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

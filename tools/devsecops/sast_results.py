@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.sim_data import load_tools_fixture
 
 
@@ -18,6 +18,7 @@ def _sast_config(ctx: ToolContext) -> dict[str, Any]:
     return sast if isinstance(sast, dict) else {}
 
 
+@cached_tool("get_sast_results")
 async def get_sast_results(ctx: ToolContext) -> ToolResult:
     now = datetime.now(timezone.utc)
     raw: dict[str, Any] = {

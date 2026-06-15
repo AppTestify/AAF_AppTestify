@@ -75,6 +75,11 @@ def get_cached_tool_result(ctx: ToolContext, tool_name: str):
     """Return a cached ToolResult from the evidence package, if present."""
     from agents.schemas import ToolResult
 
+    # Bypass the cache if this tool is listed for explicit refresh
+    refresh_set = (ctx.extra or {}).get("refresh_tools") or set()
+    if tool_name in refresh_set:
+        return None
+
     pkg = ctx.evidence_package or {}
     tools = pkg.get("tools") or {}
     entry = tools.get(tool_name)
@@ -85,6 +90,20 @@ def get_cached_tool_result(ctx: ToolContext, tool_name: str):
     if isinstance(entry, dict):
         return ToolResult.model_validate(entry)
     return None
+
+
+def cached_tool(name: str):
+    """Decorator to check the tool cache before running a tool."""
+    def decorator(fn):
+        from functools import wraps
+        @wraps(fn)
+        async def wrapper(ctx: ToolContext, *args, **kwargs):
+            cached = get_cached_tool_result(ctx, name)
+            if cached is not None:
+                return cached
+            return await fn(ctx, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def cache_tool_result(ctx: ToolContext, result) -> None:

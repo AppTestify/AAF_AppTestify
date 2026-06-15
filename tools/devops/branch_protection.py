@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.github_client import github_get
 from tools.sim_data import load_tools_fixture
 
@@ -71,6 +71,7 @@ async def _direct_check_branch_protection(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("check_branch_protection")
 async def check_branch_protection(ctx: ToolContext) -> ToolResult:
     from tools.mcp.router import run_with_transport
 

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.schemas import ToolResult
-from tools.context import ToolContext
+from tools.context import ToolContext, cached_tool
 from tools.pm._sprint_data import load_sprint_issues
 
 
@@ -60,6 +60,7 @@ async def _direct_get_open_defects(ctx: ToolContext) -> ToolResult:
     )
 
 
+@cached_tool("get_open_defects")
 async def get_open_defects(ctx: ToolContext) -> ToolResult:
     from tools.mcp.router import run_with_transport
 

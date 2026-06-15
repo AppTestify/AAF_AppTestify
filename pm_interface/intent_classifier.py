@@ -1,5 +1,3 @@
-"""Keyword-based PM intent classification for selective agent activation."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,39 +6,31 @@ from enum import Enum
 
 class IntentCategory(str, Enum):
     RELEASE_READINESS = "release_readiness"
+    DELIVERY_HEALTH = "delivery_health"
+    COST_ANOMALY = "cost_anomaly"
     COST_REVIEW = "cost_review"
     SECURITY_GATE = "security_gate"
     CROSS_DOMAIN = "cross_domain"
-    OBSERVABILITY = "observability"
 
+_SECURITY_KEYWORDS = frozenset({"cve", "secret", "vulnerability", "security", "scan"})
+_COST_KEYWORDS = frozenset({"cost", "spend", "budget", "finops", "anomaly"})
+_DELIVERY_HEALTH_KEYWORDS = frozenset({"latency", "error", "health", "observability", "blocker", "sprint", "delivery"})
+_RELEASE_KEYWORDS = frozenset({"release", "deploy", "ship", "today", "monday"})
 
-_DEFAULT_AGENTS = ["devops", "project_management", "finops"]
-_SECURITY_AGENTS = [*_DEFAULT_AGENTS, "devsecops"]
-_OBSERVABILITY_AGENTS = ["project_management", "devops"]
-
-_SECURITY_KEYWORDS = frozenset(
-    {
-        "cve",
-        "cves",
-        "secret",
-        "secrets",
-        "vulnerability",
-        "vulnerabilities",
-        "policy",
-        "compliance",
-        "secops",
-        "security",
-        "devsecops",
-        "scan",
-        "audit",
-        "dependency",
-        "dependencies",
-    }
-)
-_COST_KEYWORDS = frozenset({"cost", "spend", "budget", "finops", "cloud cost", "billing", "ri coverage"})
-_RELEASE_KEYWORDS = frozenset({"release", "deploy", "ship", "production", "rollback", "ci", "blocker", "sprint"})
-_OBSERVABILITY_KEYWORDS = frozenset({"latency", "error rate", "queue depth", "platform health", "observability", "apdex"})
-
+def classify_intent(prompt: str) -> tuple[IntentCategory, list[str]]:
+    """Classify intent returning tuple of (IntentCategory, agents_needed) in <1ms."""
+    text = (prompt or "").lower()
+    
+    if any(kw in text for kw in _SECURITY_KEYWORDS):
+        return IntentCategory.SECURITY_GATE, ["devops", "project_management", "finops", "devsecops"]
+    elif any(kw in text for kw in _COST_KEYWORDS):
+        return IntentCategory.COST_ANOMALY, ["devops", "project_management", "finops"]
+    elif any(kw in text for kw in _DELIVERY_HEALTH_KEYWORDS):
+        return IntentCategory.DELIVERY_HEALTH, ["project_management", "devops"]
+    elif any(kw in text for kw in _RELEASE_KEYWORDS):
+        return IntentCategory.RELEASE_READINESS, ["devops", "project_management", "finops"]
+        
+    return IntentCategory.RELEASE_READINESS, ["devops", "project_management", "finops"]
 
 @dataclass(frozen=True)
 class IntentResult:
@@ -49,46 +39,11 @@ class IntentResult:
     connectors: list[str]
     confidence: float
 
-
 def classify_pm_intent(prompt: str) -> IntentResult:
-    """Classify prompt intent using keyword rules (no LLM on Phase 1 path)."""
-    text = (prompt or "").lower()
-    tokens = set(text.replace(",", " ").replace(".", " ").split())
-
-    security_hits = sum(1 for kw in _SECURITY_KEYWORDS if kw in text or kw in tokens)
-    cost_hits = sum(1 for kw in _COST_KEYWORDS if kw in text)
-    release_hits = sum(1 for kw in _RELEASE_KEYWORDS if kw in text)
-    observability_hits = sum(1 for kw in _OBSERVABILITY_KEYWORDS if kw in text)
-
-    if security_hits >= 2 or (security_hits >= 1 and "security" in text):
-        intent = IntentCategory.SECURITY_GATE
-        agents = list(_SECURITY_AGENTS)
-        connectors = ["github", "jira", "finops"]
-        confidence = min(0.95, 0.55 + security_hits * 0.1)
-    elif cost_hits >= 2 and release_hits == 0:
-        intent = IntentCategory.COST_REVIEW
-        agents = list(_DEFAULT_AGENTS)
-        connectors = ["finops", "jira", "github"]
-        confidence = min(0.9, 0.5 + cost_hits * 0.1)
-    elif release_hits >= 1 and security_hits == 0:
-        intent = IntentCategory.RELEASE_READINESS
-        agents = list(_DEFAULT_AGENTS)
-        connectors = ["github", "jira", "finops"]
-        confidence = min(0.9, 0.5 + release_hits * 0.08)
-    elif observability_hits >= 1:
-        intent = IntentCategory.OBSERVABILITY
-        agents = list(_OBSERVABILITY_AGENTS)
-        connectors = ["github", "jira"]
-        confidence = min(0.85, 0.5 + observability_hits * 0.12)
-    elif security_hits >= 1 and (release_hits >= 1 or cost_hits >= 1):
-        intent = IntentCategory.CROSS_DOMAIN
-        agents = list(_SECURITY_AGENTS)
-        connectors = ["github", "jira", "finops"]
-        confidence = 0.75
-    else:
-        intent = IntentCategory.RELEASE_READINESS
-        agents = list(_DEFAULT_AGENTS)
-        connectors = ["github", "jira", "finops"]
-        confidence = 0.45
-
-    return IntentResult(intent=intent, agents_needed=agents, connectors=connectors, confidence=confidence)
+    intent, agents = classify_intent(prompt)
+    return IntentResult(
+        intent=intent,
+        agents_needed=agents,
+        connectors=["github", "jira", "finops"],
+        confidence=0.85
+    )

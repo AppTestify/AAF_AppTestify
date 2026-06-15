@@ -66,10 +66,8 @@ async def run_governance(
     normalized = guard_outcome.evidence
     input_reports.extend(guard_outcome.reports)
     evidence_package["records"] = [r.model_dump(mode="json") for r in normalized]
-    evidence_package["signal_count"] = len(normalized)
     if tool_ctx.evidence_package is not None:
         tool_ctx.evidence_package["records"] = evidence_package["records"]
-        tool_ctx.evidence_package["signal_count"] = len(normalized)
 
     async def live_refresh_evidence() -> list[EvidenceRecord]:
         raw_fresh, normalized_fresh, package_fresh, refreshed_ctx = await collect_evidence(

@@ -38,7 +38,7 @@ _CONNECTORS_BY_INTENT: dict[str, list[str]] = {
 _INTENT_TO_CATEGORY = {
     "release_readiness": IntentCategory.RELEASE_READINESS,
     "reliability": IntentCategory.RELEASE_READINESS,
-    "cost": IntentCategory.COST_REVIEW,
+    "cost": IntentCategory.COST_ANOMALY,
     "security": IntentCategory.SECURITY_GATE,
     "cross_domain": IntentCategory.CROSS_DOMAIN,
 }

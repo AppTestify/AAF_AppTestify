@@ -79,6 +79,8 @@ def score_actions(
         return w_p * perf + w_r * risk + w_c * 0.2 * cost
 
     def u_mitigate() -> float:
+        if opinions:
+            return w_p * p_index + w_c * ci_index + w_r * r_index
         return w_p * 0.8 * perf + w_r * 0.9 * risk + w_c * 0.3 * cost
 
     def u_scale() -> float:
@@ -89,7 +91,7 @@ def score_actions(
 
     def u_hold_release() -> float:
         if opinions:
-            return w_p * p_index + w_c * ci_index + w_r * r_index
+            return round(1.0 - p_index, 4)
         return w_r * risk + w_p * 0.35 * perf + w_c * 0.15 * cost
 
     def u_observe() -> float:

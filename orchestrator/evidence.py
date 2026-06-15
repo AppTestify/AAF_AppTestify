@@ -24,21 +24,29 @@ async def _fetch_raw_evidence(
     names: list[str],
     ctx: dict[str, str],
 ) -> dict[str, dict[str, Any]]:
+    connector_map = {
+        "github": GitHubConnector,
+        "jira": JiraConnector,
+        "finops": FinopsConnector,
+        "gitlab": GitLabConnector,
+        "bitbucket": BitbucketConnector,
+        "pagerduty": PagerDutyConnector,
+        "azure_devops": AzureDevOpsConnector,
+    }
+    
+    active_names = [n for n in names if n in connector_map]
+    tasks = [connector_map[name](settings).fetch_evidence(ctx) for name in active_names]  # type: ignore[arg-type]
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
     raw: dict[str, dict[str, Any]] = {}
-    if "github" in names:
-        raw["github"] = await GitHubConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "jira" in names:
-        raw["jira"] = await JiraConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "finops" in names:
-        raw["finops"] = await FinopsConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "gitlab" in names:
-        raw["gitlab"] = await GitLabConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "bitbucket" in names:
-        raw["bitbucket"] = await BitbucketConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "pagerduty" in names:
-        raw["pagerduty"] = await PagerDutyConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "azure_devops" in names:
-        raw["azure_devops"] = await AzureDevOpsConnector(settings).fetch_evidence(ctx)  # type: ignore[arg-type]
+    for name, res in zip(active_names, results):
+        if not isinstance(res, Exception):
+            raw[name] = res
+        else:
+            # Depending on strictness, we might want to log this or set an error dict
+            raw[name] = {"error": str(res)}
+            
     return raw
 
 
@@ -137,8 +145,19 @@ async def collect_evidence(
     if tenant_ui_preferences:
         tool_extra["ui_preferences"] = tenant_ui_preferences
 
+    import uuid
+    run_id = uuid.uuid4().hex
+    staleness_summary = "Fresh"
+    for payload in raw.values():
+        if isinstance(payload, dict) and payload.get("is_stale", False):
+            staleness_summary = "Contains stale data"
+            break
+
     evidence_package: dict[str, Any] = {
         "prompt": prompt,
+        "run_id": run_id,
+        "signal_count": len(normalized),
+        "staleness_summary": staleness_summary,
         "records": [r.model_dump(mode="json") for r in normalized],
         "raw_by_connector": raw,
         "fetched_at": fetched_at,

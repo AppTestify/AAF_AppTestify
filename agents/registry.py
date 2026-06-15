@@ -68,6 +68,7 @@ async def run_agents_async(
 async def run_all_agents_async(
     evidence: list[EvidenceRecord],
     *,
+    agent_ids: list[str] | None = None,
     tool_ctx: ToolContext | None = None,
     settings: Settings | None = None,
     llm_providers: list[ActiveProvider] | None = None,
@@ -80,7 +81,7 @@ async def run_all_agents_async(
 
     return await run_agents_async(
         evidence,
-        ["devops", "finops", "devsecops", "project_management"],
+        agent_ids or ["devops", "finops", "devsecops", "project_management"],
         tool_ctx=ctx,
         settings=settings,
         llm_providers=llm_providers,
@@ -91,12 +92,14 @@ def run_all_agents(
     evidence: list[EvidenceRecord],
     llm_providers: list[ActiveProvider] | None = None,
     *,
+    agent_ids: list[str] | None = None,
     tool_ctx: ToolContext | None = None,
     settings: Settings | None = None,
 ) -> list[AgentOpinion]:
     return asyncio.run(
         run_all_agents_async(
             evidence,
+            agent_ids=agent_ids,
             tool_ctx=tool_ctx,
             settings=settings,
             llm_providers=llm_providers,

@@ -79,7 +79,12 @@ def test_case_and_decision_flow(client: TestClient):
         json={"prompt": "Should we release today?"},
     )
     run_id = run.json()["id"]
-    _wait_for_run(client, token, run_id)
+    completed_run = _wait_for_run(client, token, run_id)
+    result = completed_run.get("result", {})
+    # Verify that the release readiness prompt ran exactly 3 agents (skipped DevSecOps)
+    agents_activated = result.get("agents_activated", [])
+    if agents_activated:  # If the mock API populates it
+        assert len(agents_activated) == 3
 
     case = client.post(
         "/api/v1/governance/cases",

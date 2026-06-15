@@ -99,6 +99,16 @@ class GovernanceBrief(BaseModel):
     source: str = "deterministic"
 
 
+class GovernanceDecision(BaseModel):
+    """Structured decision context passed to the explanation LLM."""
+    prompt: str
+    consensus: ConsensusResult
+    rar: RARResult
+    utility: UtilityResult
+    opinions: List[AgentOpinion]
+
+
+
 # Canonical alias — AgentOutput is the same shape as AgentOpinion
 AgentOutput = AgentOpinion
 

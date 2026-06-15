@@ -141,6 +141,19 @@ async def run_pipeline(
     )
 
     utility_result = score_actions(normalized_evidence, settings, opinions=opinions)
+    
+    from aaf.schema import GovernanceDecision
+    from llm.deterministic_explainer import generate_explanation, build_explanation
+    
+    decision = GovernanceDecision(
+        prompt=prompt,
+        consensus=consensus_result,
+        rar=rar_result,
+        utility=utility_result,
+        opinions=opinions,
+    )
+    
+    explanation, llm_meta = generate_explanation(decision, llm_providers, tracker)
     deterministic_explanation = build_explanation(
         prompt=prompt,
         opinions=opinions,
@@ -148,40 +161,6 @@ async def run_pipeline(
         rar=rar_result,
         utility=utility_result,
     )
-    explanation = deterministic_explanation
-    llm_meta: dict[str, Any] = {"status": "degraded", "reason": "no_active_provider"}
-    if llm_providers and len(tracker.calls) < settings.max_llm_calls_per_run:
-        llm_prompt = (
-            "Create a concise executive governance explanation in markdown with sections: "
-            "What we evaluated, Consensus, Recommended action, Why trustworthy. "
-            "Use this JSON context:\n"
-            + str(
-                {
-                    "prompt": prompt,
-                    "consensus": consensus_result.model_dump(),
-                    "rar": rar_result.model_dump(),
-                    "utility": utility_result.model_dump(),
-                    "opinions": [o.model_dump() for o in opinions],
-                }
-            )
-        )
-        try:
-            llm_text, meta = tracker.invoke_tracked(
-                llm_providers,
-                llm_prompt,
-                phase="explanation",
-                agent_id="orchestrator",
-            )
-            if llm_text.strip():
-                explanation = llm_text.strip()
-                llm_meta = {"status": "ok", **meta}
-        except Exception:  # noqa: BLE001
-            explanation = deterministic_explanation
-            llm_meta = {
-                "status": "degraded",
-                "reason": "invocation_failed",
-                "providers_attempted": [p.provider_name for p in llm_providers],
-            }
 
     explanation, brief_guard_report = guard_brief_output(
         explanation,

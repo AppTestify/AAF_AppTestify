@@ -106,6 +106,12 @@ class BaseAgent(ABC):
         from agents.llm_tool_loop import run_llm_tool_loop
 
         cfg = settings or get_settings()
+
+        if getattr(cfg, "phase1_static_agents", False):
+            return await self.run_async(
+                ctx, package, correlation_boost=correlation_boost, refresh_tools=refresh_tools
+            )
+
         if llm_providers and cfg.guardrails_enabled:
             try:
                 return await run_llm_tool_loop(

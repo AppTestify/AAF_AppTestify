@@ -70,3 +70,47 @@ def compute_consensus(opinions: list[AgentOpinion]) -> ConsensusResult:
         dominant_theme=dominant_theme,
         notes=notes,
     )
+
+
+def compute_consensus_phase1(opinions: list[AgentOpinion]) -> ConsensusResult:
+    """
+    Phase 1 spec formula: C = 0.5 * mean(confidences) + 0.5 * domain_agreement
+    """
+    if not opinions:
+        return ConsensusResult(
+            consensus_score=0.0,
+            theme_counts={},
+            dominant_theme=None,
+            notes="No agent opinions",
+        )
+
+    mean_conf = sum(o.confidence for o in opinions) / len(opinions)
+
+    n = len(opinions)
+    conflict_pairs = 0
+    total_pairs = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            total_pairs += 1
+            if not _theme_compat(opinions[i].risk_theme, opinions[j].risk_theme):
+                conflict_pairs += 1
+
+    conflict_ratio = conflict_pairs / total_pairs if total_pairs else 0.0
+    domain_agreement = 1.0 - conflict_ratio
+
+    consensus_score = 0.5 * mean_conf + 0.5 * domain_agreement
+
+    # Still calculate dominant theme for the ConsensusResult object
+    weighted: Counter[str] = Counter()
+    for o in opinions:
+        weighted[o.risk_theme.value] += max(0.0, o.confidence)
+    theme_counts = {k: int(round(v * 10)) for k, v in weighted.items()}
+    dominant = max(weighted.items(), key=lambda x: x[1])[0]
+
+    notes = f"mean_conf={mean_conf:.2f}, agreement={domain_agreement:.2f}"
+    return ConsensusResult(
+        consensus_score=consensus_score,
+        theme_counts=theme_counts,
+        dominant_theme=RiskTheme(dominant),
+        notes=notes,
+    )

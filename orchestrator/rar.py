@@ -31,11 +31,18 @@ async def run_rar_loop_async(
     enrich_evidence: Callable[[list[EvidenceRecord], int], list[EvidenceRecord]],
     live_refresh_evidence: Callable[[], Awaitable[list[EvidenceRecord]]] | None = None,
     llm_reground: Callable[[list[AgentOpinion], list[EvidenceRecord]], str] | None = None,
+    pipeline_phase: int = 3,
 ) -> tuple[list[AgentOpinion], RARResult, ConsensusResult]:
     """
     If consensus < tau, enrich evidence (or live-refresh connectors) and rerun agents up to max_loops.
     """
-    consensus_before_result = compute_consensus(initial_opinions)
+    if pipeline_phase == 1:
+        from orchestrator.consensus import compute_consensus_phase1
+        compute_fn = compute_consensus_phase1
+    else:
+        compute_fn = compute_consensus
+
+    consensus_before_result = compute_fn(initial_opinions)
     consensus_before = consensus_before_result.consensus_score
 
     opinions = list(initial_opinions)
@@ -64,10 +71,10 @@ async def run_rar_loop_async(
             reground_notes.append(f"RAR loop {loops}: evidence enriched, count={len(evidence)}")
         rerun_result = rerun_agents(evidence, loops)
         opinions = await rerun_result if inspect.isawaitable(rerun_result) else rerun_result
-        cr = compute_consensus(opinions)
+        cr = compute_fn(opinions)
         current = cr.consensus_score
 
-    final_consensus = compute_consensus(opinions)
+    final_consensus = compute_fn(opinions)
     if llm_reground and _has_theme_conflict(opinions) and final_consensus.consensus_score < tau:
         note = llm_reground(opinions, evidence)
         if note:

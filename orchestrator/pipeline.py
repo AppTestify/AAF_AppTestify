@@ -137,6 +137,7 @@ async def run_pipeline(
         enrich_evidence=enrich_for_rar,
         live_refresh_evidence=lr,
         llm_reground=llm_reground if llm_providers else None,
+        pipeline_phase=settings.pipeline_phase,
     )
 
     utility_result = score_actions(normalized_evidence, settings, opinions=opinions)

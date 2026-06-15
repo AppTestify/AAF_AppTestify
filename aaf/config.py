@@ -21,11 +21,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Pipeline
     tau_consensus: float = 0.55
     max_rar_loops: int = 2
     rar_live_refresh_enabled: bool = True
     pipeline_phase: int = 1
+    phase1_static_agents: bool = False
     max_llm_calls_per_run: int = 9
     w_perf: float = 0.4
     w_cost: float = 0.3

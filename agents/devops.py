@@ -87,6 +87,25 @@ class DevOpsAgent(BaseAgent):
             return RiskTheme.OPERATIONAL_RISK
         return RiskTheme.DELIVERY_RISK if confidence > 0.55 else RiskTheme.OPERATIONAL_RISK
 
+    async def run_llm_loop(
+        self,
+        ctx: ToolContext,
+        package: EvidencePackage,
+        *,
+        llm_providers: list[ActiveProvider],
+        settings: Settings,
+        cost_tracker: Any | None = None,
+    ) -> AgentOpinion:
+        from agents.llm_tool_loop import run_llm_tool_loop
+
+        return await run_llm_tool_loop(
+            self,
+            ctx,
+            package,
+            llm_providers=llm_providers,
+            settings=settings,
+            cost_tracker=cost_tracker,
+        )
 
 _agent = DevOpsAgent()
 

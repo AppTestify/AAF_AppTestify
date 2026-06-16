@@ -93,6 +93,25 @@ class PMAgent(BaseAgent):
             return max(confidence, 0.85)
         return confidence
 
+    async def run_llm_loop(
+        self,
+        ctx: ToolContext,
+        package: EvidencePackage,
+        *,
+        llm_providers: list[ActiveProvider],
+        settings: Settings,
+        cost_tracker: Any | None = None,
+    ) -> AgentOpinion:
+        from agents.llm_tool_loop import run_llm_tool_loop
+
+        return await run_llm_tool_loop(
+            self,
+            ctx,
+            package,
+            llm_providers=llm_providers,
+            settings=settings,
+            cost_tracker=cost_tracker,
+        )
 
 _agent = PMAgent()
 

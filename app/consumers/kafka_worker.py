@@ -57,7 +57,7 @@ async def _consume_loop() -> None:
     from aiokafka import AIOKafkaConsumer
 
     settings = get_settings()
-    topics = WEBHOOK_TOPICS + [TOPIC_AUTOMATION_ACTIONS]
+    topics = WEBHOOK_TOPICS
     consumer = AIOKafkaConsumer(
         *topics,
         bootstrap_servers=settings.kafka_bootstrap_servers,
@@ -73,8 +73,6 @@ async def _consume_loop() -> None:
             try:
                 if msg.topic in WEBHOOK_TOPICS:
                     _handle_webhook(envelope)
-                elif msg.topic == TOPIC_AUTOMATION_ACTIONS:
-                    _handle_automation(envelope)
             except Exception as exc:  # noqa: BLE001
                 _log.exception("kafka_message_handler_failed", extra={"topic": msg.topic})
                 publish_dlq(original_topic=msg.topic, envelope=envelope, error=str(exc))

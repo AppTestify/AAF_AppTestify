@@ -68,6 +68,124 @@ def test_camel_route_registry():
     assert out["status"] == "ignored"
 
 
+def test_kafka_worker_topics():
+    from app.consumers.kafka_worker import WEBHOOK_TOPICS
+    assert "casantris.webhooks.github" in WEBHOOK_TOPICS
+    assert "casantris.webhooks.jira" in WEBHOOK_TOPICS
+    assert "casantris.webhooks.gitlab" in WEBHOOK_TOPICS
+
+
+@pytest.mark.asyncio
+async def test_kafka_worker_consume_loop(monkeypatch):
+    import sys
+    from unittest.mock import AsyncMock, MagicMock
+    from app.consumers.kafka_worker import WEBHOOK_TOPICS
+
+    mock_consumer = MagicMock()
+    mock_consumer.start = AsyncMock()
+    mock_consumer.stop = AsyncMock()
+
+    class AsyncIterator:
+        def __init__(self):
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    mock_consumer.__aiter__ = lambda s: AsyncIterator()
+
+    mock_aiokafka = MagicMock()
+    mock_aiokafka.AIOKafkaConsumer = MagicMock(return_value=mock_consumer)
+
+    orig_aiokafka = sys.modules.get("aiokafka")
+    sys.modules["aiokafka"] = mock_aiokafka
+
+    try:
+        from app.consumers.kafka_worker import _consume_loop
+        await _consume_loop()
+
+        mock_aiokafka.AIOKafkaConsumer.assert_called_once()
+        args, kwargs = mock_aiokafka.AIOKafkaConsumer.call_args
+        for topic in WEBHOOK_TOPICS:
+            assert topic in args
+        # Ensure it does NOT consume TOPIC_AUTOMATION_ACTIONS
+        from app.services.kafka_producer import TOPIC_AUTOMATION_ACTIONS
+        assert TOPIC_AUTOMATION_ACTIONS not in args
+    finally:
+        if orig_aiokafka is not None:
+            sys.modules["aiokafka"] = orig_aiokafka
+        else:
+            sys.modules.pop("aiokafka", None)
+
+
+@pytest.mark.asyncio
+async def test_camel_worker_consume_loop(monkeypatch):
+    import sys
+    from unittest.mock import AsyncMock, MagicMock
+    from app.services.kafka_producer import TOPIC_AUTOMATION_ACTIONS
+
+    mock_consumer = MagicMock()
+    mock_consumer.start = AsyncMock()
+    mock_consumer.stop = AsyncMock()
+
+    mock_msg = MagicMock()
+    mock_msg.topic = TOPIC_AUTOMATION_ACTIONS
+    mock_msg.value = {
+        "tenant_id": 123,
+        "payload": {
+            "action_type": "jira_blocker",
+            "run_id": 1,
+            "dry_run": True
+        }
+    }
+
+    class AsyncIterator:
+        def __init__(self):
+            self.delivered = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.delivered:
+                self.delivered = True
+                return mock_msg
+            raise StopAsyncIteration
+
+    mock_consumer.__aiter__ = lambda s: AsyncIterator()
+
+    mock_aiokafka = MagicMock()
+    mock_aiokafka.AIOKafkaConsumer = MagicMock(return_value=mock_consumer)
+
+    orig_aiokafka = sys.modules.get("aiokafka")
+    sys.modules["aiokafka"] = mock_aiokafka
+
+    try:
+        mock_execute = MagicMock(return_value={"status": "success"})
+        monkeypatch.setattr("app.integration.camel_worker.execute_camel_route", mock_execute)
+
+        from app.integration.camel_worker import _consume_loop
+        await _consume_loop()
+
+        mock_aiokafka.AIOKafkaConsumer.assert_called_once()
+        args, kwargs = mock_aiokafka.AIOKafkaConsumer.call_args
+        assert TOPIC_AUTOMATION_ACTIONS in args
+
+        mock_execute.assert_called_once_with(
+            "jira_blocker",
+            {"action_type": "jira_blocker", "run_id": 1, "dry_run": True},
+            tenant_id=123
+        )
+    finally:
+        if orig_aiokafka is not None:
+            sys.modules["aiokafka"] = orig_aiokafka
+        else:
+            sys.modules.pop("aiokafka", None)
+
+
 @pytest.mark.parametrize(
     "settings_patch,expected",
     [

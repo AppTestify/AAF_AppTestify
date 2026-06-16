@@ -70,10 +70,44 @@ def _route_hold_release(payload: dict[str, Any], *, tenant_id: Optional[int]) ->
         db.close()
 
 
-def main() -> None:
-    from app.consumers.kafka_worker import main as kafka_main
+async def _consume_loop() -> None:
+    import json
+    from aiokafka import AIOKafkaConsumer
+    from app.services.kafka_producer import TOPIC_AUTOMATION_ACTIONS, publish_dlq
 
-    kafka_main()
+    settings = get_settings()
+    consumer = AIOKafkaConsumer(
+        TOPIC_AUTOMATION_ACTIONS,
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id="casantris-camel-consumers",
+        value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+        auto_offset_reset="earliest",
+    )
+    await consumer.start()
+    _log.info("camel_consumer_started", extra={"topics": [TOPIC_AUTOMATION_ACTIONS]})
+    try:
+        async for msg in consumer:
+            envelope = msg.value if isinstance(msg.value, dict) else {}
+            try:
+                payload = envelope.get("payload") or {}
+                action_type = str(payload.get("action_type") or "")
+                if action_type:
+                    execute_camel_route(action_type, payload, tenant_id=envelope.get("tenant_id"))
+            except Exception as exc:  # noqa: BLE001
+                _log.exception("camel_message_handler_failed", extra={"topic": msg.topic})
+                publish_dlq(original_topic=msg.topic, envelope=envelope, error=str(exc))
+    finally:
+        await consumer.stop()
+
+
+def main() -> None:
+    import asyncio
+    from app.services.kafka_producer import kafka_enabled
+
+    if not kafka_enabled():
+        _log.error("kafka_not_enabled")
+        raise SystemExit(1)
+    asyncio.run(_consume_loop())
 
 
 if __name__ == "__main__":

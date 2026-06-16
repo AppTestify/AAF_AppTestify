@@ -196,17 +196,17 @@ Difference: evidence strings are **richer and context-aware** because LLM agents
 
 ---
 
-## Code map (implementation gaps)
+## Code map (implementation status)
 
-| Step | Spec | Code today | Gap |
-|------|------|------------|-----|
-| 2 LLM intent router | JSON intent + agents_needed | Keyword/semantic connector routing only | New `llm/intent_router.py` |
-| 3 Evidence package | Tools read from package | Tools may hit live APIs/sim fixtures | Package-backed tool execution |
-| 4 Tool-calling loop | LLM picks tools iteratively | `run_with_llm` runs all tools then synthesizes | ReAct / tool-calling loop per agent |
-| 5 Orchestrator | Unchanged | Same pipeline | Verify AgentOpinion schema stable |
-| 5 HOLD_RELEASE | New action for strong hold | `PATCH_BLOCK_RELEASE` closest | Add `HOLD_RELEASE` to `GovernanceAction` |
-| 6 Explanation | Same as P1 | Same pipeline | Pass richer `evidence` lines from agents |
-| Metrics | 7–9 LLM call budget | Partial observability | Per-run LLM call counter + cost estimate |
+| Step | Spec | Code today (Phase 3) | Status / Implementation |
+|------|------|-----------------------|-------------------------|
+| 2 LLM intent router | JSON intent + agents_needed | [llm/intent_router.py](file:///d:/AAF_AppTestify/llm/intent_router.py) | **Implemented** — routes intents semantically to specific agents |
+| 3 Evidence package | Tools read from package | [tools/context.py](file:///d:/AAF_AppTestify/tools/context.py), [agents/base_agent.py](file:///d:/AAF_AppTestify/agents/base_agent.py) | **Implemented** — `@cached_tool` decorator handles caching |
+| 4 Tool-calling loop | LLM picks tools iteratively | [agents/llm_tool_loop.py](file:///d:/AAF_AppTestify/agents/llm_tool_loop.py) | **Implemented** — ReAct loop per agent with selective tool calls |
+| 5 Orchestrator | Unchanged | [orchestrator/consensus.py](file:///d:/AAF_AppTestify/orchestrator/consensus.py) | **Unchanged** — verified `AgentOpinion` schema compatibility |
+| 5 HOLD_RELEASE | New action for strong hold | [aaf/schema.py](file:///d:/AAF_AppTestify/aaf/schema.py), [orchestrator/utility.py](file:///d:/AAF_AppTestify/orchestrator/utility.py) | **Implemented** — added `HOLD_RELEASE` and updated utility scoring |
+| 6 Explanation | Same as P1 | [llm/deterministic_explainer.py](file:///d:/AAF_AppTestify/llm/deterministic_explainer.py) | **Implemented** — generates explanation incorporating rich agent claims |
+| Metrics | 7–9 LLM call budget | [guardrails/llm_cost_tracker.py](file:///d:/AAF_AppTestify/guardrails/llm_cost_tracker.py) | **Implemented** — tracks LLM call count and cost |
 
 ---
 
@@ -215,3 +215,4 @@ Difference: evidence strings are **richer and context-aware** because LLM agents
 - [Phase 1 governance flow](phase-1-governance-flow.md)
 - [CAS-71 epic](https://apptestify.atlassian.net/browse/CAS-71) — tool registry complete: 31 shipped tools, MCP Phase 3 transport (`tools/mcp/`), see [agileops-tool-registry.md](agileops-tool-registry.md)
 - [CAS-91 epic](https://apptestify.atlassian.net/browse/CAS-91) — Phase 1 flow implementation
+- [CAS-102 epic](https://apptestify.atlassian.net/browse/CAS-102) — Phase 3 LLM agentic governance flow implementation

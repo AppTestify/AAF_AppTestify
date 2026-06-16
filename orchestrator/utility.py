@@ -91,6 +91,9 @@ def score_actions(
 
     def u_hold_release() -> float:
         if opinions:
+            avg_conf = sum(o.confidence for o in opinions) / len(opinions)
+            if avg_conf > 0.79:
+                return round(w_p * (1.0 - p_index) + w_c * (1.0 - ci_index) + w_r * (1.0 - r_index), 4)
             return round(1.0 - p_index, 4)
         return w_r * risk + w_p * 0.35 * perf + w_c * 0.15 * cost
 

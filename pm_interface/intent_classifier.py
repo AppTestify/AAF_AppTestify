@@ -14,7 +14,7 @@ class IntentCategory(str, Enum):
 
 _SECURITY_KEYWORDS = frozenset({"cve", "secret", "vulnerability", "security", "scan"})
 _COST_KEYWORDS = frozenset({"cost", "spend", "budget", "finops", "anomaly"})
-_DELIVERY_HEALTH_KEYWORDS = frozenset({"latency", "error", "health", "observability", "blocker", "sprint", "delivery"})
+_DELIVERY_HEALTH_KEYWORDS = frozenset({"latency", "error", "health", "observability", "blocker", "sprint", "delivery", "incident", "mttr", "reliability", "sla", "uptime", "downtime"})
 _RELEASE_KEYWORDS = frozenset({"release", "deploy", "ship", "today", "monday"})
 
 def classify_intent(prompt: str) -> tuple[IntentCategory, list[str]]:
@@ -44,6 +44,6 @@ def classify_pm_intent(prompt: str) -> IntentResult:
     return IntentResult(
         intent=intent,
         agents_needed=agents,
-        connectors=["github", "jira", "finops"],
+        connectors=["github", "jira", "finops", "pagerduty"],
         confidence=0.85
     )

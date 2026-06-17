@@ -147,6 +147,27 @@ def _tool_module_for_name(tool_name: str) -> tuple[str, str] | None:
     return mapping.get(tool_name)
 
 
+def _extract_incidents_from_evidence(raw_by_connector: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extract PagerDuty incidents from raw connector payloads for MTTR correlation."""
+    incidents: list[dict[str, Any]] = []
+    
+    pd_data = raw_by_connector.get("pagerduty") or {}
+    for incident in pd_data.get("incidents") or []:
+        # Map PagerDuty incident to standardized format for correlation
+        incident_dict = {
+            "id": incident.get("id", ""),
+            "service_name": incident.get("service_name", ""),
+            "started_at": incident.get("created_at"),
+            "resolved_at": incident.get("resolved_at"),
+            "mttr_hours": incident.get("mttr_hours"),
+        }
+        # Only include incidents with service_name and timestamps
+        if incident_dict.get("id") and incident_dict.get("service_name") and incident_dict.get("started_at"):
+            incidents.append(incident_dict)
+    
+    return incidents
+
+
 async def collect_evidence(
     *,
     settings: Settings,
@@ -167,6 +188,9 @@ async def collect_evidence(
     tool_extra: dict[str, Any] = {}
     if tenant_ui_preferences:
         tool_extra["ui_preferences"] = tenant_ui_preferences
+    
+    # Extract incidents for potential MTTR correlation (Phase 3)
+    incidents = _extract_incidents_from_evidence(raw)
 
     import uuid
     run_id = uuid.uuid4().hex
@@ -185,6 +209,7 @@ async def collect_evidence(
         "raw_by_connector": raw,
         "fetched_at": fetched_at,
         "tools": {},
+        "incidents_for_correlation": incidents,  # Phase 3: for MTTR pipeline
     }
     tool_ctx = build_tool_context(
         settings,

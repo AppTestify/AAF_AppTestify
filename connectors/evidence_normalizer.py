@@ -28,6 +28,8 @@ def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceR
             batch = _finops(payload)
         elif source == "gitlab":
             batch = _gitlab(payload)
+        elif source == "pagerduty":
+            batch = _pagerduty(payload)
         else:
             batch = []
         if len(batch) > limit:
@@ -299,6 +301,62 @@ def _gitlab(p: dict[str, Any]) -> list[EvidenceRecord]:
             )
         )
         
+    return recs
+
+
+def _pagerduty(p: dict[str, Any]) -> list[EvidenceRecord]:
+    """Normalize PagerDuty incidents to EvidenceRecords.
+    
+    Severity calculation:
+    - Base: 0.3 (low urgency, resolved) to 0.75 (high urgency)
+    - Adjustment: +0.15 if unresolved/triggered
+    - Final: clamped to [0.0, 1.0]
+    """
+    recs: list[EvidenceRecord] = []
+    
+    for incident in p.get("incidents") or []:
+        incident_id = incident.get("id") or ""
+        title = incident.get("title") or incident.get("summary") or "Incident"
+        status = (incident.get("status") or "").lower()
+        urgency = (incident.get("urgency") or "").lower()
+        web_url = incident.get("html_url") or incident.get("web_url") or ""
+        mttr_hours = incident.get("mttr_hours")
+        created_at = incident.get("created_at")
+        resolved_at = incident.get("resolved_at")
+        
+        # Base severity by urgency
+        if urgency == "high":
+            sev = 0.75
+        elif urgency == "medium":
+            sev = 0.50
+        else:
+            sev = 0.30
+        
+        # Adjust for status: +0.15 if unresolved
+        if status in {"triggered", "acknowledged"}:
+            sev += 0.15
+        
+        # Clamp to [0.0, 1.0]
+        sev = round(min(1.0, max(0.0, sev)), 2)
+        
+        recs.append(
+            EvidenceRecord(
+                source="pagerduty",
+                kind="incident",
+                summary=title[:200],
+                severity=sev,
+                metadata={
+                    "id": incident_id,
+                    "status": status,
+                    "urgency": urgency,
+                    "url": web_url or None,
+                    "mttr_hours": mttr_hours,
+                    "created_at": created_at,
+                    "resolved_at": resolved_at,
+                },
+            )
+        )
+    
     return recs
 
 

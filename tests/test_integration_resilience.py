@@ -20,7 +20,7 @@ def test_connector_signal_falls_back_with_error_category(monkeypatch):
 
     monkeypatch.setattr("app.services.integration_signals.fetch_github_signal", _boom)
     out = connector_signal(_ConnectorStub())
-    assert out["mode"] == "synthetic_fallback"
+    assert out["mode"] == "fallback_error"
     assert out["error_category"] == "unknown"  # timeout raised outside resilience wrapper
     assert out["freshness"] == "degraded"
 

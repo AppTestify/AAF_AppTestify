@@ -6,7 +6,7 @@ const STEPS = ["Connectors", "Test connection", "AI provider", "Confirm"] as con
 
 export function OnboardingWizardPage() {
   const [step, setStep] = useState(0);
-  const [connectors, setConnectors] = useState({ github: true, jira: true, finops: false });
+  const [connectors, setConnectors] = useState({ github: true, gitlab: true, jira: true, finops: false });
 
   const finish = () => {
     markOnboardingComplete();
@@ -38,6 +38,14 @@ export function OnboardingWizardPage() {
               onChange={(e) => setConnectors((c) => ({ ...c, github: e.target.checked }))}
             />{" "}
             GitHub
+          </label>
+          <label className="onboarding-check">
+            <input
+              type="checkbox"
+              checked={connectors.gitlab}
+              onChange={(e) => setConnectors((c) => ({ ...c, gitlab: e.target.checked }))}
+            />{" "}
+            GitLab
           </label>
           <label className="onboarding-check">
             <input

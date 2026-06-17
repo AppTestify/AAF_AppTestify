@@ -10,14 +10,14 @@ export function getEvidenceLinks(record?: EvidenceRecord | null): EvidenceLink[]
   const meta = record.metadata;
   const url = meta.url;
   if (typeof url === "string" && url.startsWith("http")) {
-    const label =
-      typeof meta.key === "string" && meta.key
-        ? meta.key
-        : typeof meta.number === "number"
-          ? `PR #${meta.number}`
-          : record.kind === "workflow_run"
-            ? "Workflow run"
-            : "Open";
+    let label = "Open";
+    if (typeof meta.key === "string" && meta.key) label = meta.key;
+    else if (typeof meta.number === "number") label = `PR #${meta.number}`;
+    else if (record.kind === "workflow_run") label = "Workflow run";
+    else if (record.kind === "open_mr" && meta.iid) label = `MR !${meta.iid}`;
+    else if (record.kind === "pipeline" && meta.id) label = `Pipeline #${meta.id}`;
+    else if (record.kind === "open_issue" && meta.iid && record.source === "gitlab") label = `Issue #${meta.iid}`;
+
     return [{ label, href: url }];
   }
   if (typeof meta.key === "string" && meta.key && typeof meta.jira_base_url === "string") {

@@ -24,10 +24,11 @@ export type ProviderDraft = {
 
 export const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock"];
 
-export const CONNECTOR_ORDER = ["github", "jira", "azure", "aws", "vps", "finops"] as const;
+export const CONNECTOR_ORDER = ["github", "gitlab", "jira", "azure", "aws", "vps", "finops"] as const;
 
 export const CONNECTOR_HELP: Record<string, string> = {
   github: "Live: repo slug + PAT. Save, then run connection test.",
+  gitlab: "Live: GitLab URL, project ID, and Personal Access Token.",
   jira: "Live: Jira base URL, project key, agile board ID (PM sprint tools), email + API token.",
   azure: "Live: Azure DevOps org + project name, PAT with build/release read.",
   aws: "Live FinOps: region + IAM access key/secret for Cost Explorer, Budgets, Auto Scaling, and CloudWatch tools.",

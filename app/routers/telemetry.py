@@ -344,6 +344,7 @@ def get_decision_lifecycle(
     connector_rows = db.execute(connectors_q).scalars().all()
     connector_payload = {r.connector_name: (r.telemetry_json or {}) for r in connector_rows}
     github = connector_payload.get("github", {})
+    gitlab = connector_payload.get("gitlab", {})
     jira = connector_payload.get("jira", {})
     azure = connector_payload.get("azure", {})
 
@@ -351,6 +352,8 @@ def get_decision_lifecycle(
     release_signals = {
         "github_success_rate": float(github.get("success_rate") or 0.0),
         "github_failing_checks": int(github.get("failing_checks") or 0),
+        "gitlab_success_rate": float(gitlab.get("success_rate") or 0.0),
+        "gitlab_failing_checks": int(gitlab.get("failing_checks") or 0),
         "jira_blocked_tickets": int(jira.get("blocked_tickets") or 0),
         "azure_release_readiness": str(azure.get("release_readiness") or "unknown"),
         "azure_build_success_rate": float(azure.get("build_success_rate") or 0.0),
@@ -358,6 +361,8 @@ def get_decision_lifecycle(
     release_confidence = 0.0
     if release_signals["github_success_rate"] > 0:
         release_confidence += 0.4 * release_signals["github_success_rate"]
+    elif release_signals["gitlab_success_rate"] > 0:
+        release_confidence += 0.4 * release_signals["gitlab_success_rate"]
     if release_signals["azure_build_success_rate"] > 0:
         release_confidence += 0.4 * release_signals["azure_build_success_rate"]
     if release_signals["jira_blocked_tickets"] == 0:

@@ -34,7 +34,7 @@ export function PlatformPage() {
           <article className="arch-layer-card">
             <span className="arch-layer-label">Layer 1</span>
             <h3>Tool layer</h3>
-            <p>17 async tools across GitHub, Jira Agile, AWS (boto3), and security APIs. Sim fixtures for demos.</p>
+            <p>Async tools across GitHub, GitLab, Jira Agile, AWS (boto3), and security APIs. Sim fixtures for demos.</p>
           </article>
           <article className="arch-layer-card">
             <span className="arch-layer-label">Layer 2</span>

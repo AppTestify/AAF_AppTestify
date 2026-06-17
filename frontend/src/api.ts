@@ -698,6 +698,7 @@ export async function fetchObservabilitySummary(windowSeconds = 300): Promise<Ob
 export type DecisionLifecycle = {
   connectors: {
     github: Record<string, unknown>;
+    gitlab: Record<string, unknown>;
     jira: Record<string, unknown>;
     azure: Record<string, unknown>;
     coverage_total: number;
@@ -723,6 +724,8 @@ export type DecisionLifecycle = {
   release: {
     github_success_rate: number;
     github_failing_checks: number;
+    gitlab_success_rate: number;
+    gitlab_failing_checks: number;
     jira_blocked_tickets: number;
     azure_release_readiness: string;
     azure_build_success_rate: number;

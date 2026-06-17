@@ -111,6 +111,16 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
                 if cfg.get("cost_file"):
                     from pathlib import Path
                     merged.finops_cost_file = Path(str(cfg["cost_file"]))
+            elif name == "gitlab":
+                url = cfg.get("gitlab_url") or cfg.get("url")
+                if url:
+                    merged.gitlab_url = str(url)
+                token = cred.get("token") or cfg.get("token") or cred.get("gitlab_token") or cfg.get("gitlab_token")
+                if token:
+                    merged.gitlab_token = str(token)
+                project = cfg.get("project_id") or cfg.get("gitlab_project_id") or cfg.get("project")
+                if project:
+                    merged.gitlab_project_id = str(project).strip()
         except Exception:
             _log.exception(f"Error merging config for connector {name}")
             

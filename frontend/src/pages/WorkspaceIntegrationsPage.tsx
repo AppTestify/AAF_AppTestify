@@ -199,6 +199,10 @@ export function WorkspaceIntegrationsPage({ tenantSlug, canManage }: WorkspaceIn
               <div className="value">{lifecycle ? `${(lifecycle.release.github_success_rate * 100).toFixed(1)}%` : "..."}</div>
             </div>
             <div className="metric">
+              <div className="label">GitLab success rate</div>
+              <div className="value">{lifecycle ? `${(lifecycle.release.gitlab_success_rate * 100).toFixed(1)}%` : "..."}</div>
+            </div>
+            <div className="metric">
               <div className="label">Jira blocked tickets</div>
               <div className="value warn">{lifecycle?.release.jira_blocked_tickets ?? "..."}</div>
             </div>

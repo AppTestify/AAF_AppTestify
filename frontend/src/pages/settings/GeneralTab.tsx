@@ -27,7 +27,7 @@ export function GeneralTab({
             <strong>Default AI provider</strong> — picks which model family governance runs prefer.
           </li>
           <li>
-            <strong>Connectors tab</strong> — link GitHub, Jira, Azure DevOps; use <em>Save &amp; test</em> on each.
+            <strong>Connectors tab</strong> — link GitHub, GitLab, Jira, Azure DevOps; use <em>Save &amp; test</em> on each.
           </li>
           <li>
             <strong>AI Providers tab</strong> — add API keys and run <em>Test connection</em>.

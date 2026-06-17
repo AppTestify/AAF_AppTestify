@@ -80,6 +80,40 @@ export function ConnectorsTab({
               </div>
             ) : null}
 
+            {name === "gitlab" ? (
+              <div className="config-columns settings-quick-grid">
+                <div className="form-row">
+                  <label>GitLab URL</label>
+                  <input
+                    value={String(cfg.gitlab_url ?? "")}
+                    onChange={(e) => mergeConnectorConfig(name, { gitlab_url: e.target.value })}
+                    placeholder="https://gitlab.com"
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Project ID / Path</label>
+                  <input
+                    value={String(cfg.project_id ?? "")}
+                    onChange={(e) => mergeConnectorConfig(name, { project_id: e.target.value })}
+                    placeholder="owner/repo or project numeric ID"
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Personal access token</label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={String(cred.token ?? "")}
+                    onChange={(e) => mergeConnectorCreds(name, { token: e.target.value })}
+                    placeholder={status?.credentials_keys_configured?.includes("token") ? "Configured (masked)" : "Enter token"}
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {name === "jira" ? (
               <div className="config-columns settings-quick-grid">
                 <div className="form-row">

@@ -120,7 +120,7 @@ export function WorkspaceEvidencePage() {
     <WorkspacePageShell
       variant="governance"
       eyebrow="Evidence Hub"
-      title="Live signals from GitHub, Jira, and FinOps"
+      title="Live signals from GitHub, GitLab, Jira, and FinOps"
       subtitle="Every governance decision is grounded in fresh evidence pulled from the systems your teams already use."
     >
       {parsedRun ? <GovernanceFlowStepper runId={parsedRun.run.id} activeStep="evidence" /> : null}
@@ -136,7 +136,7 @@ export function WorkspaceEvidencePage() {
       <div className="workspace-toolbar">
         <div className="form-row">
           <label htmlFor="connector-filter">Connector</label>
-          <input id="connector-filter" value={connector} onChange={(e) => setConnector(e.target.value)} placeholder="github" />
+          <input id="connector-filter" value={connector} onChange={(e) => setConnector(e.target.value)} placeholder="github or gitlab" />
         </div>
         <div className="form-row">
           <label htmlFor="run-filter">Run ID</label>

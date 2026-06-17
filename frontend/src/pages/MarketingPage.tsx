@@ -24,7 +24,7 @@ export function MarketingPage() {
               Four agents. Seventeen tools. One defensible release decision.
             </h1>
             <p className="hero-lead">
-              Casantris runs DevOps, PM, FinOps, and DevSecOps agents in parallel — each calling live GitHub, Jira, and AWS
+              Casantris runs DevOps, PM, FinOps, and DevSecOps agents in parallel — each calling live GitHub, GitLab, Jira, and AWS
               tools — then scores consensus, utility (U = 0.4·P + 0.3·Ci + 0.3·R), and explainability for leadership-ready
               go/no-go calls.
             </p>
@@ -50,7 +50,7 @@ export function MarketingPage() {
                 ? "Self-service signup is disabled on this deployment. Sign in with credentials from your administrator."
                 : signupOpen === null
                   ? "Checking availability…"
-                  : "Sim mode works out of the box — connect live GitHub, Jira, and AWS when you are ready."}
+                  : "Sim mode works out of the box — connect live GitHub, GitLab, Jira, and AWS when you are ready."}
             </p>
           </div>
           <div className="hero-visual" aria-hidden="true">
@@ -209,7 +209,7 @@ export function MarketingPage() {
           </div>
           <ul className="enterprise-bullets">
             <li>Agent opinions with evidence[] and expandable tool signals in the UI</li>
-            <li>GitHub workflow_run webhooks for fresher CI tool cache</li>
+            <li>GitHub and GitLab webhooks for fresher CI tool cache</li>
             <li>Multi-tenant RBAC, encrypted connector credentials, httpOnly session auth</li>
             <li>Signed share links and CSV/JSON exports for audit continuity</li>
           </ul>

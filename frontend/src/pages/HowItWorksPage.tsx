@@ -76,11 +76,11 @@ export function HowItWorksPage() {
           </article>
           <article className="feature-card">
             <h3>Webhook freshness</h3>
-            <p>GitHub workflow_run webhooks invalidate CI tool cache for near-real-time pass rates.</p>
+            <p>GitHub and GitLab webhooks invalidate CI tool cache for near-real-time pass rates.</p>
           </article>
           <article className="feature-card">
             <h3>Sim + live modes</h3>
-            <p>CONNECTOR_MODE=sim uses fixtures for demos; live mode calls GitHub, Jira Agile, and AWS APIs.</p>
+            <p>CONNECTOR_MODE=sim uses fixtures for demos; live mode calls GitHub, GitLab, Jira Agile, and AWS APIs.</p>
           </article>
         </div>
       </section>
@@ -93,7 +93,7 @@ export function HowItWorksPage() {
             <span className="step-num">1</span>
             <div>
               <strong>Configure connectors</strong>
-              <p>GitHub repo + PAT, Jira project + board ID, AWS keys for FinOps — validate in Settings.</p>
+              <p>GitHub/GitLab repo + token, Jira project + board ID, AWS keys for FinOps — validate in Settings.</p>
             </div>
           </li>
           <li>

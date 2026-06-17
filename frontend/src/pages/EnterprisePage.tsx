@@ -40,7 +40,7 @@ export function EnterprisePage() {
           </div>
           <ul className="enterprise-bullets">
             <li>Superadmin tenant provisioning and request-access lead conversion</li>
-            <li>Tenant-scoped GitHub, Jira, AWS, Azure, FinOps connector config with validation</li>
+            <li>Tenant-scoped GitHub, GitLab, Jira, AWS, Azure, FinOps connector config with validation</li>
             <li>httpOnly session cookies, refresh tokens, DB-backed rate limiting</li>
             <li>Fernet-encrypted credentials at rest for connector and LLM keys</li>
           </ul>
@@ -114,7 +114,7 @@ export function EnterprisePage() {
           </article>
           <article className="feature-card">
             <h3>Phase 2: Live connectors</h3>
-            <p>Wire GitHub, Jira board ID, and AWS keys. Enable workflow_run webhooks for CI freshness.</p>
+            <p>Wire GitHub, GitLab, Jira board ID, and AWS keys. Enable workflow_run webhooks for CI freshness.</p>
           </article>
           <article className="feature-card">
             <h3>Phase 3: Case governance</h3>

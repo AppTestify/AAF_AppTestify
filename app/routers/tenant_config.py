@@ -24,7 +24,7 @@ from app.services.smtp_resolver import resolve_smtp_dataclass
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
-_CONNECTORS = {"github", "jira", "finops", "azure", "aws", "vps"}
+_CONNECTORS = {"github", "gitlab", "jira", "finops", "azure", "aws", "vps"}
 _PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
@@ -488,6 +488,8 @@ def validate_connector_config(
     err: Optional[str] = None
     if key == "github" and row.enabled and not cfg.get("repo"):
         err = "github.repo is required when connector is enabled"
+    if key == "gitlab" and row.enabled and not cfg.get("project_id"):
+        err = "gitlab.project_id is required when connector is enabled"
     if key == "jira" and row.enabled and ((not cfg.get("project") and not cfg.get("project_key")) or not cfg.get("base_url")):
         err = "jira.base_url and jira.project (or project_key) are required when connector is enabled"
     if key == "finops" and row.enabled and not cfg.get("cost_file"):

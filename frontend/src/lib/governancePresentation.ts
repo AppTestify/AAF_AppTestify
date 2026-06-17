@@ -454,11 +454,14 @@ export function deriveConnectorSummaries(
 ): ConnectorSummaryCard[] {
   const signals = (parsed?.run.result_json?.integration_signals ?? {}) as Record<string, Record<string, unknown>>;
   const github = signals.github ?? {};
+  const gitlab = signals.gitlab ?? {};
   const jira = signals.jira ?? {};
   const aws = signals.aws ?? signals.finops ?? {};
 
   const ghFailed = Number(github.failed_checks ?? github.ci_failures ?? 0);
   const ghBadge = ghFailed > 0 ? "Risk Detected" : "Healthy";
+  const gitlabFailed = Number(gitlab.failing_pipelines ?? gitlab.failed_pipelines ?? 0);
+  const gitlabBadge = gitlabFailed > 0 ? "Risk Detected" : "Healthy";
   const jiraBlockers = Number(jira.blocked_count ?? jira.blockers ?? 0);
   const jiraBadge = jiraBlockers >= 3 ? "Delivery Risk" : jiraBlockers > 0 ? "Watch" : "On Track";
   const spendDelta = String(aws.wow_delta_pct ?? aws.spend_increase_pct ?? "—");
@@ -524,6 +527,19 @@ export function deriveConnectorSummaries(
         { label: "Agent confidence", value: secopsOpinion ? secopsOpinion.confidence.toFixed(2) : "—" },
         { label: "Policy violations", value: numSignal(secSignals as Record<string, unknown>, "policy_violations", "0") },
         { label: "Status", value: secopsOpinion ? "Activated" : "Skipped for prompt" },
+      ],
+    },
+    {
+      id: "gitlab",
+      title: "GitLab Evidence",
+      subtitle: "GitLab repo & CI/CD",
+      badge: gitlabBadge,
+      badgeVariant: gitlabFailed > 0 ? "action" : "healthy",
+      metrics: [
+        { label: "Failed pipelines", value: String(gitlabFailed), dot: gitlabFailed > 0 ? "red" : "green" },
+        { label: "Open merge requests", value: numSignal(gitlab, "open_merge_requests", "0") },
+        { label: "Open issues", value: numSignal(gitlab, "open_issues", "0") },
+        { label: "Connector health", value: connectorHealth?.find((c) => c.connector_name === "gitlab")?.last_validation_ok === false ? "Invalid" : connectorHealth?.find((c) => c.connector_name === "gitlab")?.last_validation_ok ? "Valid" : "—" },
       ],
     },
   ];

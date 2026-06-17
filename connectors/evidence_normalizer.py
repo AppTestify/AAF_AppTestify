@@ -26,6 +26,8 @@ def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceR
             batch = _jira(payload)
         elif source == "finops":
             batch = _finops(payload)
+        elif source == "gitlab":
+            batch = _gitlab(payload)
         else:
             batch = []
         if len(batch) > limit:
@@ -203,6 +205,100 @@ def _finops(p: dict[str, Any]) -> list[EvidenceRecord]:
                     metadata=dict(r),
                 )
             )
+    return recs
+
+
+def _gitlab(p: dict[str, Any]) -> list[EvidenceRecord]:
+    recs: list[EvidenceRecord] = []
+    project = p.get("project_id") or ""
+    
+    for mr in p.get("merge_requests") or []:
+        state = (mr.get("state") or "").lower()
+        title = mr.get("title") or "MR"
+        is_wip = mr.get("work_in_progress", False) or mr.get("draft", False)
+        
+        sev = 0.35 if is_wip else 0.25
+        if "block" in title.lower():
+            sev += 0.1
+        sev = round(min(1.0, sev), 2)
+            
+        if state in {"opened", "open"}:
+            url = mr.get("web_url") or ""
+            recs.append(
+                EvidenceRecord(
+                    source="gitlab",
+                    kind="open_mr",
+                    summary=title[:200],
+                    severity=sev,
+                    metadata={
+                        "id": mr.get("id"),
+                        "iid": mr.get("iid"),
+                        "url": url or None,
+                        "project": project or None,
+                    },
+                )
+            )
+
+    for pipe in p.get("pipelines") or []:
+        status = (pipe.get("status") or "").lower()
+        pipeline_id = pipe.get("id")
+        
+        sev = 0.2
+        if status in {"failed", "failed"}:
+            sev = 0.85
+        elif status in {"canceled", "cancelled"}:
+            sev = 0.5
+        elif status == "success":
+            sev = 0.15
+            
+        url = pipe.get("web_url") or ""
+        recs.append(
+            EvidenceRecord(
+                source="gitlab",
+                kind="pipeline",
+                summary=f"Pipeline #{pipeline_id}: {status}",
+                severity=sev,
+                metadata={
+                    "id": pipeline_id,
+                    "url": url or None,
+                    "project": project or None,
+                },
+            )
+        )
+
+    for issue in p.get("issues") or []:
+        state = (issue.get("state") or "").lower()
+        if state not in {"opened", "open"}:
+            continue
+            
+        title = issue.get("title") or "issue"
+        labels = issue.get("labels") or []
+        label_names = [
+            x.get("name", "") if isinstance(x, dict) else str(x)
+            for x in labels
+        ]
+        
+        sev = 0.4
+        if any("bug" in x.lower() for x in label_names):
+            sev = 0.65
+            
+        url = issue.get("web_url") or ""
+        recs.append(
+            EvidenceRecord(
+                source="gitlab",
+                kind="open_issue",
+                summary=title[:200],
+                severity=sev,
+                metadata={
+                    "id": issue.get("id"),
+                    "iid": issue.get("iid"),
+                    "labels": label_names,
+                    "url": url or None,
+                    "project": project or None,
+                },
+            )
+        )
+        
     return recs
 
 

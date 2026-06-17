@@ -694,6 +694,10 @@ export function WorkspacePortfolioPage({ canManage }: WorkspacePortfolioPageProp
               <div className="label">GitHub success rate</div>
               <div className="value">{(lifecycle.release.github_success_rate * 100).toFixed(1)}%</div>
             </div>
+            <div className="metric">
+              <div className="label">GitLab success rate</div>
+              <div className="value">{(lifecycle.release.gitlab_success_rate * 100).toFixed(1)}%</div>
+            </div>
           </div>
           <NavLink to="/app/integrations" className="portfolio-inline-link">
             Configure connectors and view full lifecycle →

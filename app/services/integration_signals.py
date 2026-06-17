@@ -219,6 +219,33 @@ def connector_signal(connector: TenantConnectorConfig) -> dict[str, Any]:
             "error_message": "jira requires config_json.base_url and config_json.project for live telemetry",
             "captured_at": now,
         }
+    if name == "gitlab":
+        cfg = connector.config_json or {}
+        project = str(cfg.get("project_id") or "").strip()
+        creds = {}
+        try:
+            creds = decrypt_json(connector.encrypted_credentials_json, secret=get_settings().app_encryption_key)
+        except Exception:  # noqa: BLE001
+            creds = {}
+        base_url = str(cfg.get("gitlab_url") or "https://gitlab.com")
+        token = str(creds.get("token") or cfg.get("token") or "") if isinstance(creds, dict) else ""
+        if project:
+            try:
+                from app.services.gitlab_live import fetch_gitlab_signal
+                return fetch_gitlab_signal(project, token=token or None, base_url=base_url)
+            except Exception as e:  # noqa: BLE001
+                return _fallback("gitlab", "unknown", str(e))
+        return {
+            "connector": "gitlab",
+            "enabled": True,
+            "mode": "unconfigured",
+            "freshness": "unknown",
+            "latency_ms": None,
+            "errors_24h": None,
+            "error_category": "config",
+            "error_message": "gitlab requires config_json.project_id for live telemetry",
+            "captured_at": now,
+        }
     return {
         "connector": name,
         "enabled": True,

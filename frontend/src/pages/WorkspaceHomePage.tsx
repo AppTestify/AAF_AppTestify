@@ -136,7 +136,7 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
       dashboard
       eyebrow="Command Center"
       title="AI governance for software delivery, cost, and operational risk"
-      subtitle="Real-time decision cockpit synthesizing GitHub, Jira, and FinOps signals into one trustworthy recommendation."
+      subtitle="Real-time decision cockpit synthesizing GitHub, GitLab, Jira, and FinOps signals into one trustworthy recommendation."
     >
       {displayError ? (
         <div className="alert alert-error" role="alert">

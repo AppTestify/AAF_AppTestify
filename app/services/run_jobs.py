@@ -37,6 +37,7 @@ from app.services.decision_framing import orchestration_snapshot_from_run_payloa
 from app.services.run_payload import enrich_run_payload
 from app.services.governance_delivery import deliver_run_complete_notifications
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
+from app.services.run_events import publish_run_event_sync
 
 _queue: "Queue[int]" = Queue()
 _thread: Optional[Thread] = None
@@ -365,6 +366,7 @@ def process_run_sync(run_id: int) -> None:
             )
         )
         db.commit()
+        publish_run_event_sync(run.id, "result_ready", {"run_id": run.id, "consensus": float(incident["consensus_score"])})
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
         try:
@@ -409,6 +411,7 @@ def process_run_sync(run_id: int) -> None:
             )
         )
         db.commit()
+        publish_run_event_sync(run.id, "error", {"error": run.error_message})
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
         try:

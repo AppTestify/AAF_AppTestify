@@ -32,6 +32,7 @@ from app.models.config import TenantSettings
 from app.services.config_resolver import apply_pipeline_overrides, resolve_effective_settings, resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
 from app.services.share_link import mint_governance_share_token
+from app.services.run_events import subscribe_run_events
 
 router = APIRouter(prefix="/governance", tags=["governance-v1"])
 
@@ -303,40 +304,6 @@ def create_run_v1(
     enqueue_run(run.id)
     db.refresh(run)
     return _run_out(run)
-
-
-async def _run_sse_events(run_id: int, db_factory) -> AsyncIterator[str]:
-    last_status = None
-    for _ in range(120):
-        db = db_factory()
-        try:
-            run = db.get(GovernanceRun, run_id)
-            if run is None:
-                yield f"event: error\ndata: {json.dumps({'detail': 'not_found'})}\n\n"
-                return
-            status_val = run.status
-            if status_val != last_status:
-                last_status = status_val
-                yield f"event: status\ndata: {json.dumps({'status': status_val, 'run_id': run_id})}\n\n"
-                if status_val == "running":
-                    yield f"event: evidence_fetched\ndata: {json.dumps({'run_id': run_id})}\n\n"
-                if status_val == "succeeded":
-                    result = run.result_json or {}
-                    yield f"event: agent_complete\ndata: {json.dumps({'agents': len(result.get('agent_opinions') or [])})}\n\n"
-                    rar = result.get("rar") or {}
-                    if rar.get("rar_triggered"):
-                        yield f"event: rar_loop\ndata: {json.dumps(rar)}\n\n"
-                    yield f"event: result_ready\ndata: {json.dumps({'run_id': run_id, 'consensus': (result.get('consensus') or {}).get('consensus_score')})}\n\n"
-                    return
-                if status_val == "failed":
-                    yield f"event: error\ndata: {json.dumps({'error': run.error_message})}\n\n"
-                    return
-        finally:
-            db.close()
-        await asyncio.sleep(1)
-    yield f"event: timeout\ndata: {json.dumps({'run_id': run_id})}\n\n"
-
-
 @router.get("/runs/{run_id}/stream")
 async def stream_run_v1(
     run_id: int,
@@ -349,13 +316,12 @@ async def stream_run_v1(
     if not current.is_superadmin and current.tenant_id != run.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
 
-    from app.db import SessionLocal
-
     return StreamingResponse(
-        _run_sse_events(run_id, SessionLocal),
+        subscribe_run_events(run_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
 
 
 @router.get("/runs/{run_id}/llm-log")

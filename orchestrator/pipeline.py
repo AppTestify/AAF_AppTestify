@@ -25,6 +25,7 @@ from guardrails.types import GuardrailResult
 from orchestrator.rar import run_rar_loop_async
 from orchestrator.utility import score_actions
 from pm_interface.decision_formatter import to_pm_decision
+from app.services.run_events import publish_run_event_sync
 
 
 def _agent_tool_plans() -> dict[str, list[str]]:
@@ -62,6 +63,7 @@ async def run_pipeline(
     intent: dict[str, Any] | None = None,
     cost_tracker: LlmCostTracker | None = None,
     evidence_package: dict[str, Any] | None = None,
+    run_id: int | None = None,
 ) -> PipelineResult:
     """Run agents → consensus → RAR → utility → explainability → PM view."""
 
@@ -94,8 +96,12 @@ async def run_pipeline(
     latest_opinions: list[Any] = []
 
     async def rerun_agents(ev: list[EvidenceRecord], _loop: int) -> list[Any]:
+        if run_id is not None:
+            publish_run_event_sync(run_id, "rar_loop", {"rar_triggered": True, "loop": _loop})
         refresh = _refresh_tools_from_opinions(latest_opinions or initial_opinions)
         ops = await _run_agents(ev, refresh_tools=refresh)
+        if run_id is not None:
+            publish_run_event_sync(run_id, "agent_complete", {"agents": len(ops)})
         guarded, reports = apply_agent_output_guards(ops, settings)
         all_guard_reports.extend(reports)
         latest_opinions.clear()
@@ -124,6 +130,8 @@ async def run_pipeline(
             return ""
 
     initial_opinions_raw = await _run_agents(normalized_evidence)
+    if run_id is not None:
+        publish_run_event_sync(run_id, "agent_complete", {"agents": len(initial_opinions_raw)})
     initial_opinions, initial_guard_reports = apply_agent_output_guards(initial_opinions_raw, settings)
     all_guard_reports.extend(initial_guard_reports)
     latest_opinions.extend(initial_opinions)

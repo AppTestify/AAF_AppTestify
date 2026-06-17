@@ -13,6 +13,7 @@ from llm.intent_router import route_pm_intent
 from orchestrator.connector_router import route_connectors_semantic
 from orchestrator.evidence import collect_evidence
 from orchestrator.pipeline import run_pipeline
+from app.services.run_events import publish_run_event_sync
 
 
 async def run_governance(
@@ -22,6 +23,7 @@ async def run_governance(
     llm_providers: list[ActiveProvider] | None = None,
     *,
     tenant_ui_preferences: dict[str, Any] | None = None,
+    run_id: int | None = None,
 ) -> PipelineResult:
     input_reports: list = []
     cost_tracker = LlmCostTracker()
@@ -55,6 +57,8 @@ async def run_governance(
         tenant_ui_preferences=tenant_ui_preferences,
         warm_tools=settings.pipeline_phase >= 3,
     )
+    if run_id is not None:
+        publish_run_event_sync(run_id, "evidence_fetched", {"run_id": run_id})
     guard_outcome = run_input_guards(
         prompt,
         normalized,
@@ -103,4 +107,5 @@ async def run_governance(
         intent=intent_payload,
         cost_tracker=cost_tracker,
         evidence_package=evidence_package,
+        run_id=run_id,
     )

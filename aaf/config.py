@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     jira_api_token: str = ""
     jira_project: str = "PROJ"
     jira_board_id: str = "1"
+    jira_webhook_secret: str = ""
     gitlab_token: str = ""
     gitlab_project_id: str = ""
     gitlab_url: str = "https://gitlab.com"

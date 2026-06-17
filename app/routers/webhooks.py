@@ -122,9 +122,34 @@ async def github_workflow_run(
     }
 
 
+def _jira_webhook_secret() -> str:
+    settings = get_settings()
+    # Only use explicit webhook secret, not API token fallback
+    return (settings.jira_webhook_secret or "").strip()
+
+
+def _verify_jira_signature(body: bytes, signature: Optional[str]) -> None:
+    """Verify Jira webhook signature using HMAC SHA256."""
+    secret = _jira_webhook_secret()
+    if signature:
+        if not secret:
+            raise HTTPException(status_code=401, detail="Webhook signature present but secret not configured")
+        expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    elif secret:
+        raise HTTPException(status_code=401, detail="Missing webhook signature")
+
+
 @router.post("/jira")
-async def jira_webhook(request: Request) -> dict[str, Any]:
+async def jira_webhook(
+    request: Request,
+    x_atlassian_webhook_signature: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
     """Jira issue_updated webhook — invalidates PM tool caches."""
+    body = await request.body()
+    _verify_jira_signature(body, x_atlassian_webhook_signature)
+    
     try:
         payload = await request.json()
     except Exception as exc:  # noqa: BLE001

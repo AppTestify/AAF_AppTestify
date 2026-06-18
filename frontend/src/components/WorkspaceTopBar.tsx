@@ -45,14 +45,20 @@ export function WorkspaceTopBar({ user }: WorkspaceTopBarProps) {
     <header className="workspace-topbar">
       <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       <form className="workspace-topbar-search" onSubmit={onSearch}>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search decisions, evidence, agents… (⌘K)"
-          aria-label="Search workspace"
-          onFocus={() => setSearchOpen(true)}
-        />
+        <div className="search-input-wrapper">
+          <svg className="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search decisions, evidence, agents… (⌘K)"
+            aria-label="Search workspace"
+            onFocus={() => setSearchOpen(true)}
+          />
+        </div>
       </form>
       <div className="workspace-topbar-actions">
         {runningCount > 0 ? (
@@ -61,9 +67,6 @@ export function WorkspaceTopBar({ user }: WorkspaceTopBarProps) {
             {runningCount} running
           </span>
         ) : null}
-        <button type="button" className="btn btn-ghost btn-sm workspace-topbar-search-btn" onClick={() => setSearchOpen(true)}>
-          Search
-        </button>
         <Link to="/app/alerts" className="workspace-topbar-bell" aria-label="Notifications">
           🔔
           {alertCount > 0 ? <span className="workspace-nav-badge workspace-topbar-alert-badge">{alertCount}</span> : null}

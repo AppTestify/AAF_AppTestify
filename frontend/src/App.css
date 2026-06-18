@@ -2098,9 +2098,22 @@ textarea:focus-visible {
   max-width: 520px;
 }
 
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-wrapper .search-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--muted, #94a3b8);
+  pointer-events: none;
+}
+
 .workspace-topbar-search input {
   width: 100%;
-  padding: 0.55rem 0.85rem;
+  padding: 0.55rem 0.85rem 0.55rem 2.3rem;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface2);

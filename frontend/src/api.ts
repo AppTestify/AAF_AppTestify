@@ -904,6 +904,8 @@ export async function fetchPublicShareSnapshot(token: string): Promise<PublicSha
 export type GovernanceRunStreamHandlers = {
   onStatus?: (data: { status: string; run_id: number }) => void;
   onEvidenceFetched?: (data: { run_id: number }) => void;
+  onAgentComplete?: (data: { run_id: number; agent_id?: string }) => void;
+  onRarLoop?: (data: { run_id: number; iteration?: number }) => void;
   onResultReady?: (data: { run_id: number; consensus?: number }) => void;
   onTimeout?: (data: { run_id: number }) => void;
   onError?: (data: { error?: string }) => void;
@@ -925,6 +927,8 @@ export function streamGovernanceRun(runId: number, handlers: GovernanceRunStream
 
   bind("status", handlers.onStatus as (data: Record<string, unknown>) => void);
   bind("evidence_fetched", handlers.onEvidenceFetched as (data: Record<string, unknown>) => void);
+  bind("agent_complete", handlers.onAgentComplete as (data: Record<string, unknown>) => void);
+  bind("rar_loop", handlers.onRarLoop as (data: Record<string, unknown>) => void);
   bind("result_ready", handlers.onResultReady as (data: Record<string, unknown>) => void);
   bind("timeout", handlers.onTimeout as (data: Record<string, unknown>) => void);
   bind("error", handlers.onError as (data: Record<string, unknown>) => void);

@@ -13,6 +13,7 @@ import {
   fetchRunsTimeseries,
   runGovernanceWorkflow,
   runRarIteration,
+  streamGovernanceRun,
   type ConsensusSummary,
   type ExecutiveSummary,
   type IntelligenceIncident,
@@ -47,6 +48,7 @@ import {
   deriveRiskCards,
   isLiveTrace,
   parseGovernanceRunResult,
+  type LiveStreamState,
   type ParsedRunContext,
 } from "../lib/governancePresentation";
 
@@ -67,6 +69,7 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const [cases, setCases] = useState<GovernanceCase[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [opsLoading, setOpsLoading] = useState(true);
+  const [liveState, setLiveState] = useState<LiveStreamState>({});
 
   useEffect(() => {
     Promise.all([
@@ -78,7 +81,7 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
       fetchReleaseGovernance(),
       fetchWorkflowRuns(),
       fetchCases(20),
-      fetchGovernanceRuns({ status: "succeeded", limit: 1 }),
+      fetchGovernanceRuns({ limit: 1 }),
     ])
       .then(async ([ts, b, c, d, e, f, g, casePage, runPage]) => {
         setTimeseries(ts);
@@ -98,6 +101,30 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load command center"))
       .finally(() => setOpsLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!parsedRun) return;
+    const { status, id } = parsedRun.run;
+    if (status !== "running" && status !== "queued") return;
+
+    setLiveState({});
+
+    const closeStream = streamGovernanceRun(id, {
+      onStatus: (data) => {
+        if (data.status === "succeeded" || data.status === "failed") {
+          fetchGovernanceRun(id)
+            .then((full) => setParsedRun(parseGovernanceRunResult(full)))
+            .catch(console.error);
+        }
+      },
+      onEvidenceFetched: () => setLiveState((prev) => ({ ...prev, evidenceFetched: true })),
+      onAgentComplete: () => setLiveState((prev) => ({ ...prev, agentCompleteCount: (prev.agentCompleteCount ?? 0) + 1 })),
+      onRarLoop: (data) => setLiveState((prev) => ({ ...prev, rarLoops: data.iteration ?? (prev.rarLoops ?? 0) + 1 })),
+      onResultReady: () => setLiveState((prev) => ({ ...prev, resultReady: true })),
+    });
+
+    return () => closeStream();
+  }, [parsedRun?.run.id, parsedRun?.run.status]);
 
   const runWorkflow = async (workflowType: string) => {
     try {
@@ -125,7 +152,7 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
   const riskCards = deriveRiskCards(releaseGov, consensus, parsedRun);
   const recommendation = deriveRecommendation(parsedRun, releaseGov);
   const recentDecisions = deriveRecentDecisions(summary, cases);
-  const flowSteps = deriveDecisionFlow(parsedRun, parsedRun?.run.status);
+  const flowSteps = deriveDecisionFlow(parsedRun, parsedRun?.run.status, liveState);
   const liveTrace = parsedRun ? isLiveTrace(parsedRun.run.status, parsedRun.run.finished_at) : false;
   const displayError = error ?? summaryError;
   const chartsLoading = summaryLoading || opsLoading;

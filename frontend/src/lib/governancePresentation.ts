@@ -314,7 +314,18 @@ export type FlowStep = {
   completed?: boolean;
 };
 
-export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: string | null): FlowStep[] {
+export type LiveStreamState = {
+  evidenceFetched?: boolean;
+  agentCompleteCount?: number;
+  rarLoops?: number;
+  resultReady?: boolean;
+};
+
+export function deriveDecisionFlow(
+  parsed: ParsedRunContext | null,
+  runStatus?: string | null,
+  liveState?: LiveStreamState
+): FlowStep[] {
   if (!parsed) {
     return [
       { id: "prompt", label: "PM Prompt", detail: "Ask Casantris AI" },
@@ -334,6 +345,11 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
   const status = runStatus ?? parsed.run.status;
   const running = status === "running" || status === "queued";
   const done = status === "succeeded";
+  
+  const evidenceDone = done || !!liveState?.evidenceFetched || !!liveState?.resultReady;
+  const expectedAgents = result.agent_opinions?.length ?? framing.agents_activated?.length ?? 3;
+  const agentsDone = done || !!liveState?.resultReady || (liveState?.agentCompleteCount ?? 0) >= expectedAgents;
+  
   const secopsActive = (framing.agents_activated ?? result.agents_activated ?? []).includes("devsecops");
   const secopsOpinion = result.agent_opinions?.find((o) => o.agent_id === "devsecops");
   const pipelinePhase = resolvePipelinePhase(result, framing);
@@ -351,26 +367,26 @@ export function deriveDecisionFlow(parsed: ParsedRunContext | null, runStatus?: 
         }
       : null;
   const connectorSteps: FlowStep[] = [
-    { id: "github", label: "GitHub", detail: "Evidence", completed: done || !running },
-    { id: "jira", label: "Jira", detail: "Evidence", completed: done || !running },
-    { id: "finops", label: "FinOps", detail: "Evidence", completed: done || !running },
+    { id: "github", label: "GitHub", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
+    { id: "jira", label: "Jira", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
+    { id: "finops", label: "FinOps", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
     {
       id: "secops",
       label: "SecOps",
       detail: secopsActive ? (secopsOpinion ? "Active" : "Queued") : "Skipped",
       completed: done && secopsActive,
-      active: running && secopsActive,
+      active: running && secopsActive && !evidenceDone,
     },
   ];
   const tailSteps: FlowStep[] = [
     {
       id: "agents",
       label: "AI Agents",
-      detail: `${result.agent_opinions?.length ?? framing.agents_activated?.length ?? 3} agents`,
-      active: running,
-      completed: done,
+      detail: `${liveState?.agentCompleteCount ?? expectedAgents} agents`,
+      active: running && evidenceDone && !agentsDone,
+      completed: agentsDone,
     },
-    { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done, active: running },
+    { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done || !!liveState?.resultReady, active: running && agentsDone && !liveState?.resultReady },
     { id: "brief", label: "Brief", detail: result.governance_brief ? "Ready" : "Pending", completed: done, active: false },
     { id: "decision", label: "Decision", detail: action, active: done, completed: done },
   ];

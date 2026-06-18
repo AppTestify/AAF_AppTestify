@@ -64,8 +64,13 @@ class ReleaseDecisionOut(BaseModel):
     risk_level: str
 
 
+class ChatMessage(BaseModel):
+    role: str
+    text: str
+
 class AssistantAskBody(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
+    history: list[ChatMessage] = []
 
 
 class AssistantAskOut(BaseModel):

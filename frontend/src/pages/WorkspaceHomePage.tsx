@@ -292,9 +292,11 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
       </div>
 
       <div className="dashboard-grid dashboard-grid-two">
-        <div className="card">
-          <h2>Workflow runs</h2>
-          <div className="table-wrap">
+        <details className="card" open>
+          <summary style={{ cursor: "pointer" }}>
+            <h2 style={{ display: "inline-block", margin: 0 }}>Workflow runs</h2>
+          </summary>
+          <div className="table-wrap" style={{ marginTop: "1rem" }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -304,17 +306,25 @@ export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
                 </tr>
               </thead>
               <tbody>
-                {workflowRuns.map((w) => (
-                  <tr key={w.id}>
-                    <td>{w.workflow_type}</td>
-                    <td>{w.decision ?? "—"}</td>
-                    <td>{w.score.toFixed(2)}</td>
+                {workflowRuns.length ? (
+                  workflowRuns.map((w) => (
+                    <tr key={w.id}>
+                      <td className="mono">{w.workflow_type}</td>
+                      <td>{w.decision ?? "—"}</td>
+                      <td>{w.score.toFixed(2)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="runs-list-empty">
+                      No workflows
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
-        </div>
+        </details>
         <div className="card">
           <h2>Alerts stream</h2>
           {(summary?.recent_alerts ?? []).length ? (

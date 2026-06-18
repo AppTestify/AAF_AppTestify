@@ -1530,12 +1530,14 @@ export type AssistantAskResponse = {
   evidence: Record<string, unknown>;
 };
 
-export async function askAssistant(question: string): Promise<AssistantAskResponse> {
+export type ChatMessage = { role: "user" | "assistant"; text: string };
+
+export async function askAssistant(question: string, history: ChatMessage[] = []): Promise<AssistantAskResponse> {
   const r = await fetch(`${API}/intelligence/assistant/ask`, {
     credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
   });
   if (!r.ok) throw new Error(await parseError(r));
   return r.json() as Promise<AssistantAskResponse>;

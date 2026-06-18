@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type {
@@ -115,10 +115,26 @@ export function GovernanceView(props: GovernanceViewProps) {
   >("executive");
   const [showAdmin, setShowAdmin] = useState(false);
   const [followUp, setFollowUp] = useState("");
-  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; text: string; confidence?: number }[]>(
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; text: string; confidence?: number; evidence?: Record<string, unknown> }[]>(
     []
   );
   const [chatLoading, setChatLoading] = useState(false);
+  
+  const [runProgress, setRunProgress] = useState(0);
+  useEffect(() => {
+    if (!loading) {
+      setRunProgress(100);
+      return;
+    }
+    setRunProgress(0);
+    const interval = setInterval(() => {
+      setRunProgress((p) => {
+        if (p > 95) return p;
+        return p + Math.max(1, (95 - p) / 10);
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [loading]);
   const suggestedPrompts = [
     "What is our current release risk?",
     "Are there latency or error rate concerns?",
@@ -131,8 +147,9 @@ export function GovernanceView(props: GovernanceViewProps) {
     setChatLoading(true);
     setChatHistory((h) => [...h, { role: "user", text: q }]);
     try {
-      const res = await askAssistant(q);
-      setChatHistory((h) => [...h, { role: "assistant", text: res.answer, confidence: res.confidence }]);
+      const historyPayload = chatHistory.map(m => ({ role: m.role, text: m.text }));
+      const res = await askAssistant(q, historyPayload);
+      setChatHistory((h) => [...h, { role: "assistant", text: res.answer, confidence: res.confidence, evidence: res.evidence }]);
     } catch (err) {
       setChatHistory((h) => [
         ...h,
@@ -186,6 +203,19 @@ export function GovernanceView(props: GovernanceViewProps) {
                 <strong>{m.role === "user" ? "You" : "Casantris"}</strong>
                 <p>{m.text}</p>
                 {m.confidence != null ? <span className="field-hint">confidence {m.confidence.toFixed(2)}</span> : null}
+                {m.evidence && Object.keys(m.evidence).length > 0 ? (
+                  <div className="gov-chat-citations" style={{ marginTop: "0.5rem" }}>
+                    <p style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", margin: "0 0 0.25rem" }}>Cited Evidence</p>
+                    {Object.entries(m.evidence).map(([key, val]) => (
+                      <details key={key} className="accordion" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                        <summary style={{ padding: "0.25rem 0.5rem" }}>Source: {key}</summary>
+                        <pre style={{ margin: 0, padding: "0.5rem", fontSize: "0.75rem", maxHeight: "150px", overflow: "auto" }}>
+                          {JSON.stringify(val, null, 2)}
+                        </pre>
+                      </details>
+                    ))}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -196,6 +226,7 @@ export function GovernanceView(props: GovernanceViewProps) {
             value={followUp}
             onChange={(e) => setFollowUp(e.target.value)}
             placeholder="Ask a follow-up about this governance context…"
+            style={{ flex: 1, minWidth: "200px", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}
             onKeyDown={(e) => {
               if (e.key === "Enter") void sendFollowUp(followUp);
             }}
@@ -262,6 +293,16 @@ export function GovernanceView(props: GovernanceViewProps) {
             {loading ? "Running…" : "Run Governance Check"}
           </button>
         </div>
+        {loading ? (
+          <div className="gov-progress-container" style={{ marginTop: "1rem" }}>
+            <div className="gov-progress-bar" style={{ height: "6px", background: "var(--border)", borderRadius: "4px", overflow: "hidden" }}>
+              <div style={{ height: "100%", background: "linear-gradient(90deg, #3b82f6, #8b5cf6)", width: `${Math.round(runProgress)}%`, transition: "width 0.5s ease-out" }} />
+            </div>
+            <span className="gov-progress-text" style={{ display: "block", marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--muted)" }}>
+              {Math.round(runProgress)}% - Synthesizing signals...
+            </span>
+          </div>
+        ) : null}
       </article>
 
       {result && askColumns ? (

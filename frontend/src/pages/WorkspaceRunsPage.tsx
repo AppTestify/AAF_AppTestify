@@ -58,6 +58,7 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
   const [selectedRun, setSelectedRun] = useState<GovernanceRunV1 | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [query, setQuery] = useState<string>("");
+  const [isAgentDrawerOpen, setIsAgentDrawerOpen] = useState(false);
   const pageFromUrl = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const pageSizeFromUrl = Math.max(1, Number(searchParams.get("page_size") ?? "50") || 50);
   const offset = (pageFromUrl - 1) * pageSizeFromUrl;
@@ -314,10 +315,7 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
       ) : null}
       {parsedSelected ? (
         <>
-          <AgentReasoningGrid
-            agents={agentGrid}
-            rarLoops={parsedSelected.result.rar?.rar_loops ?? 0}
-          />
+
           <GovernanceFlowStepper
             runId={parsedSelected.run.id}
             activeStep="runs"
@@ -485,6 +483,9 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
             <Link to={`/app/evidence?run_id=${selectedRun.id}`} className="btn btn-ghost btn-sm">
               Evidence
             </Link>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => setIsAgentDrawerOpen(true)}>
+              View agent reasoning
+            </button>
             <Link to={`/app/brief?run_id=${selectedRun.id}`} className="btn btn-primary btn-sm">
               View brief
             </Link>
@@ -604,6 +605,23 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
       )}
       </div>
       </div>
+      {isAgentDrawerOpen && parsedSelected ? (
+        <>
+          <div className="side-drawer-overlay" onClick={() => setIsAgentDrawerOpen(false)} />
+          <div className="side-drawer">
+            <div className="side-drawer-header">
+              <h2>Agent Reasoning</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setIsAgentDrawerOpen(false)}>Close</button>
+            </div>
+            <div className="side-drawer-content">
+              <AgentReasoningGrid
+                agents={agentGrid}
+                rarLoops={parsedSelected.result.rar?.rar_loops ?? 0}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
     </WorkspacePageShell>
   );
 }

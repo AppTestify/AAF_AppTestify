@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AgentCardView } from "../../lib/governancePresentation";
 import { linkifyEvidenceText } from "../../lib/evidenceLinks";
+import { SegmentedTabs } from "../ui/SegmentedTabs";
 
 type AgentReasoningGridProps = {
   agents: AgentCardView[];
@@ -8,63 +9,68 @@ type AgentReasoningGridProps = {
 };
 
 export function AgentReasoningGrid({ agents, rarLoops = 0 }: AgentReasoningGridProps) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string>("");
+
+  useEffect(() => {
+    if (!activeId && agents.length > 0) {
+      setActiveId(agents[0].id);
+    }
+  }, [agents, activeId]);
+
+  if (agents.length === 0) return null;
+
+  const tabs = agents.map(a => ({
+    id: a.id,
+    label: a.name
+  }));
+
+  const activeAgent = agents.find(a => a.id === activeId) || agents[0];
+
   return (
-    <div className="gov-agent-grid">
-      {agents.map((agent) => (
-        <article
-          key={agent.id}
-          className={`gov-agent-card ${agent.isOrchestrator ? "gov-agent-card--orchestrator" : ""} ${expanded === agent.id ? "gov-agent-card--open" : ""}`}
-        >
-          <div className="gov-agent-card-head">
-            <div>
-              <h3>{agent.name}</h3>
-              <p>{agent.domain}</p>
-            </div>
-            <div className="gov-agent-card-badges">
-              {agent.toolCallLabel ? (
-                <span className="gov-pill gov-pill--neutral" title="Tools invoked in this run">
-                  {agent.toolCallLabel}
-                </span>
-              ) : null}
-              {agent.transport === "mcp" ? (
-                <span className="gov-pill gov-pill--mcp" title="Evidence fetched via MCP transport">
-                  MCP
-                </span>
-              ) : null}
-              {agent.isOrchestrator ? <span className="gov-pill gov-pill--info">Orchestrator</span> : null}
-            </div>
+    <div className="gov-agent-tabs-container" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <SegmentedTabs tabs={tabs} activeId={activeId || tabs[0].id} onChange={setActiveId} />
+      
+      <article className={`gov-agent-card ${activeAgent.isOrchestrator ? "gov-agent-card--orchestrator" : ""}`}>
+        <div className="gov-agent-card-head">
+          <div>
+            <h3>{activeAgent.name}</h3>
+            <p>{activeAgent.domain}</p>
           </div>
-          <p className="gov-agent-claim-label">Claim</p>
-          <p className="gov-agent-claim">{agent.claim}</p>
-          <p className="gov-agent-claim-label">Confidence</p>
-          <div className="gov-confidence-bar gov-confidence-bar--agent">
-            <span style={{ width: `${Math.round(agent.confidence * 100)}%` }} />
+          <div className="gov-agent-card-badges">
+            {activeAgent.toolCallLabel ? (
+              <span className="gov-pill gov-pill--neutral" title="Tools invoked in this run">
+                {activeAgent.toolCallLabel}
+              </span>
+            ) : null}
+            {activeAgent.transport === "mcp" ? (
+              <span className="gov-pill gov-pill--mcp" title="Evidence fetched via MCP transport">
+                MCP
+              </span>
+            ) : null}
+            {activeAgent.isOrchestrator ? <span className="gov-pill gov-pill--info">Orchestrator</span> : null}
           </div>
-          <span className="gov-agent-conf-pct">{Math.round(agent.confidence * 100)}%</span>
-          <p className="gov-agent-claim-label">Evidence</p>
-          <p className="gov-agent-evidence">{linkifyEvidenceText(agent.evidence[0] ?? "")}</p>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm gov-agent-drawer-toggle"
-            onClick={() => setExpanded((id) => (id === agent.id ? null : agent.id))}
-          >
-            {expanded === agent.id ? "Hide details" : "Show evidence & signals"}
-          </button>
-          {expanded === agent.id ? (
-            <div className="gov-agent-drawer">
-              <ul>
-                {agent.evidence.map((line) => (
-                  <li key={line}>{linkifyEvidenceText(line)}</li>
-                ))}
-              </ul>
-              {agent.isOrchestrator && rarLoops > 0 ? (
-                <p className="gov-agent-rar">RAR loops: {rarLoops}</p>
-              ) : null}
-            </div>
+        </div>
+        <p className="gov-agent-claim-label">Claim</p>
+        <p className="gov-agent-claim">{activeAgent.claim}</p>
+        <p className="gov-agent-claim-label">Confidence</p>
+        <div className="gov-confidence-bar gov-confidence-bar--agent">
+          <span style={{ width: `${Math.round(activeAgent.confidence * 100)}%` }} />
+        </div>
+        <span className="gov-agent-conf-pct">{Math.round(activeAgent.confidence * 100)}%</span>
+        
+        <p className="gov-agent-claim-label">Evidence & Signals</p>
+        <div className="gov-agent-drawer" style={{ display: 'block', marginTop: '0.5rem', background: 'transparent', padding: 0, border: 'none' }}>
+          <ul>
+            {activeAgent.evidence.map((line) => (
+              <li key={line}>{linkifyEvidenceText(line)}</li>
+            ))}
+          </ul>
+          {activeAgent.isOrchestrator && rarLoops > 0 ? (
+            <p className="gov-agent-rar" style={{ marginTop: '1rem' }}>RAR loops: {rarLoops}</p>
           ) : null}
-        </article>
-      ))}
+        </div>
+      </article>
     </div>
   );
 }
+

@@ -9,7 +9,7 @@ import type {
   UserPublic,
   UtilityResult,
 } from "./api";
-import { askAssistant, formatAgentLabel } from "./api";
+import { askAssistant, formatAgentLabel, exportRunBriefPdf } from "./api";
 import { GuardrailStatusPanel } from "./components/governance/GuardrailStatusPanel";
 import { deriveAskColumns } from "./lib/governancePresentation";
 import { EvidenceDetailCell, linkifyEvidenceText } from "./lib/evidenceLinks";
@@ -161,6 +161,25 @@ export function GovernanceView(props: GovernanceViewProps) {
     }
   };
 
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPdf = async () => {
+    if (!result?.run_id) return;
+    try {
+      const blob = await exportRunBriefPdf(result.run_id);
+      downloadBlob(blob, `governance_run_${result.run_id}.pdf`);
+    } catch (err) {
+      console.error("Failed to export PDF", err);
+    }
+  };
+
   const askColumns = result ? deriveAskColumns(result) : null;
   const formatIndex = (v: number | undefined) => (v != null && !Number.isNaN(v) ? v.toFixed(2) : "—");
 
@@ -284,6 +303,11 @@ export function GovernanceView(props: GovernanceViewProps) {
           <Link to="/app/reports" className="btn btn-ghost btn-sm">
             Export Summary
           </Link>
+          {result?.run_id ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={handleExportPdf}>
+              Export Brief (PDF)
+            </button>
+          ) : null}
           <button
             className="btn btn-primary"
             type="button"

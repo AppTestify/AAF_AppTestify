@@ -515,6 +515,9 @@ export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
               <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunCsv}>
                 Export CSV
               </button>
+              <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunPdf}>
+                Export Brief (PDF)
+              </button>
             </div>
           </div>
           <p className="mono" style={{ marginTop: 0 }}>

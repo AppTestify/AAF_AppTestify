@@ -468,7 +468,7 @@ def export_run_pdf(
     if not user.is_superadmin and user.tenant_id != run.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     result_json = run.result_json if isinstance(run.result_json, dict) else {}
-    pdf_bytes = build_decision_framing_onepager_pdf(run_id=run.id, result_json=result_json)
+    pdf_bytes = build_decision_framing_onepager_pdf(run_id=run.id, result_json=result_json, prompt=run.prompt)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

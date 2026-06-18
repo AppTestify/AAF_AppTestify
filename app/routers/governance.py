@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +31,7 @@ from guardrails.exceptions import GuardrailBlockedError
 from guardrails.pm_prompt_guard import check_pm_prompt
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
+from app.services.governance_delivery import deliver_run_complete_notifications
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
 
 router = APIRouter(prefix="/governance", tags=["governance"])
@@ -47,6 +48,7 @@ class RunBody(BaseModel):
 @router.post("/run")
 async def governance_run(
     body: RunBody,
+    background_tasks: BackgroundTasks,
     tenant_slug: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(settings_dep),
@@ -145,6 +147,7 @@ async def governance_run(
             )
         )
     db.commit()
+    background_tasks.add_task(deliver_run_complete_notifications, run.id)
     out["run_id"] = run.id
 
     out["runtime_config"] = {

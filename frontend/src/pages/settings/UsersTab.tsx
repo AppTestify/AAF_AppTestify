@@ -33,6 +33,7 @@ export function UsersTab({
   clearTeamsWebhook,
   setClearTeamsWebhook,
   onTestSmtp,
+  onTestSlack,
   onSaveNotifications,
 }: UsersTabProps) {
   const updateChannel = (eventKey: string, channel: "email" | "slack" | "teams", value: boolean) => {
@@ -209,6 +210,11 @@ export function UsersTab({
             <label style={{ marginTop: "0.35rem", display: "block" }}>
               <input type="checkbox" checked={clearSlackWebhook} onChange={(e) => setClearSlackWebhook(e.target.checked)} /> Remove stored Slack webhook
             </label>
+            <div style={{ marginTop: "0.5rem" }}>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onTestSlack(slackWebhook)} disabled={saving || (!slackWebhook && !notificationCfg?.slack_webhook_configured)}>
+                Test Slack Webhook
+              </button>
+            </div>
           </div>
           <div className="form-row">
             <label>Microsoft Teams incoming webhook URL</label>

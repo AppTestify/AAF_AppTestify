@@ -248,6 +248,18 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
     }
   };
 
+  const handleTestSlack = async (webhookUrl?: string) => {
+    try {
+      setSaving(true);
+      const result = await testNotificationConfig({ test_slack: true, slack_webhook: webhookUrl || null }, targetForApi);
+      setMessage(result.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Slack test failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddUser = async () => {
     if (!newUserEmail.trim()) return;
     try {
@@ -562,6 +574,7 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
           clearTeamsWebhook={clearTeamsWebhook}
           setClearTeamsWebhook={setClearTeamsWebhook}
           onTestSmtp={() => void handleTestSmtp()}
+          onTestSlack={() => void handleTestSlack(slackWebhook)}
           onSaveNotifications={() => void handleSaveNotifications()}
         />
       ) : null}

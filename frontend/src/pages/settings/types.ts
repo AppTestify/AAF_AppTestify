@@ -101,8 +101,9 @@ export type UsersTabProps = {
   teamsWebhook: string;
   setTeamsWebhook: (v: string) => void;
   clearTeamsWebhook: boolean;
-  setClearTeamsWebhook: (v: boolean) => void;
+  setClearTeamsWebhook: (val: boolean) => void;
   onTestSmtp: () => void;
+  onTestSlack: (webhookUrl?: string) => void;
   onSaveNotifications: () => void;
 };
 

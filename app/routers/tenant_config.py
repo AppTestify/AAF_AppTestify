@@ -199,6 +199,8 @@ class NotificationConfigIn(BaseModel):
 
 class NotificationTestIn(BaseModel):
     to_email: Optional[str] = None
+    test_slack: bool = False
+    slack_webhook: Optional[str] = None
 
 
 def _resolve_tenant_for_user(
@@ -849,6 +851,8 @@ def put_notification_config(
     db.commit()
     return get_notification_config(tenant_slug=tenant.slug, db=db, current=current)
 
+from app.services.notification_router import _decrypt_webhook_url
+from app.services.slack_notifier import send_slack_message
 
 @router.post("/notifications/test")
 def test_notification_config(
@@ -860,6 +864,19 @@ def test_notification_config(
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     row = _get_or_create_notification_config(db, tenant.id)
     try:
+        if body.test_slack:
+            slack_url = body.slack_webhook.strip() if body.slack_webhook else None
+            if not slack_url:
+                slack_url = _decrypt_webhook_url(row.slack_incoming_webhook_encrypted)
+            if not slack_url:
+                platform_row = db.execute(select(PlatformNotificationConfig)).scalar_one_or_none()
+                if platform_row:
+                    slack_url = _decrypt_webhook_url(platform_row.slack_incoming_webhook_encrypted)
+            if not slack_url:
+                raise ValueError("No Slack webhook configured on tenant or platform.")
+            send_slack_message(slack_url, title="Webhook Test", body="This is a test notification from the workspace settings.", fields=[])
+            return {"ok": True, "message": "Slack webhook test succeeded"}
+
         test_smtp_connection(row)
         if body.to_email:
             send_templated_email(
@@ -874,8 +891,8 @@ def test_notification_config(
         db.commit()
         return {"ok": True, "message": "SMTP test succeeded"}
     except Exception as exc:  # noqa: BLE001
-        row.last_test_ok = False
-        row.last_test_error = str(exc)
-        row.last_tested_at = datetime.now(timezone.utc)
-        db.commit()
-        raise HTTPException(status_code=422, detail=f"SMTP test failed: {exc}") from exc
+        if not body.test_slack:
+            row.last_test_ok = False
+            row.last_test_error = str(exc)
+            row.last_tested_at = datetime.now(timezone.utc)
+        return {"ok": False, "message": f"Test failed: {exc}"}

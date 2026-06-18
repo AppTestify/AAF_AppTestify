@@ -1465,7 +1465,7 @@ export async function saveNotificationConfig(
 }
 
 export async function testNotificationConfig(
-  body: { to_email?: string | null },
+  body: { to_email?: string | null; test_slack?: boolean; slack_webhook?: string | null },
   tenantSlug?: string | null
 ): Promise<{ ok: boolean; message: string }> {
   const r = await fetch(`${API}/tenant/notifications/test${tenantQuery(tenantSlug)}`, { credentials: "include",

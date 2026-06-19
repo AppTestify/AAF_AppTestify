@@ -30,6 +30,8 @@ def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceR
             batch = _gitlab(payload)
         elif source == "pagerduty":
             batch = _pagerduty(payload)
+        elif source == "bitbucket":
+            batch = _bitbucket(payload)
         else:
             batch = []
         if len(batch) > limit:
@@ -382,3 +384,65 @@ def enrich_for_rar(evidence: list[EvidenceRecord], loop: int) -> list[EvidenceRe
         metadata={"rar_loop": loop},
     )
     return [*evidence, *boosted, extra]
+
+def _bitbucket(p: dict[str, Any]) -> list[EvidenceRecord]:
+    recs: list[EvidenceRecord] = []
+    workspace = p.get("workspace")
+    repo = p.get("repo")
+    repo_base = f"https://bitbucket.org/{workspace}/{repo}" if workspace and repo else ""
+
+    for pr in p.get("pull_requests") or []:
+        state = (pr.get("state") or "").lower()
+        title = pr.get("title") or "PR"
+        url = ((pr.get("links") or {}).get("html") or {}).get("href") or repo_base
+        if state == "open":
+            sev = 0.25 + 0.1 * (1 if "block" in title.lower() else 0)
+            recs.append(
+                EvidenceRecord(
+                    source="bitbucket",
+                    kind="open_pr",
+                    summary=title[:200],
+                    severity=min(1.0, sev),
+                    metadata={"url": url, "repo": repo_base or None},
+                )
+            )
+
+    for pipe in p.get("pipelines") or []:
+        state_dict = pipe.get("state") or {}
+        state_name = (state_dict.get("name") or "").lower()
+        result_dict = state_dict.get("result") or {}
+        result_name = (result_dict.get("name") or "").lower()
+        
+        url = ((pipe.get("repository") or {}).get("links") or {}).get("html") or {}
+        url = url.get("href") or repo_base
+        
+        if state_name == "completed" and result_name == "failed":
+            recs.append(
+                EvidenceRecord(
+                    source="bitbucket",
+                    kind="failed_pipeline",
+                    summary="Bitbucket pipeline failed",
+                    severity=0.85,
+                    metadata={"url": url},
+                )
+            )
+
+    for issue in p.get("issues") or []:
+        state = (issue.get("state") or "").lower()
+        title = issue.get("title") or "Issue"
+        priority = (issue.get("priority") or "").lower()
+        url = ((issue.get("links") or {}).get("html") or {}).get("href") or repo_base
+        
+        if state in {"new", "open"}:
+            sev = 0.5 if priority in {"major", "critical", "blocker"} else 0.3
+            recs.append(
+                EvidenceRecord(
+                    source="bitbucket",
+                    kind="open_issue",
+                    summary=title[:200],
+                    severity=sev,
+                    metadata={"url": url},
+                )
+            )
+
+    return recs

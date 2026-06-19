@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     gitlab_project_id: str = ""
     gitlab_url: str = "https://gitlab.com"
     gitlab_webhook_secret: str = ""
+    bitbucket_username: str = ""
+    bitbucket_app_password: str = ""
+    bitbucket_workspace: str = ""
+    bitbucket_repo_slug: str = "workspace/repo"
     pagerduty_api_token: str = ""
     finops_cost_file: Optional[Path] = None  # JSON/CSV path for live file-based cost
 

@@ -114,6 +114,40 @@ export function ConnectorsTab({
               </div>
             ) : null}
 
+            {name === "bitbucket" ? (
+              <div className="config-columns settings-quick-grid">
+                <div className="form-row">
+                  <label>Workspace</label>
+                  <input
+                    value={String(cfg.workspace ?? "")}
+                    onChange={(e) => mergeConnectorConfig(name, { workspace: e.target.value })}
+                    placeholder="Workspace ID"
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Repository Slug</label>
+                  <input
+                    value={String(cfg.repo_slug ?? "")}
+                    onChange={(e) => mergeConnectorConfig(name, { repo_slug: e.target.value })}
+                    placeholder="repo-slug"
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>App Password</label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={String(cred.app_password ?? "")}
+                    onChange={(e) => mergeConnectorCreds(name, { app_password: e.target.value })}
+                    placeholder={status?.credentials_keys_configured?.includes("app_password") ? "Configured (masked)" : "Enter app password"}
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {name === "jira" ? (
               <div className="config-columns settings-quick-grid">
                 <div className="form-row">

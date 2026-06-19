@@ -29,6 +29,7 @@ import { ConnectorsTab } from "./settings/ConnectorsTab";
 import { GeneralTab } from "./settings/GeneralTab";
 import { UsersTab } from "./settings/UsersTab";
 import {
+  CONNECTOR_ORDER,
   PROVIDERS,
   type ConnectorDraft,
   type ProviderDraft,
@@ -121,6 +122,11 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
         const cDraft: Record<string, ConnectorDraft> = {};
         connectors.forEach((c) => {
           cDraft[c.connector_name] = { enabled: c.enabled, config_json: c.config_json ?? {}, credentials_json: {} };
+        });
+        CONNECTOR_ORDER.forEach((name) => {
+          if (!cDraft[name]) {
+            cDraft[name] = { enabled: false, config_json: {}, credentials_json: {} };
+          }
         });
         setConnectorDraft(cDraft);
         setProviderRows(providers.providers);

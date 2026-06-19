@@ -154,13 +154,6 @@ export function deriveTransportFromRawSignals(
   return null;
 }
 
-function resolvePipelinePhase(result: GovernanceRunResult, framing: DecisionFraming): number | undefined {
-  const fromResult = (result as GovernanceRunResult & { pipeline_phase?: number }).pipeline_phase;
-  if (typeof fromResult === "number") return fromResult;
-  const fromFraming = (framing as DecisionFraming & { pipeline_phase?: number }).pipeline_phase;
-  return typeof fromFraming === "number" ? fromFraming : undefined;
-}
-
 export function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -329,14 +322,12 @@ export function deriveDecisionFlow(
   if (!parsed) {
     return [
       { id: "prompt", label: "PM Prompt", detail: "Ask Casantris AI" },
-      { id: "github", label: "GitHub", detail: "Evidence" },
-      { id: "jira", label: "Jira", detail: "Evidence" },
-      { id: "finops", label: "FinOps", detail: "Evidence" },
-      { id: "secops", label: "SecOps", detail: "Security" },
-      { id: "agents", label: "AI Agents", detail: "Reasoning" },
-      { id: "consensus", label: "Consensus", detail: "—" },
-      { id: "brief", label: "Brief", detail: "Executive" },
-      { id: "decision", label: "Decision", detail: "Pending", active: true },
+      { id: "classifier", label: "Keyword Classifier", detail: "Routing" },
+      { id: "evidence", label: "Evidence Collection", detail: "Connectors" },
+      { id: "agents", label: "Static Agents", detail: "Reasoning" },
+      { id: "orchestrator", label: "Orchestrator", detail: "Consensus & Utility" },
+      { id: "explanation", label: "LLM Explanation", detail: "Generation" },
+      { id: "brief", label: "Governance Brief", detail: "Pending", active: true },
     ];
   }
   const { result, framing } = parsed;
@@ -346,55 +337,66 @@ export function deriveDecisionFlow(
   const running = status === "running" || status === "queued";
   const done = status === "succeeded";
   
+  const intentCategory = framing.intent_category ?? (typeof result.intent?.category === "string" ? result.intent.category : undefined);
+  const classifierDone = done || !!intentCategory || !!liveState?.evidenceFetched || !!liveState?.resultReady;
   const evidenceDone = done || !!liveState?.evidenceFetched || !!liveState?.resultReady;
-  const expectedAgents = result.agent_opinions?.length ?? framing.agents_activated?.length ?? 3;
+  
+  const expectedAgents = result.agent_opinions?.length ?? framing.agents_activated?.length ?? 4;
   const agentsDone = done || !!liveState?.resultReady || (liveState?.agentCompleteCount ?? 0) >= expectedAgents;
   
-  const secopsActive = (framing.agents_activated ?? result.agents_activated ?? []).includes("devsecops");
-  const secopsOpinion = result.agent_opinions?.find((o) => o.agent_id === "devsecops");
-  const pipelinePhase = resolvePipelinePhase(result, framing);
-  const intentCategory =
-    framing.intent_category ??
-    (typeof result.intent?.category === "string" ? result.intent.category : undefined);
-  const intentStep: FlowStep | null =
-    pipelinePhase === 3
-      ? {
-          id: "intent",
-          label: "LLM Intent Router",
-          detail: intentCategory?.replace(/_/g, " ") ?? "Semantic routing",
-          completed: done || !running,
-          active: running,
-        }
-      : null;
-  const connectorSteps: FlowStep[] = [
-    { id: "github", label: "GitHub", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
-    { id: "jira", label: "Jira", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
-    { id: "finops", label: "FinOps", detail: "Evidence", completed: evidenceDone, active: running && !evidenceDone },
+  const orchestratorDone = done || !!liveState?.resultReady || score != null;
+  const explanationDone = done || !!result.explanation;
+  const briefDone = done || !!result.governance_brief;
+
+  return [
     {
-      id: "secops",
-      label: "SecOps",
-      detail: secopsActive ? (secopsOpinion ? "Active" : "Queued") : "Skipped",
-      completed: done && secopsActive,
-      active: running && secopsActive && !evidenceDone,
+      id: "prompt",
+      label: "PM Prompt",
+      detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""),
+      completed: true,
     },
-  ];
-  const tailSteps: FlowStep[] = [
+    {
+      id: "classifier",
+      label: "Keyword Classifier",
+      detail: intentCategory ? intentCategory.replace(/_/g, " ") : (running ? "Classifying..." : "Pending"),
+      completed: classifierDone,
+      active: running && !classifierDone,
+    },
+    {
+      id: "evidence",
+      label: "Evidence Collection",
+      detail: "GitHub, Jira, AWS",
+      completed: evidenceDone,
+      active: running && classifierDone && !evidenceDone,
+    },
     {
       id: "agents",
-      label: "AI Agents",
+      label: "Static Agents",
       detail: `${liveState?.agentCompleteCount ?? expectedAgents} agents`,
-      active: running && evidenceDone && !agentsDone,
       completed: agentsDone,
+      active: running && evidenceDone && !agentsDone,
     },
-    { id: "consensus", label: "Consensus", detail: score != null ? score.toFixed(2) : "—", completed: done || !!liveState?.resultReady, active: running && agentsDone && !liveState?.resultReady },
-    { id: "brief", label: "Brief", detail: result.governance_brief ? "Ready" : "Pending", completed: done, active: false },
-    { id: "decision", label: "Decision", detail: action, active: done, completed: done },
-  ];
-  return [
-    { id: "prompt", label: "PM Prompt", detail: result.prompt.slice(0, 24) + (result.prompt.length > 24 ? "…" : ""), completed: true },
-    ...(intentStep ? [intentStep] : []),
-    ...connectorSteps,
-    ...tailSteps,
+    {
+      id: "orchestrator",
+      label: "Orchestrator",
+      detail: score != null ? `${action} (C=${score.toFixed(2)})` : "Pending",
+      completed: orchestratorDone,
+      active: running && agentsDone && !orchestratorDone,
+    },
+    {
+      id: "explanation",
+      label: "LLM Explanation",
+      detail: explanationDone ? "Generated" : "Pending",
+      completed: explanationDone,
+      active: running && orchestratorDone && !explanationDone,
+    },
+    {
+      id: "brief",
+      label: "Governance Brief",
+      detail: briefDone ? "Ready" : "Pending",
+      completed: briefDone,
+      active: running && explanationDone && !briefDone,
+    },
   ];
 }
 
@@ -637,7 +639,7 @@ export function deriveAgentGrid(
   opinions: AgentOpinion[],
   framing: DecisionFraming
 ): AgentCardView[] {
-  const agents = opinions.map((o) => ({
+  const agents: AgentCardView[] = opinions.map((o) => ({
     id: o.agent_id,
     name: formatAgentLabel(o.agent_id, o.display_id),
     domain: AGENT_DOMAINS[o.agent_id] ?? "Governance domain",

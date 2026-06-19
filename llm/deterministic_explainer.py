@@ -41,7 +41,9 @@ def generate_explanation(
     prompt = (
         "Create a concise executive governance explanation in markdown with sections: "
         "What we evaluated, Consensus, Recommended action, Why trustworthy. "
-        "The response must be brief (~500 tokens max) and rely ONLY on the provided JSON.\n\n"
+        "The response must be brief (~500 tokens max) and rely ONLY on the provided JSON.\n"
+        "Critically: Incorporate the specific agent 'evidence' strings into your explanation narrative "
+        "(e.g., if the evidence mentions 'payments-service', use that exact detail).\n\n"
         f"JSON Context:\n{decision_json}"
     )
     
@@ -81,6 +83,8 @@ def build_explanation(
         lines.append(
             f"- **{o.agent_id}** ({o.risk_theme.value}, confidence {o.confidence:.2f}): {o.claim}"
         )
+        for ev in o.evidence:
+            lines.append(f"  - {ev}")
     lines.append("")
     lines.append("## Consensus")
     lines.append(

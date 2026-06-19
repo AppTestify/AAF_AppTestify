@@ -57,6 +57,8 @@ def _summary_markdown(r: PipelineResult) -> str:
     for o in r.agent_opinions[:6]:
         label = resolve_display_label(o.agent_id, o.display_id)
         parts.append(f"- **{label}:** {o.claim}")
+        for ev in o.evidence:
+            parts.append(f"  - {ev}")
     return "\n".join(parts)
 
 

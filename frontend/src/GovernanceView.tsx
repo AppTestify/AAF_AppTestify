@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type {
@@ -119,6 +119,16 @@ export function GovernanceView(props: GovernanceViewProps) {
     []
   );
   const [chatLoading, setChatLoading] = useState(false);
+  const chatHistoryRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      chatHistoryRef.current.scrollTo({
+        top: chatHistoryRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [chatHistory]);
   
   const [runProgress, setRunProgress] = useState(0);
   useEffect(() => {
@@ -216,7 +226,7 @@ export function GovernanceView(props: GovernanceViewProps) {
           ))}
         </div>
         {chatHistory.length ? (
-          <ul className="gov-chat-history">
+          <ul ref={chatHistoryRef} className="gov-chat-history">
             {chatHistory.map((m, i) => (
               <li key={i} className={m.role === "user" ? "gov-chat-user" : "gov-chat-assistant"}>
                 <strong>{m.role === "user" ? "You" : "Casantris"}</strong>

@@ -63,6 +63,7 @@ export function SloBurnChart({ slo, loading = false }: SloBurnChartProps) {
         <XAxis dataKey="window" tick={{ fill: palette.muted, fontSize: 11 }} />
         <YAxis tick={{ fill: palette.muted, fontSize: 11 }} width={36} />
         <Tooltip
+          itemStyle={{ color: palette.text }}
           formatter={(value: number, name: string) => [
             name === "burnRate" ? value.toFixed(3) : value.toFixed(4),
             name === "burnRate" ? "Burn rate" : "Error rate",

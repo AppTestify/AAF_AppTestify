@@ -83,6 +83,7 @@ export function RunsTrendLine({ data, loading = false }: RunsTrendLineProps) {
         <XAxis dataKey="label" tick={{ fill: palette.muted, fontSize: 11 }} />
         <YAxis allowDecimals={false} tick={{ fill: palette.muted, fontSize: 11 }} width={28} />
         <Tooltip
+          itemStyle={{ color: palette.text }}
           contentStyle={{
             background: palette.surface,
             border: `1px solid ${palette.muted}`,

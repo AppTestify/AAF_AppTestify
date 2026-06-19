@@ -87,6 +87,7 @@ export function CountBarChart({ title, counts = {}, horizontal = false }: CountB
           </>
         )}
         <Tooltip
+          itemStyle={{ color: palette.text }}
           formatter={(value: number) => [value, "Count"]}
           contentStyle={{
             background: palette.surface,

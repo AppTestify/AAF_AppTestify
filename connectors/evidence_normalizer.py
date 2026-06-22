@@ -32,6 +32,8 @@ def normalize_all(raw_by_connector: dict[str, dict[str, Any]]) -> list[EvidenceR
             batch = _pagerduty(payload)
         elif source == "bitbucket":
             batch = _bitbucket(payload)
+        elif source == "azure_devops":
+            batch = _azure_devops(payload)
         else:
             batch = []
         if len(batch) > limit:
@@ -442,6 +444,69 @@ def _bitbucket(p: dict[str, Any]) -> list[EvidenceRecord]:
                     summary=title[:200],
                     severity=sev,
                     metadata={"url": url},
+                )
+            )
+
+    return recs
+
+def _azure_devops(p: dict[str, Any]) -> list[EvidenceRecord]:
+    recs: list[EvidenceRecord] = []
+    
+    # Process pull requests
+    for pr in p.get("pull_requests") or []:
+        status = (pr.get("status") or "").lower()
+        title = pr.get("title") or "PR"
+        url = pr.get("url") or ""
+        is_draft = pr.get("isDraft", False)
+        sev = 0.35 if is_draft else 0.25
+        if status == "active":
+            recs.append(
+                EvidenceRecord(
+                    source="azure_devops",
+                    kind="open_pr",
+                    summary=title[:200],
+                    severity=min(1.0, sev + 0.1 * (1 if "block" in title.lower() else 0)),
+                    metadata={"url": url, "pr_id": pr.get("pullRequestId")},
+                )
+            )
+
+    # Process pipelines (builds)
+    for build in p.get("pipelines") or []:
+        result = (build.get("result") or "").lower()
+        status = (build.get("status") or "").lower()
+        name = (build.get("definition") or {}).get("name") or "Build"
+        url = (build.get("_links") or {}).get("web") or {}
+        url = url.get("href") or ""
+        
+        if result == "failed":
+            recs.append(
+                EvidenceRecord(
+                    source="azure_devops",
+                    kind="failed_pipeline",
+                    summary=f"{name} pipeline failed",
+                    severity=0.85,
+                    metadata={"url": url, "build_id": build.get("id")},
+                )
+            )
+            
+    # Process work items
+    for item in p.get("work_items") or []:
+        fields = item.get("fields") or {}
+        state = (fields.get("System.State") or "").lower()
+        title = fields.get("System.Title") or "Work Item"
+        item_type = (fields.get("System.WorkItemType") or "").lower()
+        url = (item.get("_links") or {}).get("html") or {}
+        url = url.get("href") or ""
+        
+        if state not in {"closed", "done", "removed"}:
+            sev = 0.5 if item_type in {"bug", "issue"} else 0.3
+            recs.append(
+                EvidenceRecord(
+                    source="azure_devops",
+                    kind="work_item",
+                    summary=title[:200],
+                    severity=sev,
+                    metadata={"url": url, "item_id": item.get("id")},
                 )
             )
 

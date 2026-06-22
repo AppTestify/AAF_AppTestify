@@ -223,6 +223,15 @@ export function ConnectorsTab({
                   />
                 </div>
                 <div className="form-row">
+                  <label>Repository</label>
+                  <input
+                    value={String(cfg.repo ?? "")}
+                    onChange={(e) => mergeConnectorConfig(name, { repo: e.target.value })}
+                    placeholder="Repository name (optional)"
+                    disabled={!canEdit || saving}
+                  />
+                </div>
+                <div className="form-row">
                   <label>Personal access token (PAT)</label>
                   <input
                     type="password"

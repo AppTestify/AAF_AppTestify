@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     bitbucket_app_password: str = ""
     bitbucket_workspace: str = ""
     bitbucket_repo_slug: str = "workspace/repo"
+    azure_organization: str = ""
+    azure_project: str = ""
+    azure_repo: str = ""
+    azure_pat: str = ""
     pagerduty_api_token: str = ""
     finops_cost_file: Optional[Path] = None  # JSON/CSV path for live file-based cost
 

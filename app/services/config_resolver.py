@@ -121,6 +121,19 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
                 project = cfg.get("project_id") or cfg.get("gitlab_project_id") or cfg.get("project")
                 if project:
                     merged.gitlab_project_id = str(project).strip()
+            elif name == "azure":
+                org = cfg.get("organization") or cfg.get("org")
+                if org:
+                    merged.azure_organization = str(org)
+                project = cfg.get("project")
+                if project:
+                    merged.azure_project = str(project)
+                repo = cfg.get("repo") or cfg.get("repository")
+                if repo:
+                    merged.azure_repo = str(repo)
+                pat = cred.get("token") or cfg.get("token") or cred.get("pat")
+                if pat:
+                    merged.azure_pat = str(pat)
         except Exception:
             _log.exception(f"Error merging config for connector {name}")
             

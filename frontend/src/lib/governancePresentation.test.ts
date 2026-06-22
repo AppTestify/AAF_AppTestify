@@ -24,12 +24,12 @@ describe("governancePresentation", () => {
   it("returns default flow without parsed run", () => {
     const steps = deriveDecisionFlow(null);
     expect(steps.length).toBeGreaterThan(4);
-    expect(steps.some((s) => s.id === "secops")).toBe(true);
+    expect(steps.some((s) => s.id === "evidence")).toBe(true);
     expect(steps.some((s) => s.id === "brief")).toBe(true);
     expect(steps.some((s) => s.id === "intent")).toBe(false);
   });
 
-  it("inserts LLM Intent Router step when pipeline_phase is 3", () => {
+  it("updates classifier detail when intent_category is present", () => {
     const run: GovernanceRunV1 = {
       id: 1,
       tenant_id: 1,
@@ -74,11 +74,9 @@ describe("governancePresentation", () => {
     const parsed = parseGovernanceRunResult(run);
     expect(parsed).not.toBeNull();
     const steps = deriveDecisionFlow(parsed, "succeeded");
-    const intentIdx = steps.findIndex((s) => s.id === "intent");
-    const promptIdx = steps.findIndex((s) => s.id === "prompt");
-    expect(intentIdx).toBeGreaterThan(promptIdx);
-    expect(steps[intentIdx]?.label).toBe("LLM Intent Router");
-    expect(steps[intentIdx]?.detail).toContain("release");
+    const classifierStep = steps.find((s) => s.id === "classifier");
+    expect(classifierStep).toBeDefined();
+    expect(classifierStep?.detail).toContain("release readiness");
   });
 
   it("formats hold_release distinctly from patch_block_release", () => {

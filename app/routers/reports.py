@@ -21,7 +21,7 @@ from app.models.tenant import Tenant
 from app.routers.portfolio import build_executive_portfolio_report
 from app.services.df_onepager_pdf import build_decision_framing_onepager_pdf
 from app.services.email_runtime import send_resolved_email_with_attachments
-from app.services.report_pdf import build_audit_events_pdf, build_portfolio_executive_pdf, build_runs_summary_pdf
+from app.services.report_pdf import build_audit_events_pdf, build_portfolio_executive_pdf, build_runs_summary_pdf, build_compliance_pdf
 from app.services.report_xlsx import build_audit_events_xlsx, build_portfolio_executive_xlsx, build_runs_summary_xlsx
 from app.services.smtp_resolver import resolve_smtp_dataclass
 from app.models.user import User
@@ -479,19 +479,55 @@ def export_run_pdf(
 @router.get("/compliance")
 def compliance_export(
     framework: str = Query(default="soc2"),
-    format: str = Query(default="json"),
+    format: str = Query(default="json", pattern="^(json|pdf)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_active_user),
 ):
     """SOC2-oriented compliance control mapping export."""
     del db, user
-    controls = [
-        {"id": "CC6.1", "title": "Logical access", "status": "implemented", "evidence": "cookie auth + RBAC"},
-        {"id": "CC6.7", "title": "Encryption at rest", "status": "implemented", "evidence": "Fernet connector credentials"},
-        {"id": "CC7.2", "title": "System monitoring", "status": "implemented", "evidence": "observability + DORA metrics"},
-        {"id": "CC8.1", "title": "Change management", "status": "partial", "evidence": "governance runs + audit trail"},
-    ]
-    payload = {"framework": framework, "generated_at": datetime.now(timezone.utc).isoformat(), "controls": controls}
+    from pathlib import Path
+    
+    docs_dir = Path(__file__).parent.parent.parent / "docs" / "compliance"
+    mapping_file = docs_dir / "control-mapping.md"
+    
+    controls = []
+    if mapping_file.exists():
+        lines = mapping_file.read_text(encoding="utf-8").splitlines()
+        in_table = False
+        for line in lines:
+            line = line.strip()
+            if line.startswith("|") and "Control Area" in line and "Evidence Artifact" in line:
+                in_table = True
+                continue
+            if in_table and line.startswith("| ---"):
+                continue
+            if in_table and line.startswith("|"):
+                parts = [p.strip() for p in line.strip("|").split("|")]
+                if len(parts) >= 3:
+                    controls.append({
+                        "Control Area": parts[0],
+                        "Implementation Reference": parts[1],
+                        "Evidence Artifact": parts[2],
+                    })
+            elif in_table and not line.strip():
+                in_table = False
+                
+    generated_at = datetime.now(timezone.utc).isoformat()
+    
     if format == "pdf":
-        return JSONResponse(content=payload, headers={"X-Export-Format": "pdf-stub"})
-    return payload
+        pdf_bytes = build_compliance_pdf(
+            controls, 
+            title=f"{framework.upper()} Compliance Report",
+            exported_at=generated_at
+        )
+        return _binary_response(
+            pdf_bytes,
+            media_type="application/pdf",
+            filename=f"{framework}_compliance_report.pdf"
+        )
+        
+    return {
+        "framework": framework,
+        "generated_at": generated_at,
+        "controls": controls,
+    }

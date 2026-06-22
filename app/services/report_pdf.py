@@ -97,3 +97,14 @@ def build_portfolio_executive_pdf(report: dict[str, Any], *, tenant_label: str =
     story.append(table)
     doc.build(story)
     return buf.getvalue()
+
+
+def build_compliance_pdf(controls: list[dict[str, str]], title: str = "Compliance Report", exported_at: str | None = None) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, title=title)
+    generated = exported_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subtitle = f"Generated {generated}"
+    story = _header_story(title, subtitle)
+    story.append(_table_from_rows(controls, max_cols=3))
+    doc.build(story)
+    return buf.getvalue()

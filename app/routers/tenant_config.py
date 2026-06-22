@@ -25,7 +25,7 @@ from app.services.smtp_resolver import resolve_smtp_dataclass
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
 _CONNECTORS = {"github", "gitlab", "jira", "finops", "azure", "aws", "vps"}
-_PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock"}
+_PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock", "ollama"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
 
@@ -664,7 +664,7 @@ def validate_ai_provider_config(
     err: Optional[str] = None
     if row.enabled and not row.model_name:
         err = "model_name is required when provider is enabled"
-    if row.enabled and not (row.api_key_ref or row.api_key_encrypted):
+    if row.enabled and not (row.api_key_ref or row.api_key_encrypted) and key != "ollama":
         err = "api_key_ref or api_key is required when provider is enabled"
     if row.enabled and key == "azure_openai" and not row.endpoint_url:
         err = "endpoint_url is required for azure_openai when enabled"

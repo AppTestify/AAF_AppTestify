@@ -22,7 +22,7 @@ export type ProviderDraft = {
   metadata_json: Record<string, unknown>;
 };
 
-export const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock"];
+export const PROVIDERS = ["openai", "anthropic", "azure_openai", "aws_bedrock", "ollama"];
 
 export const CONNECTOR_ORDER = ["github", "gitlab", "bitbucket", "jira", "azure", "aws", "vps", "finops"] as const;
 

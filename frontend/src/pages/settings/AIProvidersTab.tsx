@@ -99,7 +99,7 @@ export function AIProvidersTab({
                 />
               </div>
               <div className="form-row">
-                <label className="field-label-required">API key</label>
+                <label className={name === "ollama" ? "" : "field-label-required"}>API key {name === "ollama" && "(optional)"}</label>
                 <input
                   type="password"
                   value={draft.api_key}

@@ -38,7 +38,7 @@ def _row_to_provider(row: TenantAIProviderConfig) -> Optional[ActiveProvider]:
         return None
     key_payload = decrypt_json(row.api_key_encrypted, secret=get_settings().app_encryption_key) if row.api_key_encrypted else {}
     api_key = str((key_payload or {}).get("api_key") or "")
-    if not api_key:
+    if not api_key and row.provider_name != "ollama":
         return None
     return ActiveProvider(
         provider_name=row.provider_name,

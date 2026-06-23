@@ -100,3 +100,82 @@ def create_service(
         dependencies_json=row.dependencies_json or [],
         portfolio_project_id=row.portfolio_project_id,
     )
+
+
+@router.get("/{service_id}", response_model=ServiceOut)
+def get_service(
+    service_id: int,
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    tenant = resolve_tenant_for_user(db, user, tenant_slug)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    row = db.get(Service, service_id)
+    if row is None or row.tenant_id != tenant.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    return ServiceOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        name=row.name,
+        owner=row.owner,
+        tier=row.tier,
+        repo_url=row.repo_url,
+        slo_json=row.slo_json or {},
+        dependencies_json=row.dependencies_json or [],
+        portfolio_project_id=row.portfolio_project_id,
+    )
+
+
+@router.put("/{service_id}", response_model=ServiceOut)
+def update_service(
+    service_id: int,
+    body: ServiceIn,
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings.manage")),
+):
+    tenant = resolve_tenant_for_user(db, user, tenant_slug)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    row = db.get(Service, service_id)
+    if row is None or row.tenant_id != tenant.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    row.name = body.name
+    row.owner = body.owner
+    row.tier = body.tier
+    row.repo_url = body.repo_url
+    row.slo_json = body.slo_json
+    row.dependencies_json = body.dependencies_json
+    row.portfolio_project_id = body.portfolio_project_id
+    db.commit()
+    db.refresh(row)
+    return ServiceOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        name=row.name,
+        owner=row.owner,
+        tier=row.tier,
+        repo_url=row.repo_url,
+        slo_json=row.slo_json or {},
+        dependencies_json=row.dependencies_json or [],
+        portfolio_project_id=row.portfolio_project_id,
+    )
+
+
+@router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service(
+    service_id: int,
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings.manage")),
+):
+    tenant = resolve_tenant_for_user(db, user, tenant_slug)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    row = db.get(Service, service_id)
+    if row is None or row.tenant_id != tenant.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    db.delete(row)
+    db.commit()

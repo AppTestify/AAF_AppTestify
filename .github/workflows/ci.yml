@@ -63,7 +63,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Unit tests
-        run: npm test
+        run: npm run test:coverage
       - name: Lint and build
         run: npm run build
 

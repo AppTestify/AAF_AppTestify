@@ -217,7 +217,7 @@ export function deriveRiskCards(
   return [
     { id: "release", title: "Release Readiness", ...releaseStatus },
     { id: "delivery", title: "Delivery Risk", ...deliveryStatus },
-    { id: "cost", title: "Cloud Cost Risk", ...costStatus },
+    { id: "cost", title: "Cost Risk", ...costStatus },
     { id: "governance", title: "Governance Confidence", ...govStatus },
   ];
 }

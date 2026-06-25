@@ -27,6 +27,9 @@ export function WorkspacePageShell({
 
   return (
     <div className={pageClass}>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       {variant === "governance" ? (
         <header className="gov-hub-header">
           {eyebrow ? <p className="gov-hub-eyebrow">{eyebrow}</p> : null}
@@ -41,7 +44,9 @@ export function WorkspacePageShell({
           </div>
         </header>
       )}
-      {children}
+      <main id="main-content" tabIndex={-1} style={{ outline: "none" }}>
+        {children}
+      </main>
     </div>
   );
 }

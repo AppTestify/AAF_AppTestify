@@ -2220,13 +2220,28 @@ textarea:focus-visible {
   margin-bottom: 1.25rem;
 }
 
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px;
+  z-index: 100;
+  transition: top 0.2s;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
 .gov-hub-eyebrow {
   margin: 0 0 0.35rem;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-dim);
 }
 
 .gov-hub-title {
@@ -2650,7 +2665,7 @@ input:focus-visible {
 .gov-flow-step-detail {
   display: block;
   font-size: 0.68rem;
-  opacity: 0.85;
+  color: inherit;
 }
 
 .gov-flow-arrow {
@@ -3194,7 +3209,7 @@ input:focus-visible {
 }
 
 .gov-flow-step--active {
-  color: var(--accent);
+  color: var(--accent-dim);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 

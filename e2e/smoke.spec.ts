@@ -99,3 +99,24 @@ test("RBAC blocks unauthenticated governance API", async ({ request }) => {
   });
   expect(res.status()).toBe(401);
 });
+
+test("authenticated user reaches settings", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("admin@localhost");
+  await page.getByLabel(/password/i).fill("changeme");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page).toHaveURL(/\/app/);
+
+  await page.goto("/app/settings");
+  await expect(page.getByRole("heading", { name: /settings/i, level: 1 })).toBeVisible();
+});
+
+test("authenticated user views cases for approval", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("admin@localhost");
+  await page.getByLabel(/password/i).fill("changeme");
+  await page.getByRole("button", { name: /sign in/i }).click();
+
+  await page.goto("/app/cases");
+  await expect(page.getByRole("heading", { name: /cases/i, level: 1 })).toBeVisible();
+});

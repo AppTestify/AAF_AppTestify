@@ -1,0 +1,14 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Chart.Name }}-postgres-pvc
+  labels:
+    app: {{ .Chart.Name }}-postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgres.storage }}
+{{- end }}

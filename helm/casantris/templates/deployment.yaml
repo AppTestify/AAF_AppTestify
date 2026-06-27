@@ -93,24 +93,3 @@ spec:
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
----
-{{- if .Values.autoscaling.enabled }}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: {{ .Chart.Name }}-api
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: {{ .Chart.Name }}-api
-  minReplicas: {{ .Values.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
-{{- end }}

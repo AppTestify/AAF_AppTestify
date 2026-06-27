@@ -1,0 +1,26 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-nginx
+  labels:
+    app: {{ .Chart.Name }}-nginx
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}-nginx
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: "casantris/frontend:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

@@ -91,6 +91,24 @@ jobs:
   load-test-gate:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aaf
+          POSTGRES_PASSWORD: aaf
+          POSTGRES_DB: aaf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://aaf:aaf@localhost:5432/aaf
+      JWT_SECRET: load-test-jwt-secret-key-min-32-chars-long
+      APP_ENCRYPTION_KEY: load-test-encryption-key-for-fernet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -98,8 +116,14 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Load test gate (optional)
-        run: python scripts/load_test.py --help || echo "load test script present"
+      - name: Run Alembic migrations against Postgres
+        run: alembic upgrade head
+      - name: Start FastAPI server
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          sleep 5
+      - name: Load test gate
+        run: python scripts/load_test.py --concurrency 20 --duration 15 --max-p95-ms 2000
 
   e2e-tests:
     runs-on: ubuntu-latest

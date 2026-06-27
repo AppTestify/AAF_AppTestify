@@ -31,6 +31,7 @@ def main() -> int:
     parser.add_argument("--path", default="/health")
     parser.add_argument("--duration", type=int, default=30)
     parser.add_argument("--concurrency", type=int, default=10)
+    parser.add_argument("--max-p95-ms", type=int, default=0, help="Fail if p95 exceeds this threshold")
     args = parser.parse_args()
 
     latencies: List[float] = []
@@ -58,6 +59,11 @@ def main() -> int:
         "p99_ms": round(p99, 2),
     }
     print(report)
+    
+    if args.max_p95_ms > 0 and p95 > args.max_p95_ms:
+        print(f"FAILED: p95 latency ({p95:.2f}ms) exceeded maximum threshold of {args.max_p95_ms}ms")
+        return 1
+
     return 0
 
 

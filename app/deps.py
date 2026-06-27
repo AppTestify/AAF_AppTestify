@@ -41,9 +41,12 @@ def get_current_user(
         user_id = int(sub)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from exc
+    import structlog
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    
+    structlog.contextvars.bind_contextvars(user_id=user.id, tenant_id=user.tenant_id)
     return user
 
 

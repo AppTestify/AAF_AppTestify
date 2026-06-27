@@ -83,9 +83,10 @@ async def lifespan(app: FastAPI):
     get_engine().dispose()
 
 
+import structlog
 settings = get_settings()
 app = FastAPI(title="Casantris Agentic Governance Platform", version="0.1.0", lifespan=lifespan)
-_log = logging.getLogger("aaf.api")
+_log = structlog.get_logger("aaf.api")
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
@@ -101,12 +102,15 @@ app.add_middleware(TenantRateLimitMiddleware)
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid4())
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
     start = time.time()
     request_started()
     try:
         response = await call_next(request)
     except Exception:  # noqa: BLE001
         elapsed_ms = int((time.time() - start) * 1000)
+        structlog.contextvars.bind_contextvars(duration_ms=elapsed_ms)
         record_request(request.method, request.url.path, 500, elapsed_ms)
         record_span(
             name=f"{request.method} {request.url.path}",
@@ -116,15 +120,12 @@ async def request_logging_middleware(request: Request, call_next):
         )
         _log.exception(
             "request_failed",
-            extra={
-                "request_id": request_id,
-                "path": request.url.path,
-                "method": request.method,
-                "elapsed_ms": elapsed_ms,
-            },
+            path=request.url.path,
+            method=request.method,
         )
         return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
     elapsed_ms = int((time.time() - start) * 1000)
+    structlog.contextvars.bind_contextvars(duration_ms=elapsed_ms)
     record_request(request.method, request.url.path, response.status_code, elapsed_ms)
     record_span(
         name=f"{request.method} {request.url.path}",
@@ -135,13 +136,9 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["x-request-id"] = request_id
     _log.info(
         "request_complete",
-        extra={
-            "request_id": request_id,
-            "path": request.url.path,
-            "method": request.method,
-            "status_code": response.status_code,
-            "elapsed_ms": elapsed_ms,
-        },
+        path=request.url.path,
+        method=request.method,
+        status_code=response.status_code,
     )
     return response
 

@@ -173,6 +173,11 @@ def process_run_sync(run_id: int) -> None:
                 db.commit()
                 elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
                 record_run(run.status, elapsed_ms, run.retry_count)
+                try:
+                    from app.services.search_index import index_governance_run
+                    index_governance_run(run)
+                except Exception:  # noqa: BLE001
+                    _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
                 return
         try:
             result = asyncio.run(
@@ -206,6 +211,11 @@ def process_run_sync(run_id: int) -> None:
             db.commit()
             elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
             record_run(run.status, elapsed_ms, run.retry_count)
+            try:
+                from app.services.search_index import index_governance_run
+                index_governance_run(run)
+            except Exception:  # noqa: BLE001
+                _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
             return
         out = pipeline_result_to_jsonable(result)
         llm_cost = out.get("llm_cost") if isinstance(out.get("llm_cost"), dict) else {}
@@ -420,6 +430,12 @@ def process_run_sync(run_id: int) -> None:
             deliver_run_failed(run.id)
         except Exception:  # noqa: BLE001
             _log.exception("governance_failed_notify_error", extra={"run_id": run.id})
+        try:
+            from app.services.search_index import index_governance_run
+            
+            index_governance_run(run)
+        except Exception:  # noqa: BLE001
+            _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
     finally:
         db.close()
 

@@ -3934,3 +3934,21 @@ input:focus-visible {
 .gov-chat-assistant .gov-chat-citations {
   border-top: 1px solid var(--border);
 }
+
+/* Recharts UI overrides */
+.recharts-default-tooltip {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+.recharts-default-tooltip .recharts-tooltip-label,
+.recharts-default-tooltip .recharts-tooltip-item {
+  color: var(--text) !important;
+}
+
+.recharts-tooltip-cursor {
+  fill: var(--border) !important;
+  opacity: 0.1 !important;
+}
+

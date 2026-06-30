@@ -60,8 +60,8 @@ def _redis_rate_limited(tenant_key: str, now: float) -> tuple[bool, int]:
 class TenantRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
-        if request.method == "POST" and path.endswith("/governance/runs"):
-            tenant_key = request.headers.get("x-tenant-slug") or "default"
+        if request.method == "POST" and path.rstrip("/").endswith("/governance/runs"):
+            tenant_key = request.query_params.get("tenant_slug") or request.headers.get("x-tenant-slug") or "default"
             now = time.time()
             limited, retry_after = _redis_rate_limited(tenant_key, now)
             if limited:

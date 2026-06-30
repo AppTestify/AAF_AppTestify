@@ -32,6 +32,7 @@ export type GovernanceViewProps = {
   onRunGovernance: () => void | Promise<void>;
   onBatch: () => void | Promise<void>;
   loading: boolean;
+  runProgress: number;
   result: GovernanceRunResult | null;
   batchResult: unknown;
 };
@@ -84,6 +85,7 @@ export function GovernanceView(props: GovernanceViewProps) {
     onRunGovernance,
     onBatch,
     loading,
+    runProgress,
     result,
     batchResult,
   } = props;
@@ -129,22 +131,7 @@ export function GovernanceView(props: GovernanceViewProps) {
       });
     }
   }, [chatHistory]);
-  
-  const [runProgress, setRunProgress] = useState(0);
-  useEffect(() => {
-    if (!loading) {
-      setRunProgress(100);
-      return;
-    }
-    setRunProgress(0);
-    const interval = setInterval(() => {
-      setRunProgress((p) => {
-        if (p > 95) return p;
-        return p + Math.max(1, (95 - p) / 10);
-      });
-    }, 500);
-    return () => clearInterval(interval);
-  }, [loading]);
+
   const suggestedPrompts = [
     "What is our current release risk?",
     "Are there latency or error rate concerns?",

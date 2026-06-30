@@ -67,9 +67,25 @@ function AppRoutes() {
   const [result, setResult] = useState<GovernanceRunResult | null>(null);
   const [batchResult, setBatchResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
+  const [runProgress, setRunProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [signupEnabled, setSignupEnabled] = useState<boolean | null>(null);
   const [apiCompatibilityWarning, setApiCompatibilityWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setRunProgress(100);
+      return;
+    }
+    setRunProgress(0);
+    const interval = setInterval(() => {
+      setRunProgress((p) => {
+        if (p > 95) return p;
+        return p + Math.max(1, (95 - p) / 10);
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -270,6 +286,7 @@ function AppRoutes() {
               onRunGovernance={handleRun}
               onBatch={handleBatch}
               loading={loading}
+              runProgress={runProgress}
               result={result}
               batchResult={batchResult}
             />

@@ -1,4 +1,4 @@
-# Threat Model (Draft v1)
+# Threat Model (v2 Pre-GA Release)
 
 ## Scope
 - API authentication/authorization flows
@@ -14,8 +14,10 @@
 
 ## Threats and Controls
 - **Broken tenant isolation**: tenant-scoped queries in API routers; superadmin-only cross-tenant access checks.
-- **Credential leakage**: encrypted-at-rest `credentials_json` usage and masked provider key references in responses.
-- **Unauthorized actions**: RBAC permission checks and JWT auth for protected API routes.
+- **Credential leakage (T-001)**: `Fernet` symmetric encryption is strictly enforced for `credentials_json` at rest, and masked provider key references are used in API responses.
+- **Unauthorized actions / Session Hijacking (T-002)**: Strict `httpOnly`, `secure`, and `samesite="strict"` cookies are used for JWT auth instead of raw Bearer tokens in localStorage, protecting API routes.
+- **Auth Abuse / Brute Force (T-003)**: DB-backed auth rate limiting (`AuthRateLimit` table) explicitly bounds repeated login attempts.
+- **Cross-origin attacks (T-011)**: Production `CORSMiddleware` configuration blocks wildcard and localhost origins, tightly restricting cross-site integrations.
 - **Undetected failures**: observability summary + Prometheus metrics + alert rule evaluation.
 - **Run processing abuse**: queue depth tracking, bounded retries, dead-letter counting for terminal failures.
 

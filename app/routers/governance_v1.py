@@ -20,9 +20,23 @@ from aaf.config import get_settings
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.config import TenantSettings
-from app.models.governance import AuditEvent, Decision, DecisionAction, EvidenceSnapshot, GovernanceCase, GovernanceRun, PortfolioProject
+from app.models.governance import (
+    AgentFinding,
+    AuditEvent,
+    CorrelatedIncident,
+    Decision,
+    DecisionAction,
+    EvidenceSnapshot,
+    ExecutiveSummary,
+    GovernanceCase,
+    GovernanceRun,
+    GovernanceWorkflowRun,
+    PortfolioProject,
+    ProjectRelease,
+    RARIteration,
+)
 from app.services.action_automation import get_automation_config, queue_decision_actions, queue_run_actions
-from app.models.metrics import LLMCallLog
+from app.models.metrics import DeploymentEvent, LLMCallLog, Service
 from app.models.tenant import Tenant
 from app.models.user import User
 from guardrails.budget_cap import enforce_budget_cap
@@ -366,15 +380,51 @@ def delete_tenant_data_v1(
     tenant = resolve_tenant_for_user(db, current, tenant_slug)
     if tenant is None:
         raise HTTPException(status_code=400, detail="tenant_required")
+    # 1. Fetch case_ids and run_ids to handle cascade for entities not directly linked to tenant_id
     run_ids = [
         r.id
-        for r in db.execute(select(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id)).scalars().all()
+        for r in db.execute(select(GovernanceRun.id).where(GovernanceRun.tenant_id == tenant.id)).scalars().all()
     ]
+    case_ids = [
+        c.id
+        for c in db.execute(select(GovernanceCase.id).where(GovernanceCase.tenant_id == tenant.id)).scalars().all()
+    ]
+
+    # 2. Delete EvidenceSnapshot (linked by run_id)
     if run_ids:
         db.execute(delete(EvidenceSnapshot).where(EvidenceSnapshot.run_id.in_(run_ids)))
-        db.execute(delete(LLMCallLog).where(LLMCallLog.run_id.in_(run_ids)))
-    db.execute(delete(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id))
+
+    # 3. Delete Decisions and DecisionActions
+    # Decisions can belong to a run or a case
+    decision_ids = []
+    if run_ids:
+        decision_ids.extend([d.id for d in db.execute(select(Decision.id).where(Decision.run_id.in_(run_ids))).scalars().all()])
+    if case_ids:
+        decision_ids.extend([d.id for d in db.execute(select(Decision.id).where(Decision.case_id.in_(case_ids))).scalars().all()])
+    decision_ids = list(set(decision_ids))
+    
+    if decision_ids:
+        db.execute(delete(DecisionAction).where(DecisionAction.decision_id.in_(decision_ids)))
+        db.execute(delete(Decision).where(Decision.id.in_(decision_ids)))
+
+    # 4. Delete models with direct tenant_id linkage
+    db.execute(delete(ProjectRelease).where(ProjectRelease.tenant_id == tenant.id))
+    db.execute(delete(PortfolioProject).where(PortfolioProject.tenant_id == tenant.id))
+    db.execute(delete(GovernanceWorkflowRun).where(GovernanceWorkflowRun.tenant_id == tenant.id))
+    db.execute(delete(RARIteration).where(RARIteration.tenant_id == tenant.id))
+    db.execute(delete(ExecutiveSummary).where(ExecutiveSummary.tenant_id == tenant.id))
+    db.execute(delete(CorrelatedIncident).where(CorrelatedIncident.tenant_id == tenant.id))
+    db.execute(delete(AgentFinding).where(AgentFinding.tenant_id == tenant.id))
+    
+    # 5. Delete metrics operational models
+    db.execute(delete(DeploymentEvent).where(DeploymentEvent.tenant_id == tenant.id))
+    db.execute(delete(LLMCallLog).where(LLMCallLog.tenant_id == tenant.id))
+    db.execute(delete(Service).where(Service.tenant_id == tenant.id))
+
+    # 6. Delete base cases and runs
     db.execute(delete(GovernanceCase).where(GovernanceCase.tenant_id == tenant.id))
+    db.execute(delete(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id))
+
     db.commit()
     return {"status": "purged", "tenant_id": tenant.id, "runs_deleted": len(run_ids)}
 

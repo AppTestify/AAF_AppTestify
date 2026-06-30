@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     finops_cost_file: Optional[Path] = None  # JSON/CSV path for live file-based cost
 
     # SQLAlchemy pool tuning (optional PgBouncer sidecar in compose/helm)
+    db_use_nullpool: bool = False
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_pool_recycle_seconds: int = 1800

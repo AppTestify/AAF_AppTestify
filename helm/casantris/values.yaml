@@ -68,6 +68,14 @@ postgres:
   enabled: true
   storage: 20Gi
 
+pgbouncer:
+  enabled: false
+  port: 6432
+  poolMode: transaction
+  maxClientConn: 100
+  defaultPoolSize: 20
+  dbUseNullpool: true
+
 nginx:
   enabled: true
 

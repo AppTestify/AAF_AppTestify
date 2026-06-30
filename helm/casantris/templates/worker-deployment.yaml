@@ -35,6 +35,10 @@ spec:
             - name: DATABASE_URL
               value: {{ .Values.database.url | quote }}
             {{- end }}
+            {{- if and .Values.pgbouncer.enabled .Values.pgbouncer.dbUseNullpool }}
+            - name: DB_USE_NULLPOOL
+              value: "true"
+            {{- end }}
             {{- if .Values.redis.url }}
             - name: REDIS_URL
               value: {{ .Values.redis.url | quote }}

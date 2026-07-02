@@ -218,6 +218,38 @@ def ask_ops_assistant(
     latest = (latest_run.result_json or {}) if latest_run else {}
     signals = latest.get("integration_signals", {}) if isinstance(latest, dict) else {}
 
+    # Proactively resolve tenant-scoped LLM provider to deliver rich, grounded answers
+    from app.models.tenant import Tenant
+    from app.services.llm_runtime import resolve_active_provider, invoke_text
+    import json
+
+    tenant = db.execute(select(Tenant).where(Tenant.id == current.tenant_id)).scalar_one_or_none()
+    provider = resolve_active_provider(db, tenant)
+    if provider is not None:
+        system_prompt = (
+            "You are Casantris AI, a governance and operations intelligence assistant.\n"
+            "Ground your answer in the provided system context (which contains telemetry metrics and recent integration signals).\n"
+            "Be concise (2-3 sentences), professional, and cite specific data points (such as branch name, repository, Jira project key, cost metrics, blocker ticket counts) if relevant.\n"
+            "Do not output technical JSON schemas or internal tool details."
+        )
+        context_data = {
+            "observability_snapshot": obs,
+            "latest_integration_signals": signals,
+            "chat_history": [h.model_dump() for h in body.history] if body.history else []
+        }
+        user_prompt = f"System Context:\n{json.dumps(context_data, default=str)}\n\nQuestion: {body.question}"
+        try:
+            answer, meta = invoke_text(provider, user_prompt, system_prompt=system_prompt)
+            confidence = 0.85
+            return AssistantAskOut(
+                answer=answer,
+                confidence=round(float(confidence), 4),
+                evidence={"observability": obs, "latest_integration_signals": signals, "llm_meta": meta},
+            )
+        except Exception:
+            # Fall back to heuristic answers on LLM error
+            pass
+
     if "cost" in question:
         aws = signals.get("aws", {})
         trend = aws.get("cost_trend", "unknown")

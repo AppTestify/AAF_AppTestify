@@ -1,15 +1,181 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { markOnboardingComplete } from "../lib/onboarding";
 import {
+  fetchConnectorConfigs,
   saveConnectorConfigs,
   validateConnectorConfig,
   saveProviderConfigs,
+  fetchGitHubReposApi,
+  fetchGitHubBranchesApi,
+  fetchJiraProjectsApi,
+  fetchJiraBoardsApi,
 } from "../api";
 
-const STEPS = ["Connectors", "Test connections", "AI provider", "Confirm"] as const;
-const CONNECTOR_NAMES = ["github", "gitlab", "jira", "finops"] as const;
-const PROVIDERS = ["openai", "anthropic", "groq", "ollama"] as const;
+const STEPS = ["Connection Setup", "Test Connection", "Summary"] as const;
+
+interface SearchableSelectProps {
+  label: string;
+  helperText?: string;
+  searchPlaceholder?: string;
+  items: any[];
+  selectedKey: string;
+  onSelect: (key: string) => void;
+  getOptionLabel: (item: any) => string;
+  getOptionKey: (item: any) => string;
+  getOptionSublabel?: (item: any) => string;
+  iconType: "repo" | "branch" | "project" | "board";
+  loading?: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}
+
+function SearchableSelect({
+  label,
+  helperText,
+  searchPlaceholder = "Search...",
+  items,
+  selectedKey,
+  onSelect,
+  getOptionLabel,
+  getOptionKey,
+  getOptionSublabel,
+  iconType,
+  loading = false,
+  searchQuery,
+  setSearchQuery,
+}: SearchableSelectProps) {
+  const renderIcon = (item: any, key: string, name: string) => {
+    if (iconType === "repo") {
+      return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3z"/>
+          <path d="M6 2v12"/>
+        </svg>
+      );
+    }
+    if (iconType === "branch") {
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="18" cy="18" r="3" />
+          <circle cx="6" cy="6" r="3" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M18 15V9a4 4 0 0 0-4-4H9" />
+          <line x1="6" y1="9" x2="6" y2="15" />
+        </svg>
+      );
+    }
+    if (iconType === "project") {
+      const colors = ["#2563eb", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#14b8a6"];
+      let sum = 0;
+      for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i);
+      const color = colors[sum % colors.length];
+      return (
+        <div style={{
+          width: "22px",
+          height: "22px",
+          borderRadius: "5px",
+          background: color,
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "0.7rem",
+          fontWeight: "bold"
+        }}>
+          {key.charAt(0).toUpperCase()}
+        </div>
+      );
+    }
+    if (iconType === "board") {
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <line x1="9" y1="3" x2="9" y2="21"/>
+          <line x1="15" y1="3" x2="15" y2="21"/>
+        </svg>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="searchable-select form-row" style={{ gridColumn: "span 2" }}>
+      <label className="field-label-required" style={{ marginBottom: "0.2rem", fontWeight: "600", fontSize: "0.95rem" }}>{label}</label>
+      {helperText && <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.6rem", fontSize: "0.82rem", color: "var(--muted)", opacity: 0.9 }}>{helperText}</p>}
+      
+      <div className="searchable-select-input-wrapper">
+        <span className="searchable-select-search-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </span>
+        <input
+          type="text"
+          className="searchable-select-input"
+          placeholder={searchPlaceholder}
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            className="searchable-select-clear-btn"
+            onClick={() => setSearchQuery("")}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        )}
+      </div>
+
+      <div className="searchable-select-list">
+        {loading ? (
+          <div style={{ padding: "1.25rem", textAlign: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
+            Loading options from backend...
+          </div>
+        ) : items.length === 0 ? (
+          <div style={{ padding: "1.25rem", textAlign: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
+            No matching options found
+          </div>
+        ) : (
+          items.map(item => {
+            const key = getOptionKey(item);
+            const labelStr = getOptionLabel(item);
+            const sublabel = getOptionSublabel ? getOptionSublabel(item) : undefined;
+            const isSelected = key === selectedKey;
+
+            return (
+              <div
+                key={key}
+                className={`searchable-select-item ${isSelected ? "searchable-select-item--selected" : ""}`}
+                onClick={() => onSelect(key)}
+              >
+                <div className="searchable-select-item-content">
+                  <span className="searchable-select-item-icon">
+                    {renderIcon(item, key, labelStr)}
+                  </span>
+                  <div className="searchable-select-item-details">
+                    <span className="searchable-select-item-title">{labelStr}</span>
+                    {sublabel && <span className="searchable-select-item-sublabel">{sublabel}</span>}
+                  </div>
+                </div>
+                {isSelected && (
+                  <span style={{ color: "var(--success)", fontWeight: "bold", fontSize: "0.95rem", paddingRight: "0.3rem" }}>
+                    ✓
+                  </span>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function OnboardingWizardPage() {
   const navigate = useNavigate();
@@ -17,42 +183,233 @@ export function OnboardingWizardPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Lists loaded from backend APIs
+  const [repos, setRepos] = useState<string[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [jiraProjects, setJiraProjects] = useState<{ key: string; name: string }[]>([]);
+  const [jiraBoards, setJiraBoards] = useState<{ id: string; name: string; type: string }[]>([]);
+
+  // Loading states
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingBoards, setLoadingBoards] = useState(false);
+
+  // Search filter states
+  const [repoSearch, setRepoSearch] = useState("");
+  const [branchSearch, setBranchSearch] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
+  const [boardSearch, setBoardSearch] = useState("");
+
   // Connector State
   const [connectors, setConnectors] = useState<Record<string, any>>({
-    github: { enabled: false, config_json: { repo: "" }, credentials_json: { token: "" } },
-    gitlab: { enabled: false, config_json: { gitlab_url: "", project_id: "" }, credentials_json: { token: "" } },
-    jira: { enabled: false, config_json: { base_url: "", project: "", board_id: "" }, credentials_json: { email: "", token: "" } },
-    finops: { enabled: false, config_json: { provider: "aws", cost_file_path: "" }, credentials_json: { aws_access_key_id: "", aws_secret_access_key: "" } },
+    github: { enabled: false, config_json: { repo: "", release_branch: "main" }, credentials_json: {} },
+    jira: { enabled: false, config_json: { base_url: "", project: "", board_id: "" }, credentials_json: {} },
+    gitlab: { enabled: false, config_json: { gitlab_url: "", project_id: "" }, credentials_json: {} },
+    finops: { enabled: false, config_json: { provider: "aws", cost_file_path: "" }, credentials_json: {} },
   });
 
   const [testResults, setTestResults] = useState<Record<string, { status: "pending" | "success" | "error", message?: string }>>({});
 
-  // Provider State
-  const [defaultProvider, setDefaultProvider] = useState<string>("openai");
-  const [providers, setProviders] = useState<Record<string, any>>({
+  // Default silent Provider State (saved on final step)
+  const defaultProvider = "openai";
+  const providers: Record<string, any> = {
     openai: { enabled: true, model_name: "gpt-4o", endpoint_url: "https://api.openai.com/v1", api_key_ref: "", credentials_json: { api_key: "" } },
     anthropic: { enabled: false, model_name: "claude-3-5-sonnet-latest", endpoint_url: "https://api.anthropic.com", api_key_ref: "", credentials_json: { api_key: "" } },
-    groq: { enabled: false, model_name: "llama3-70b-8192", endpoint_url: "https://api.groq.com/openai/v1", api_key_ref: "", credentials_json: { api_key: "" } },
     ollama: { enabled: false, model_name: "llama3", endpoint_url: "http://localhost:11434/v1", api_key_ref: "", credentials_json: { api_key: "" } },
-  });
+  };
+
+  // Load existing configurations from settings on mount
+  useEffect(() => {
+    const initOnboarding = async () => {
+      try {
+        const configs = await fetchConnectorConfigs();
+        const nextConnectors = { ...connectors };
+        
+        configs.forEach((c) => {
+          if (nextConnectors[c.connector_name]) {
+            nextConnectors[c.connector_name] = {
+              enabled: c.enabled,
+              config_json: c.config_json || {},
+              credentials_json: {}, // Keep credentials empty to prevent overwriting
+            };
+          }
+        });
+        
+        setConnectors(nextConnectors);
+
+        // Fetch dynamic details if already enabled in settings
+        if (nextConnectors.github.enabled) {
+          loadGitHubRepos();
+        }
+        if (nextConnectors.jira.enabled) {
+          loadJiraProjects();
+        }
+      } catch (err: any) {
+        setError("Failed to fetch initial settings configurations from backend.");
+      }
+    };
+    initOnboarding();
+  }, []);
+
+  const loadGitHubRepos = async () => {
+    setLoadingRepos(true);
+    setError(null);
+    try {
+      const data = await fetchGitHubReposApi();
+      setRepos(data);
+      if (data.length > 0) {
+        const currentRepo = connectors.github.config_json.repo || data[0];
+        if (!connectors.github.config_json.repo) {
+          setConnectors(prev => ({
+            ...prev,
+            github: {
+              ...prev.github,
+              config_json: { ...prev.github.config_json, repo: currentRepo }
+            }
+          }));
+        }
+        loadGitHubBranches(currentRepo);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load GitHub repositories. Check your Settings.");
+    } finally {
+      setLoadingRepos(false);
+    }
+  };
+
+  const loadGitHubBranches = async (repo: string) => {
+    if (!repo) return;
+    setLoadingBranches(true);
+    setError(null);
+    try {
+      const data = await fetchGitHubBranchesApi(repo);
+      setBranches(data);
+      if (data.length > 0) {
+        const currentBranch = connectors.github.config_json.release_branch || (data.includes("main") ? "main" : data.includes("master") ? "master" : data[0]);
+        setConnectors(prev => ({
+          ...prev,
+          github: {
+            ...prev.github,
+            config_json: { ...prev.github.config_json, release_branch: currentBranch }
+          }
+        }));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load branches.");
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  const loadJiraProjects = async () => {
+    setLoadingProjects(true);
+    setError(null);
+    try {
+      const data = await fetchJiraProjectsApi();
+      setJiraProjects(data);
+      if (data.length > 0) {
+        const currentProject = connectors.jira.config_json.project || data[0].key;
+        if (!connectors.jira.config_json.project) {
+          setConnectors(prev => ({
+            ...prev,
+            jira: {
+              ...prev.jira,
+              config_json: { ...prev.jira.config_json, project: currentProject }
+            }
+          }));
+        }
+        loadJiraBoards(currentProject);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load Jira projects. Check your Settings.");
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const loadJiraBoards = async (projectKey: string) => {
+    if (!projectKey) return;
+    setLoadingBoards(true);
+    setError(null);
+    try {
+      const data = await fetchJiraBoardsApi(projectKey);
+      setJiraBoards(data);
+      if (data.length > 0) {
+        const currentBoard = connectors.jira.config_json.board_id || data[0].id;
+        setConnectors(prev => ({
+          ...prev,
+          jira: {
+            ...prev.jira,
+            config_json: { ...prev.jira.config_json, board_id: currentBoard }
+          }
+        }));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load Jira boards.");
+    } finally {
+      setLoadingBoards(false);
+    }
+  };
+
+  const handleToggle = (name: string, enabled: boolean) => {
+    setConnectors(prev => ({
+      ...prev,
+      [name]: { ...prev[name], enabled }
+    }));
+    if (enabled) {
+      if (name === "github" && repos.length === 0) {
+        loadGitHubRepos();
+      }
+      if (name === "jira" && jiraProjects.length === 0) {
+        loadJiraProjects();
+      }
+    }
+  };
 
   const handleNext = async () => {
     setError(null);
     if (step === 0) {
+      if (connectors.github.enabled && !connectors.github.config_json.repo) {
+        setError("Please select a GitHub repository.");
+        return;
+      }
+      if (connectors.jira.enabled && (!connectors.jira.config_json.base_url || !connectors.jira.config_json.project)) {
+        setError("Please ensure JIRA Base URL and Project are selected.");
+        return;
+      }
       setStep(1);
     } else if (step === 1) {
       setStep(2);
-    } else if (step === 2) {
-      setStep(3);
     } else if (step === STEPS.length - 1) {
       setSaving(true);
       try {
-        await saveConnectorConfigs(connectors);
-        await saveProviderConfigs({ default_provider: defaultProvider, providers });
+        const connectorsToSave: Record<string, any> = {};
+        Object.keys(connectors).forEach(key => {
+          connectorsToSave[key] = {
+            enabled: connectors[key].enabled,
+            config_json: connectors[key].config_json,
+            credentials_json: {},
+          };
+        });
+
+        // Silently save default provider config so the AI is ready
+        const providersToSave: Record<string, any> = {};
+        Object.keys(providers).forEach(key => {
+          providersToSave[key] = {
+            enabled: providers[key].enabled,
+            model_name: providers[key].model_name,
+            endpoint_url: providers[key].endpoint_url,
+            api_key: providers[key].credentials_json?.api_key || null,
+          };
+        });
+        await saveProviderConfigs({ default_provider: defaultProvider, providers: providersToSave });
+        
+        await saveConnectorConfigs(connectorsToSave);
         markOnboardingComplete();
         navigate("/app/overview");
       } catch (err: any) {
-        setError(err.message || "Failed to complete onboarding");
+        setError(err.message || "Failed to complete onboarding setup.");
       } finally {
         setSaving(false);
       }
@@ -62,11 +419,20 @@ export function OnboardingWizardPage() {
   const runConnectorTests = async () => {
     setError(null);
     setSaving(true);
+
+    const connectorsToSave: Record<string, any> = {};
+    Object.keys(connectors).forEach(key => {
+      connectorsToSave[key] = {
+        enabled: connectors[key].enabled,
+        config_json: connectors[key].config_json,
+        credentials_json: {},
+      };
+    });
     
     try {
-      await saveConnectorConfigs(connectors);
+      await saveConnectorConfigs(connectorsToSave);
     } catch (err: any) {
-      setError(err.message || "Failed to save connectors before testing");
+      setError(err.message || "Failed to save connector configurations before testing.");
       setSaving(false);
       return;
     }
@@ -91,75 +457,284 @@ export function OnboardingWizardPage() {
     setSaving(false);
   };
 
+  // Filter lists based on search inputs
+  const getFilteredGitHubRepos = () => {
+    const draft = connectors.github;
+    const selectedRepo = draft.config_json.repo;
+    const filtered = repos.filter(r => r.toLowerCase().includes(repoSearch.toLowerCase()));
+    if (selectedRepo && !filtered.includes(selectedRepo)) {
+      filtered.unshift(selectedRepo);
+    }
+    return filtered;
+  };
+
+  const getFilteredGitHubBranches = () => {
+    const draft = connectors.github;
+    const selectedBranch = draft.config_json.release_branch || "main";
+    const filtered = branches.filter(b => b.toLowerCase().includes(branchSearch.toLowerCase()));
+    if (selectedBranch && !filtered.includes(selectedBranch)) {
+      filtered.unshift(selectedBranch);
+    }
+    return filtered;
+  };
+
+  const getFilteredJiraProjects = () => {
+    const draft = connectors.jira;
+    const selectedProject = draft.config_json.project;
+    const filtered = jiraProjects.filter(p => 
+      p.name.toLowerCase().includes(projectSearch.toLowerCase()) || 
+      p.key.toLowerCase().includes(projectSearch.toLowerCase())
+    );
+    if (selectedProject) {
+      const projObj = jiraProjects.find(p => p.key === selectedProject);
+      if (projObj && !filtered.some(p => p.key === selectedProject)) {
+        filtered.unshift(projObj);
+      }
+    }
+    return filtered;
+  };
+
+  const getFilteredJiraBoards = () => {
+    const draft = connectors.jira;
+    const selectedBoard = draft.config_json.board_id;
+    const filtered = jiraBoards.filter(b => b.name.toLowerCase().includes(boardSearch.toLowerCase()));
+    if (selectedBoard) {
+      const boardObj = jiraBoards.find(b => b.id === selectedBoard);
+      if (boardObj && !filtered.some(b => b.id === selectedBoard)) {
+        filtered.unshift(boardObj);
+      }
+    }
+    return filtered;
+  };
+
   const renderConnectorForm = (name: string) => {
     const draft = connectors[name];
     if (!draft.enabled) return null;
     
     const updateConfig = (key: string, val: string) => setConnectors(prev => ({ ...prev, [name]: { ...prev[name], config_json: { ...prev[name].config_json, [key]: val } } }));
-    const updateCreds = (key: string, val: string) => setConnectors(prev => ({ ...prev, [name]: { ...prev[name], credentials_json: { ...prev[name].credentials_json, [key]: val } } }));
 
     if (name === "github") {
       return (
         <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-          <div className="form-row"><label>Repository</label><input value={draft.config_json.repo} onChange={e => updateConfig("repo", e.target.value)} placeholder="owner/repo" /></div>
-          <div className="form-row"><label>GitHub token (PAT)</label><input type="password" value={draft.credentials_json.token} onChange={e => updateCreds("token", e.target.value)} placeholder="ghp_..." /></div>
+          <SearchableSelect
+            label="Which code project are you working on?"
+            helperText="Select the GitHub repository containing your application's source code."
+            searchPlaceholder="Search / filter repositories..."
+            items={getFilteredGitHubRepos()}
+            selectedKey={draft.config_json.repo}
+            onSelect={(repo) => {
+              updateConfig("repo", repo);
+              loadGitHubBranches(repo);
+            }}
+            getOptionKey={(r) => r}
+            getOptionLabel={(r) => r}
+            getOptionSublabel={(r) => r === draft.config_json.repo ? "Active repository selection" : "GitHub code repository"}
+            iconType="repo"
+            loading={loadingRepos}
+            searchQuery={repoSearch}
+            setSearchQuery={setRepoSearch}
+          />
+
+          <SearchableSelect
+            label="Which version/branch is this for?"
+            helperText="Select the branch to monitor for releases and updates (usually 'main' or 'master')."
+            searchPlaceholder="Search / filter branches..."
+            items={getFilteredGitHubBranches()}
+            selectedKey={draft.config_json.release_branch || "main"}
+            onSelect={(branch) => updateConfig("release_branch", branch)}
+            getOptionKey={(b) => b}
+            getOptionLabel={(b) => b}
+            getOptionSublabel={(b) => b === draft.config_json.release_branch ? "Selected release branch" : "Git repository branch"}
+            iconType="branch"
+            loading={loadingBranches}
+            searchQuery={branchSearch}
+            setSearchQuery={setBranchSearch}
+          />
         </div>
       );
     }
-    if (name === "gitlab") {
-      return (
-        <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-          <div className="form-row"><label>GitLab URL</label><input value={draft.config_json.gitlab_url} onChange={e => updateConfig("gitlab_url", e.target.value)} placeholder="https://gitlab.com" /></div>
-          <div className="form-row"><label>Project ID</label><input value={draft.config_json.project_id} onChange={e => updateConfig("project_id", e.target.value)} placeholder="owner/repo" /></div>
-          <div className="form-row"><label>Access Token</label><input type="password" value={draft.credentials_json.token} onChange={e => updateCreds("token", e.target.value)} placeholder="glpat-..." /></div>
-        </div>
-      );
-    }
+
     if (name === "jira") {
       return (
         <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-          <div className="form-row"><label>Jira Base URL</label><input value={draft.config_json.base_url} onChange={e => updateConfig("base_url", e.target.value)} placeholder="https://domain.atlassian.net" /></div>
-          <div className="form-row"><label>Project Key</label><input value={draft.config_json.project} onChange={e => updateConfig("project", e.target.value)} placeholder="PROJ" /></div>
-          <div className="form-row"><label>Account Email</label><input value={draft.credentials_json.email} onChange={e => updateCreds("email", e.target.value)} placeholder="you@company.com" /></div>
-          <div className="form-row"><label>API Token</label><input type="password" value={draft.credentials_json.token} onChange={e => updateCreds("token", e.target.value)} placeholder="Enter token" /></div>
-        </div>
-      );
-    }
-    if (name === "finops") {
-      return (
-        <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-          <div className="form-row"><label>Cost File Path</label><input value={draft.config_json.cost_file_path} onChange={e => updateConfig("cost_file_path", e.target.value)} placeholder="s3://..." /></div>
-          <div className="form-row"><label>AWS Access Key</label><input value={draft.credentials_json.aws_access_key_id} onChange={e => updateCreds("aws_access_key_id", e.target.value)} /></div>
-          <div className="form-row"><label>AWS Secret Key</label><input type="password" value={draft.credentials_json.aws_secret_access_key} onChange={e => updateCreds("aws_secret_access_key", e.target.value)} /></div>
+
+          <SearchableSelect
+            label="Which Jira project are you connecting?"
+            helperText="Select the project from your Jira instance where issues are tracked."
+            searchPlaceholder="Search / filter projects..."
+            items={getFilteredJiraProjects()}
+            selectedKey={draft.config_json.project}
+            onSelect={(projKey) => {
+              updateConfig("project", projKey);
+              loadJiraBoards(projKey);
+            }}
+            getOptionKey={(p) => p.key}
+            getOptionLabel={(p) => p.name}
+            getOptionSublabel={(p) => `Project Key: ${p.key}`}
+            iconType="project"
+            loading={loadingProjects}
+            searchQuery={projectSearch}
+            setSearchQuery={setProjectSearch}
+          />
+
+          <SearchableSelect
+            label="Which Jira board are you connecting?"
+            helperText="Select the active board for monitoring sprint tickets and sprint blockers."
+            searchPlaceholder="Search / filter boards..."
+            items={getFilteredJiraBoards()}
+            selectedKey={draft.config_json.board_id}
+            onSelect={(boardId) => updateConfig("board_id", boardId)}
+            getOptionKey={(b) => b.id}
+            getOptionLabel={(b) => b.name}
+            getOptionSublabel={(b) => `Agile ${b.type} board (ID: ${b.id})`}
+            iconType="board"
+            loading={loadingBoards}
+            searchQuery={boardSearch}
+            setSearchQuery={setBoardSearch}
+          />
         </div>
       );
     }
     return null;
   };
 
-  const renderProviderForm = (name: string) => {
-    const draft = providers[name];
-    if (!draft.enabled) return null;
-    
-    const updateDraft = (key: string, val: string) => setProviders(prev => ({ ...prev, [name]: { ...prev[name], [key]: val } }));
-    const updateCreds = (key: string, val: string) => setProviders(prev => ({ ...prev, [name]: { ...prev[name], credentials_json: { ...prev[name].credentials_json, [key]: val } } }));
-
-    return (
-      <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-        <div className="form-row"><label>Model Name</label><input value={draft.model_name} onChange={e => updateDraft("model_name", e.target.value)} /></div>
-        <div className="form-row"><label>Endpoint URL</label><input value={draft.endpoint_url} onChange={e => updateDraft("endpoint_url", e.target.value)} /></div>
-        <div className="form-row"><label>API Key</label><input type="password" value={draft.credentials_json.api_key} onChange={e => updateCreds("api_key", e.target.value)} placeholder="sk-..." /></div>
-      </div>
-    );
-  };
-
   return (
     <div className="onboarding-page">
+      <style>{`
+        .searchable-select {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .searchable-select-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          width: 100%;
+        }
+
+        .searchable-select-input {
+          width: 100%;
+          padding: 0.55rem 2rem 0.55rem 2.25rem !important;
+          border-radius: 8px !important;
+          border: 1px solid var(--border) !important;
+          background: var(--surface) !important;
+          color: var(--text) !important;
+          font-size: 0.9rem !important;
+          transition: all 0.2s ease;
+        }
+
+        .searchable-select-input:focus {
+          border-color: var(--accent) !important;
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent) !important;
+          outline: none;
+        }
+
+        .searchable-select-search-icon {
+          position: absolute;
+          left: 0.75rem;
+          color: var(--muted);
+          pointer-events: none;
+          display: flex;
+          align-items: center;
+        }
+
+        .searchable-select-clear-btn {
+          position: absolute;
+          right: 0.75rem;
+          background: none;
+          border: none;
+          color: var(--muted);
+          cursor: pointer;
+          padding: 0.2rem;
+          display: flex;
+          align-items: center;
+          border-radius: 999px;
+        }
+
+        .searchable-select-clear-btn:hover {
+          background: var(--surface2);
+          color: var(--text);
+        }
+
+        .searchable-select-list {
+          max-height: 180px;
+          overflow-y: auto;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          margin-top: 0.45rem;
+          background: var(--surface2);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .searchable-select-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.6rem 0.8rem;
+          border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+          cursor: pointer;
+          transition: background 0.15s ease, border-left 0.15s ease;
+          border-left: 3px solid transparent;
+        }
+
+        .searchable-select-item:last-child {
+          border-bottom: none;
+        }
+
+        .searchable-select-item:hover {
+          background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+        }
+
+        .searchable-select-item--selected {
+          background: color-mix(in srgb, var(--accent) 8%, var(--surface)) !important;
+          border-left-color: var(--accent) !important;
+        }
+
+        .searchable-select-item-content {
+          display: flex;
+          align-items: center;
+          gap: 0.7rem;
+        }
+
+        .searchable-select-item-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--muted);
+        }
+
+        .searchable-select-item--selected .searchable-select-item-icon {
+          color: var(--accent);
+        }
+
+        .searchable-select-item-details {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .searchable-select-item-title {
+          font-size: 0.86rem;
+          font-weight: 600;
+          color: var(--text);
+          line-height: 1.25;
+        }
+
+        .searchable-select-item-sublabel {
+          font-size: 0.72rem;
+          color: var(--muted);
+          margin-top: 0.15rem;
+          line-height: 1.15;
+        }
+      `}</style>
+
       <header className="gov-hub-header">
         <p className="gov-hub-eyebrow">Onboarding</p>
         <h1 className="gov-hub-title">Set up your workspace</h1>
-        <p className="gov-hub-lead">Connect systems, validate health, and configure your default AI provider.</p>
+        <p className="gov-hub-lead">Select your development branches and agile boards using configured settings.</p>
       </header>
+      
       <ol className="onboarding-steps">
         {STEPS.map((label, i) => (
           <li key={label} className={i === step ? "onboarding-step--active" : i < step ? "onboarding-step--done" : ""}>
@@ -174,20 +749,33 @@ export function OnboardingWizardPage() {
       {step === 0 ? (
         <div className="onboarding-panel card">
           <h2>Choose and configure connectors</h2>
-          <p className="field-hint" style={{ marginBottom: "1rem" }}>Enable the systems you use and provide access credentials.</p>
-          {CONNECTOR_NAMES.map(name => (
-            <div key={name} style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
-              <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", textTransform: "capitalize" }}>
-                <input
-                  type="checkbox"
-                  checked={connectors[name].enabled}
-                  onChange={(e) => setConnectors((c) => ({ ...c, [name]: { ...c[name], enabled: e.target.checked } }))}
-                />{" "}
-                {name}
-              </label>
-              {renderConnectorForm(name)}
-            </div>
-          ))}
+          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Select the active repository, release branch, and JIRA project/board for your workspace context.</p>
+          
+          {/* GitHub Form */}
+          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+              <input
+                type="checkbox"
+                checked={connectors.github.enabled}
+                onChange={(e) => handleToggle("github", e.target.checked)}
+              />{" "}
+              GitHub
+            </label>
+            {renderConnectorForm("github")}
+          </div>
+
+          {/* Jira Form */}
+          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+              <input
+                type="checkbox"
+                checked={connectors.jira.enabled}
+                onChange={(e) => handleToggle("jira", e.target.checked)}
+              />{" "}
+              Jira
+            </label>
+            {renderConnectorForm("jira")}
+          </div>
         </div>
       ) : null}
 
@@ -221,48 +809,44 @@ export function OnboardingWizardPage() {
 
       {step === 2 ? (
         <div className="onboarding-panel card">
-          <h2>Configure AI Provider</h2>
-          <p className="field-hint" style={{ marginBottom: "1rem" }}>Choose the default LLM provider for governance runs.</p>
+          <h2>Connection Summary</h2>
+          <p className="field-hint" style={{ marginBottom: "1.5rem" }}>
+            Review the connections established for your workspace.
+          </p>
           
-          <div className="form-row">
-            <label className="field-label-required">Default Provider</label>
-            <select
-              value={defaultProvider}
-              onChange={(e) => {
-                setDefaultProvider(e.target.value);
-                setProviders(p => {
-                  const np = { ...p };
-                  Object.keys(np).forEach(k => np[k].enabled = false);
-                  if (e.target.value) np[e.target.value].enabled = true;
-                  return np;
-                });
-              }}
-            >
-              <option value="">Select a provider</option>
-              {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {connectors.github.enabled && (
+              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
+                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>GitHub Connected</span>
+                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
+                </h4>
+                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
+                  <li><strong>Repository:</strong> {connectors.github.config_json.repo}</li>
+                  <li><strong>Branch:</strong> {connectors.github.config_json.release_branch || "main"}</li>
+                </ul>
+              </div>
+            )}
 
-          {defaultProvider && (
-            <div style={{ marginTop: "2rem", paddingTop: "2rem", borderTop: "1px solid var(--border-color)" }}>
-              <h3 style={{ textTransform: "capitalize", marginBottom: "1rem" }}>{defaultProvider} Settings</h3>
-              {renderProviderForm(defaultProvider)}
-            </div>
-          )}
-        </div>
-      ) : null}
+            {connectors.jira.enabled && (
+              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
+                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>Jira Connected</span>
+                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
+                </h4>
+                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
+                  <li><strong>Base URL:</strong> {connectors.jira.config_json.base_url}</li>
+                  <li><strong>Project Key:</strong> {connectors.jira.config_json.project}</li>
+                  {connectors.jira.config_json.board_id && <li><strong>Board ID:</strong> {connectors.jira.config_json.board_id}</li>}
+                </ul>
+              </div>
+            )}
 
-      {step === 3 ? (
-        <div className="onboarding-panel card">
-          <h2>Confirm Setup</h2>
-          <p className="field-hint" style={{ marginBottom: "1rem" }}>You are ready to run governance! Click "Complete Setup" to save your configurations and enter your workspace.</p>
-          
-          <div style={{ background: "var(--bg-subtle)", padding: "1rem", borderRadius: "6px" }}>
-            <h4>Summary</h4>
-            <ul style={{ marginTop: "0.5rem", paddingLeft: "1.5rem" }}>
-              <li><strong>Connectors:</strong> {Object.keys(connectors).filter(c => connectors[c].enabled).join(", ") || "None"}</li>
-              <li><strong>AI Provider:</strong> {defaultProvider || "None"}</li>
-            </ul>
+            {!connectors.github.enabled && !connectors.jira.enabled && (
+              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)", textAlign: "center" }}>
+                <p style={{ margin: 0, color: "var(--text-muted)" }}>No connections established.</p>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

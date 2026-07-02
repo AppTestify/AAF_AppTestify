@@ -65,7 +65,7 @@ def build_tool_context(
         aws_region=getattr(settings, "aws_region", "us-east-1"),
         aws_access_key_id=getattr(settings, "aws_access_key_id", ""),
         aws_secret_access_key=getattr(settings, "aws_secret_access_key", ""),
-        release_branch=release_branch or "main",
+        release_branch=release_branch or getattr(settings, "release_branch", "main") or "main",
         extra=extra or {},
         evidence_package=evidence_package,
     )

@@ -714,14 +714,26 @@
   font-weight: 700;
 }
 
-.onboarding-step--active {
+.onboarding-steps li.onboarding-step--active {
   color: var(--text);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
-.onboarding-step--done {
+.onboarding-steps li.onboarding-step--active .onboarding-step-index {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.onboarding-steps li.onboarding-step--done {
   color: var(--success);
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+}
+
+.onboarding-steps li.onboarding-step--done .onboarding-step-index {
+  background: var(--success);
+  color: var(--surface);
 }
 
 .onboarding-panel {

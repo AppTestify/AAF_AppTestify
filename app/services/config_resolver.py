@@ -71,6 +71,9 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
                 token = cred.get("token") or cfg.get("token")
                 if token:
                     merged.github_token = str(token)
+                branch = cfg.get("release_branch") or cfg.get("branch")
+                if branch:
+                    merged.release_branch = str(branch)
             elif name == "jira":
                 url = cfg.get("base_url") or cfg.get("url")
                 if url:

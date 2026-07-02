@@ -24,7 +24,7 @@ from app.services.smtp_resolver import resolve_smtp_dataclass
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
-_CONNECTORS = {"github", "gitlab", "jira", "finops", "azure", "aws", "vps"}
+_CONNECTORS = {"github", "gitlab", "jira", "finops", "azure", "aws", "vps", "bitbucket"}
 _PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock", "ollama"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
@@ -425,9 +425,24 @@ def put_connector_configs(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"connector '{key}' config must use secret references, not inline secret keys",
             )
-        row.config_json = cfg.config_json
+        
+        # Clean Jira base URL in config if present
+        if key == "jira" and cfg.config_json:
+            config_copy = dict(cfg.config_json)
+            burl = config_copy.get("base_url")
+            if burl and isinstance(burl, str):
+                import re
+                if "atlassian.net" in burl:
+                    match = re.search(r"(https?://[^\/]+\.atlassian\.net)", burl)
+                    if match:
+                        config_copy["base_url"] = match.group(1)
+            row.config_json = config_copy
+        else:
+            row.config_json = cfg.config_json
+
         if cfg.credentials_json:
-            row.encrypted_credentials_json = encrypt_json(cfg.credentials_json, secret=encryption_key)
+            cleaned_creds = {k: (v.strip() if isinstance(v, str) else v) for k, v in cfg.credentials_json.items()}
+            row.encrypted_credentials_json = encrypt_json(cleaned_creds, secret=encryption_key)
         
         row.last_validation_error = None
         row.last_validation_ok = None
@@ -896,3 +911,209 @@ def test_notification_config(
             row.last_test_error = str(exc)
             row.last_tested_at = datetime.now(timezone.utc)
         return {"ok": False, "message": f"Test failed: {exc}"}
+
+
+@router.get("/connectors/github/repos")
+def get_github_repos(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "github"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="GitHub connector not enabled")
+    
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+    
+    token = cred.get("token") or row.config_json.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="GitHub token not configured")
+    
+    token = token.strip()
+        
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AAF-AppTestify"
+    }
+    
+    try:
+        resp = httpx.get("https://api.github.com/user/repos?per_page=100", headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"GitHub API error: {resp.text}")
+        repos_data = resp.json()
+        return [r.get("full_name") for r in repos_data if r.get("full_name")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch repositories: {e}")
+
+
+@router.get("/connectors/github/branches")
+def get_github_branches(
+    repo: str = Query(...),
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "github"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="GitHub connector not enabled")
+    
+    if "/" not in repo:
+        raise HTTPException(status_code=400, detail="Invalid repo name")
+        
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+    
+    token = cred.get("token") or row.config_json.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="GitHub token not configured")
+        
+    token = token.strip()
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AAF-AppTestify"
+    }
+    
+    try:
+        owner, name = repo.split("/", 1)
+        resp = httpx.get(f"https://api.github.com/repos/{owner}/{name}/branches?per_page=100", headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"GitHub API error: {resp.text}")
+        branches_data = resp.json()
+        return [b.get("name") for b in branches_data if b.get("name")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch branches: {e}")
+
+
+@router.get("/connectors/jira/projects")
+def get_jira_projects(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "jira"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="Jira connector not enabled")
+        
+    cfg = row.config_json or {}
+    base_url = cfg.get("base_url")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL not configured")
+        
+    if isinstance(base_url, str) and "atlassian.net" in base_url:
+        import re
+        match = re.search(r"(https?://[^\/]+\.atlassian\.net)", base_url)
+        if match:
+            base_url = match.group(1)
+
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+        
+    email = cred.get("email") or cfg.get("email")
+    token = cred.get("token") or cfg.get("token") or cred.get("api_token") or cfg.get("api_token")
+    
+    if not email or not token:
+        raise HTTPException(status_code=400, detail="Jira email or token not configured")
+        
+    email = email.strip()
+    token = token.strip()
+
+    auth = (email, token)
+    url = f"{base_url.rstrip('/')}/rest/api/3/project"
+    
+    try:
+        resp = httpx.get(url, auth=auth, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Jira API error: {resp.text}")
+        projects_data = resp.json()
+        return [{"key": p.get("key"), "name": p.get("name")} for p in projects_data if p.get("key")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {e}")
+
+
+@router.get("/connectors/jira/boards")
+def get_jira_boards(
+    project_key: Optional[str] = Query(default=None),
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "jira"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="Jira connector not enabled")
+        
+    cfg = row.config_json or {}
+    base_url = cfg.get("base_url")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL not configured")
+        
+    if isinstance(base_url, str) and "atlassian.net" in base_url:
+        import re
+        match = re.search(r"(https?://[^\/]+\.atlassian\.net)", base_url)
+        if match:
+            base_url = match.group(1)
+
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail=f"Failed to decrypt credentials")
+        
+    email = cred.get("email") or cfg.get("email")
+    token = cred.get("token") or cfg.get("token") or cred.get("api_token") or cfg.get("api_token")
+    
+    if not email or not token:
+        raise HTTPException(status_code=400, detail="Jira email or token not configured")
+        
+    email = email.strip()
+    token = token.strip()
+
+    auth = (email, token)
+    url = f"{base_url.rstrip('/')}/rest/agile/1.0/board"
+    params = {}
+    if project_key:
+        params["projectKeyOrId"] = project_key
+        
+    try:
+        resp = httpx.get(url, auth=auth, params=params, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Jira Agile API error: {resp.text}")
+        boards_data = resp.json()
+        values = boards_data.get("values") or []
+        return [{"id": str(b.get("id")), "name": b.get("name"), "type": b.get("type")} for b in values if b.get("id")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch boards: {e}")

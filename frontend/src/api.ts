@@ -469,6 +469,36 @@ export async function validateConnectorConfig(
   return r.json() as Promise<ConnectorConfig>;
 }
 
+export async function fetchGitHubReposApi(tenantSlug?: string | null): Promise<string[]> {
+  const r = await fetch(`${API}/tenant/connectors/github/repos${tenantQuery(tenantSlug)}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<string[]>;
+}
+
+export async function fetchGitHubBranchesApi(repo: string, tenantSlug?: string | null): Promise<string[]> {
+  const params = new URLSearchParams();
+  params.append("repo", repo);
+  if (tenantSlug) params.append("tenant_slug", tenantSlug);
+  const r = await fetch(`${API}/tenant/connectors/github/branches?${params.toString()}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<string[]>;
+}
+
+export async function fetchJiraProjectsApi(tenantSlug?: string | null): Promise<{ key: string; name: string }[]> {
+  const r = await fetch(`${API}/tenant/connectors/jira/projects${tenantQuery(tenantSlug)}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<{ key: string; name: string }[]>;
+}
+
+export async function fetchJiraBoardsApi(projectKey?: string | null, tenantSlug?: string | null): Promise<{ id: string; name: string; type: string }[]> {
+  const params = new URLSearchParams();
+  if (projectKey) params.append("project_key", projectKey);
+  if (tenantSlug) params.append("tenant_slug", tenantSlug);
+  const r = await fetch(`${API}/tenant/connectors/jira/boards?${params.toString()}`, { credentials: "include" });
+  if (!r.ok) throw new Error(await parseError(r));
+  return r.json() as Promise<{ id: string; name: string; type: string }[]>;
+}
+
 export async function fetchProviderConfigs(tenantSlug?: string | null): Promise<ProviderSetOut> {
   const r = await fetch(`${API}/tenant/ai/providers${tenantQuery(tenantSlug)}`, { credentials: "include"});
   if (!r.ok) throw new Error(await parseError(r));

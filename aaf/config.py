@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_webhook_secret: str = ""
     github_repo: str = "owner/repo"
+    release_branch: str = "main"
     jira_url: str = ""
     jira_email: str = ""
     jira_api_token: str = ""

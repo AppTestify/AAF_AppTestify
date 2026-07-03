@@ -305,11 +305,13 @@ export function GovernanceView(props: GovernanceViewProps) {
     document.body.removeChild(link);
   };
 
+  const resultRunId = result?.run_id;
+
   const handleExportPdf = async () => {
-    if (!result?.run_id) return;
+    if (!resultRunId) return;
     try {
-      const blob = await exportRunBriefPdf(result.run_id);
-      downloadBlob(blob, `governance_run_${result.run_id}.pdf`);
+      const blob = await exportRunBriefPdf(resultRunId);
+      downloadBlob(blob, `governance_run_${resultRunId}.pdf`);
     } catch (err) {
       console.error("Failed to export PDF", err);
     }
@@ -407,11 +409,19 @@ export function GovernanceView(props: GovernanceViewProps) {
             }}
           >
             <option value="">— Custom prompt —</option>
-            {(library?.prompts ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id}
-              </option>
-            ))}
+            {(() => {
+              const prompts = library?.prompts ?? [];
+              const agents = Array.from(new Set(prompts.map(p => p.agent || "General")));
+              return agents.map(agent => (
+                <optgroup key={agent} label={`${agent} Agent`}>
+                  {prompts.filter(p => (p.agent || "General") === agent).map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.id}
+                    </option>
+                  ))}
+                </optgroup>
+              ));
+            })()}
           </select>
         </div>
         <div className="form-row">

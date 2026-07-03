@@ -36,14 +36,14 @@ export function mapStatusCountsToChartData(counts: Record<string, number>): Stat
   const keys = new Set([...RUN_STATUS_ORDER, ...Object.keys(counts)]);
   return [...keys]
     .map((status) => ({
-      status,
+      status: status as RunStatusKey,
       count: counts[status] ?? 0,
-      fill: RUN_STATUS_COLORS[status] ?? "#94a3b8",
+      fill: RUN_STATUS_COLORS[status as RunStatusKey] ?? "#94a3b8",
     }))
-    .filter((row) => row.count > 0 || RUN_STATUS_ORDER.includes(row.status as RunStatusKey))
+    .filter((row) => row.count > 0 || RUN_STATUS_ORDER.includes(row.status as any))
     .sort((a, b) => {
-      const ai = RUN_STATUS_ORDER.indexOf(a.status as RunStatusKey);
-      const bi = RUN_STATUS_ORDER.indexOf(b.status as RunStatusKey);
+      const ai = RUN_STATUS_ORDER.indexOf(a.status as any);
+      const bi = RUN_STATUS_ORDER.indexOf(b.status as any);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
 }

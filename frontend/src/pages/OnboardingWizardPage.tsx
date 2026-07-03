@@ -45,7 +45,7 @@ function SearchableMultiSelect({
   searchQuery,
   setSearchQuery,
 }: SearchableMultiSelectProps) {
-  const renderIcon = (item: any, key: string, name: string) => {
+  const renderIcon = (_item: any, key: any, _name: any) => {
     if (iconType === "repo") {
       return (
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -675,7 +675,7 @@ export function OnboardingWizardPage() {
     const draft = connectors[name];
     if (!draft.enabled) return null;
     
-    const updateConfig = (key: string, val: string) => setConnectors(prev => ({ ...prev, [name]: { ...prev[name], config_json: { ...prev[name].config_json, [key]: val } } }));
+    const updateConfig = (key: string, val: any) => setConnectors(prev => ({ ...prev, [name]: { ...prev[name], config_json: { ...prev[name].config_json, [key]: val } } }));
 
     if (name === "github") {
       return (

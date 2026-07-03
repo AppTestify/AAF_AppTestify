@@ -3,27 +3,32 @@
     {
       "id": "release-readiness",
       "text": "Are we safe to release the current build based on GitHub activity?",
-      "tags": ["github", "release"]
+      "tags": ["github", "release"],
+      "agent": "DevOps"
     },
     {
       "id": "sprint-blockers",
       "text": "What is blocking the sprint and what should I escalate?",
-      "tags": ["jira", "delivery"]
+      "tags": ["jira", "delivery"],
+      "agent": "PM"
     },
     {
       "id": "cost-deployment",
       "text": "Did the recent deployment increase cloud cost, and should we adjust capacity?",
-      "tags": ["finops", "cost"]
-    },
-    {
-      "id": "holistic",
-      "text": "Summarize delivery risk, release readiness, and cloud cost impact for this week.",
-      "tags": ["github", "jira", "finops"]
+      "tags": ["finops", "cost"],
+      "agent": "FinOps"
     },
     {
       "id": "security-gate",
       "text": "Are there CVEs, secret leaks, or policy violations that should block release?",
-      "tags": ["security", "secops", "github"]
+      "tags": ["security", "secops", "github"],
+      "agent": "DevSecOps"
+    },
+    {
+      "id": "holistic",
+      "text": "Summarize delivery risk, release readiness, and cloud cost impact for this week.",
+      "tags": ["github", "jira", "finops"],
+      "agent": "Multi-Agent"
     }
   ]
 }

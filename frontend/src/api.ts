@@ -196,7 +196,7 @@ export async function createTenant(
 }
 
 export type PromptLibrary = {
-  prompts: { id: string; text: string; tags?: string[] }[];
+  prompts: { id: string; text: string; tags?: string[]; agent?: string }[];
 };
 
 export async function fetchPromptLibrary(): Promise<PromptLibrary> {
@@ -316,6 +316,7 @@ export type GovernanceBrief = {
 export type GovernanceRunResult = {
   prompt: string;
   prompt_id?: string | null;
+  run_id?: number;
   connectors_used: string[];
   raw_evidence_by_connector: Record<string, unknown>;
   normalized_evidence: EvidenceRecord[];

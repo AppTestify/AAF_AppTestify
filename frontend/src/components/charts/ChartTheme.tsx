@@ -102,7 +102,7 @@ export function ChartCard({
       ) : (
         <div className="chart-container">
           <ResponsiveContainer width="100%" height={height}>
-            {children}
+            {children as React.ReactElement}
           </ResponsiveContainer>
         </div>
       )}

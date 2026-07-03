@@ -13,7 +13,7 @@ type PaginationBarProps = {
   className?: string;
 };
 
-function formatRange(offset: number, pageSize: number, itemCount: number, totalCount?: number): string {
+function formatRange(offset: number, itemCount: number, totalCount?: number): string {
   if (itemCount === 0) {
     return totalCount != null ? `0 of ${totalCount}` : "0 results";
   }
@@ -41,7 +41,7 @@ export function PaginationBar({
 
   return (
     <div className={`pagination-bar ${className}`.trim()}>
-      <span className="pagination-bar-range">{formatRange(offset, pageSize, itemCount, totalCount)}</span>
+      <span className="pagination-bar-range">{formatRange(offset, itemCount, totalCount)}</span>
       <div className="pagination-bar-controls">
         {onPageSizeChange ? (
           <label className="pagination-bar-size">

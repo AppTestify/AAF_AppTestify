@@ -444,7 +444,7 @@ export function WorkspaceSettingsPage({ user, tenants, initialTab = "general" }:
       setSaving(true);
       setMessage(null);
       const result = await runGovernance(aiTestPrompt, "ai-runtime-smoke", targetForApi);
-      const runtime = (result.runtime_config as Record<string, unknown>) || {};
+      const runtime = ((result as any).runtime_config as Record<string, unknown>) || {};
       const ai = (runtime.ai as Record<string, unknown>) || {};
       const activeProvider = ai.default_provider as string | undefined;
       const llmInvocation = (result as Record<string, unknown>).llm_invocation as Record<string, unknown> | undefined;

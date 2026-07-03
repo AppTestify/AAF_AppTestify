@@ -5,16 +5,100 @@ import type {
   AgentOpinion,
   GovernanceRunResult,
   PromptLibrary,
+  ConnectorConfig,
   TenantRow,
   UserPublic,
   UtilityResult,
 } from "./api";
-import { askAssistant, formatAgentLabel, exportRunBriefPdf } from "./api";
+import { askAssistant, formatAgentLabel, exportRunBriefPdf, fetchConnectorConfigs } from "./api";
 import { GuardrailStatusPanel } from "./components/governance/GuardrailStatusPanel";
 import { deriveAskColumns } from "./lib/governancePresentation";
 import { EvidenceDetailCell, linkifyEvidenceText } from "./lib/evidenceLinks";
 
+function ensureArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val.map(String);
+  if (typeof val === "string" && val.trim() !== "") return [val];
+  return [];
+}
+
+
+function ScopeListSelector({
+  title, items, selectedItems, searchQuery, debouncedQuery, onSearchChange, onToggleItem, onToggleAll,
+}: {
+  title: string; items: string[]; selectedItems: string[]; searchQuery: string; debouncedQuery: string;
+  onSearchChange: (q: string) => void; onToggleItem: (item: string) => void; onToggleAll: (filteredItems: string[], select: boolean) => void;
+}) {
+  const filtered = useMemo(() => {
+    const q = debouncedQuery.toLowerCase();
+    return items.filter(i => i.toLowerCase().includes(q));
+  }, [items, debouncedQuery]);
+  
+  const allSelected = filtered.length > 0 && filtered.every(i => selectedItems.includes(i));
+  const someSelected = filtered.some(i => selectedItems.includes(i));
+  const indeterminate = someSelected && !allSelected;
+  
+  return (
+    <div style={{ marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+        <h4 style={{ margin: 0, fontSize: "0.95rem", color: "var(--text)", fontWeight: 600 }}>{title}</h4>
+        {filtered.length > 0 && (
+          <label style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", color: "var(--accent)", fontWeight: 500 }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={el => { if (el) el.indeterminate = indeterminate; }}
+              onChange={(e) => onToggleAll(filtered, e.target.checked)}
+            />
+            Select all
+          </label>
+        )}
+      </div>
+
+      <div style={{ position: "relative", marginBottom: "1rem" }}>
+        <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--muted)", fontSize: "0.9rem" }}>🔍</span>
+        <input
+          type="text"
+          placeholder={`Search ${title.toLowerCase()}...`}
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          style={{ width: "100%", padding: "0.5rem 0.5rem 0.5rem 2.2rem", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+        />
+      </div>
+
+      {filtered.length > 0 ? (
+        <>
+          <div style={{ border: "1px solid var(--border)", borderRadius: "6px", overflow: "hidden" }}>
+            <div style={{ display: "flex", flexDirection: "column", maxHeight: "250px", overflowY: "auto" }}>
+              {filtered.map((item, idx) => (
+                <label key={item} style={{ 
+                  fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer", 
+                  color: "var(--text)", padding: "0.75rem 1rem",
+                  borderBottom: idx < filtered.length - 1 ? "1px solid var(--border)" : "none",
+                  background: selectedItems.includes(item) ? "var(--surface2)" : "var(--surface)",
+                  margin: 0
+                }}>
+                  <input type="checkbox" checked={selectedItems.includes(item)} onChange={() => onToggleItem(item)} />
+                  <span style={{ color: "var(--muted)" }}>{title.toLowerCase().includes('branch') ? "🔀" : (title.toLowerCase().includes('repo') || title.toLowerCase().includes('project') ? "📁" : "📊")}</span>
+                  <span style={{ fontWeight: 500 }}>{item}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: "0.5rem" }}>
+            {selectedItems.length} of {items.length} {title.toLowerCase()} selected.
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: "0.85rem", color: "var(--muted)", padding: "1.5rem", textAlign: "center", fontStyle: "italic", border: "1px dashed var(--border)", borderRadius: "6px" }}>
+          No {title.toLowerCase()} match '{searchQuery}'
+        </div>
+      )}
+    </div>
+  );
+}
+
 export type GovernanceViewProps = {
+
   user: UserPublic;
   error: string | null;
   tenants: TenantRow[] | null;
@@ -29,7 +113,7 @@ export type GovernanceViewProps = {
   setPromptId: (v: string | null) => void;
   library: PromptLibrary | null;
   applyLibraryPrompt: (id: string) => void;
-  onRunGovernance: () => void | Promise<void>;
+  onRunGovernance: (runScope?: Record<string, any>) => void | Promise<void>;
   onBatch: () => void | Promise<void>;
   loading: boolean;
   runProgress: number;
@@ -112,9 +196,63 @@ export function GovernanceView(props: GovernanceViewProps) {
     return "bad";
   }, [orchConsensus]);
 
+  const [connectorConfigs, setConnectorConfigs] = useState<ConnectorConfig[]>([]);
+  const [runScope, setRunScope] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    fetchConnectorConfigs().then(configs => {
+      setConnectorConfigs(configs);
+      const initialScope: Record<string, string[]> = {};
+      configs.forEach(c => {
+         if (c.connector_name === "github" && c.config_json) {
+           initialScope["github_repos"] = ensureArray(c.config_json.repos);
+           initialScope["github_branches"] = ensureArray(c.config_json.release_branches);
+         }
+         if (c.connector_name === "jira" && c.config_json) {
+           initialScope["jira_projects"] = ensureArray(c.config_json.projects);
+           initialScope["jira_boards"] = ensureArray(c.config_json.board_ids);
+         }
+         if (c.connector_name === "gitlab" && c.config_json) {
+           initialScope["gitlab_projects"] = ensureArray(c.config_json.project_ids);
+           initialScope["gitlab_branches"] = ensureArray(c.config_json.release_branches);
+         }
+         if (c.connector_name === "finops" && c.config_json) {
+           initialScope["finops_providers"] = ensureArray(c.config_json.providers);
+           initialScope["finops_profiles"] = ensureArray(c.config_json.cost_file_paths);
+         }
+      });
+      setRunScope(initialScope);
+    }).catch(console.error);
+  }, []);
+
+  const toggleScopeItem = (key: string, val: string) => {
+    setRunScope(prev => {
+      const current = prev[key] || [];
+      if (current.includes(val)) return { ...prev, [key]: current.filter(x => x !== val) };
+      return { ...prev, [key]: [...current, val] };
+    });
+  };
+
+  const setAllScopeItems = (key: string, values: string[], select: boolean) => {
+    setRunScope(prev => ({ ...prev, [key]: select ? values : [] }));
+  };
   const [activeResultTab, setActiveResultTab] = useState<
     "executive" | "evidence" | "agents" | "explainability" | "integrity"
   >("executive");
+    const [showScopeModal, setShowScopeModal] = useState(false);
+  const [activeScopeTab, setActiveScopeTab] = useState<string>("github");
+
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
+  const [debouncedQueries, setDebouncedQueries] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQueries(searchQueries), 200);
+    return () => clearTimeout(timer);
+  }, [searchQueries]);
+
+  const runDisabledReason = !prompt.trim() ? "Please enter a prompt to continue" : "";
+
+
   const [showAdmin, setShowAdmin] = useState(false);
   const [followUp, setFollowUp] = useState("");
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; text: string; confidence?: number; evidence?: Record<string, unknown> }[]>(
@@ -305,14 +443,24 @@ export function GovernanceView(props: GovernanceViewProps) {
               Export Brief (PDF)
             </button>
           ) : null}
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={loading || !prompt.trim()}
-            onClick={onRunGovernance}
-          >
-            {loading ? "Running…" : "Run Governance Check"}
-          </button>
+          <div className="gov-ask-toolbar" style={{ display: "flex", gap: "1rem", marginTop: "1rem", justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => setShowScopeModal(true)}
+            >
+              Configure Scope
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={loading || !prompt.trim()}
+              title={runDisabledReason}
+              onClick={() => onRunGovernance(runScope)}
+            >
+              Run Governance Check
+            </button>
+          </div>
         </div>
         {loading ? (
           <div className="gov-progress-container" style={{ marginTop: "1rem" }}>
@@ -325,6 +473,100 @@ export function GovernanceView(props: GovernanceViewProps) {
           </div>
         ) : null}
       </article>
+      {showScopeModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+          background: "rgba(0,0,0,0.3)", zIndex: 9999,
+          display: "flex", justifyContent: "center", alignItems: "center"
+        }}>
+          <div style={{
+            background: "var(--surface)", borderRadius: "12px",
+            width: "550px", maxWidth: "90vw", maxHeight: "90vh",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column"
+          }}>
+            {/* Header */}
+            <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border)", position: "relative" }}>
+              <button onClick={() => setShowScopeModal(false)} style={{
+                position: "absolute", top: "1.5rem", right: "1.5rem",
+                background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "var(--muted)"
+              }}>✕</button>
+              <h3 style={{ margin: "0 0 1rem 0" }}>Configure run scope<div style={{ fontSize: "0.85rem", color: "var(--muted)", fontWeight: 400, marginTop: "0.25rem" }}>Choose what Casantris AI should analyze.</div></h3>
+              
+              {connectorConfigs.filter(c => c.enabled).length > 0 && (
+                <div style={{ display: "flex", overflowX: "auto", gap: "1rem" }}>
+                  {connectorConfigs.filter(c => c.enabled).map(c => (
+                    <button
+                      key={c.connector_name}
+                      type="button"
+                      onClick={() => setActiveScopeTab(c.connector_name)}
+                      style={{
+                        padding: "0 0 0.5rem 0", background: "none", border: "none",
+                        borderBottom: activeScopeTab === c.connector_name ? "2px solid var(--accent)" : "2px solid transparent",
+                        color: activeScopeTab === c.connector_name ? "var(--accent)" : "var(--muted)",
+                        cursor: "pointer", fontWeight: activeScopeTab === c.connector_name ? 600 : 400,
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {c.connector_name.charAt(0).toUpperCase() + c.connector_name.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Scrollable Content */}
+            <div style={{ padding: "1.5rem", overflowY: "auto", flex: 1 }}>
+              {connectorConfigs.filter(c => c.enabled).length === 0 ? (
+                <div style={{ fontSize: "0.85rem", color: "var(--muted)", textAlign: "center", padding: "1rem 0" }}>
+                  No active integrations found.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {connectorConfigs.filter(c => c.enabled && c.connector_name === activeScopeTab).map(c => {
+                    const name = c.connector_name;
+                    if (name === "github") {
+                      return (
+                        <div key="github">
+                          <ScopeListSelector title="Repositories" items={ensureArray(c.config_json?.repos)} selectedItems={runScope["github_repos"] || []} searchQuery={searchQueries["github_repos"] || ""} debouncedQuery={debouncedQueries["github_repos"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, github_repos: q}))} onToggleItem={(i) => toggleScopeItem("github_repos", i)} onToggleAll={(items, sel) => setAllScopeItems("github_repos", items, sel)} />
+                          <ScopeListSelector title="Release Branches" items={ensureArray(c.config_json?.release_branches)} selectedItems={runScope["github_branches"] || []} searchQuery={searchQueries["github_branches"] || ""} debouncedQuery={debouncedQueries["github_branches"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, github_branches: q}))} onToggleItem={(i) => toggleScopeItem("github_branches", i)} onToggleAll={(items, sel) => setAllScopeItems("github_branches", items, sel)} />
+                        </div>
+                      );
+                    }
+                    if (name === "jira") {
+                      return (
+                        <div key="jira">
+                          <ScopeListSelector title="Projects" items={ensureArray(c.config_json?.projects)} selectedItems={runScope["jira_projects"] || []} searchQuery={searchQueries["jira_projects"] || ""} debouncedQuery={debouncedQueries["jira_projects"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, jira_projects: q}))} onToggleItem={(i) => toggleScopeItem("jira_projects", i)} onToggleAll={(items, sel) => setAllScopeItems("jira_projects", items, sel)} />
+                          <ScopeListSelector title="Boards" items={ensureArray(c.config_json?.board_ids)} selectedItems={runScope["jira_boards"] || []} searchQuery={searchQueries["jira_boards"] || ""} debouncedQuery={debouncedQueries["jira_boards"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, jira_boards: q}))} onToggleItem={(i) => toggleScopeItem("jira_boards", i)} onToggleAll={(items, sel) => setAllScopeItems("jira_boards", items, sel)} />
+                        </div>
+                      );
+                    }
+                    if (name === "gitlab") {
+                      return (
+                        <div key="gitlab">
+                          <ScopeListSelector title="Projects" items={ensureArray(c.config_json?.project_ids)} selectedItems={runScope["gitlab_projects"] || []} searchQuery={searchQueries["gitlab_projects"] || ""} debouncedQuery={debouncedQueries["gitlab_projects"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, gitlab_projects: q}))} onToggleItem={(i) => toggleScopeItem("gitlab_projects", i)} onToggleAll={(items, sel) => setAllScopeItems("gitlab_projects", items, sel)} />
+                          <ScopeListSelector title="Release Branches" items={ensureArray(c.config_json?.release_branches)} selectedItems={runScope["gitlab_branches"] || []} searchQuery={searchQueries["gitlab_branches"] || ""} debouncedQuery={debouncedQueries["gitlab_branches"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, gitlab_branches: q}))} onToggleItem={(i) => toggleScopeItem("gitlab_branches", i)} onToggleAll={(items, sel) => setAllScopeItems("gitlab_branches", items, sel)} />
+                        </div>
+                      );
+                    }
+                    if (name === "finops") {
+                      return (
+                        <div key="finops">
+                          <ScopeListSelector title="Cloud Providers" items={ensureArray(c.config_json?.providers)} selectedItems={runScope["finops_providers"] || []} searchQuery={searchQueries["finops_providers"] || ""} debouncedQuery={debouncedQueries["finops_providers"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, finops_providers: q}))} onToggleItem={(i) => toggleScopeItem("finops_providers", i)} onToggleAll={(items, sel) => setAllScopeItems("finops_providers", items, sel)} />
+                          <ScopeListSelector title="Billing Profiles" items={ensureArray(c.config_json?.cost_file_paths)} selectedItems={runScope["finops_profiles"] || []} searchQuery={searchQueries["finops_profiles"] || ""} debouncedQuery={debouncedQueries["finops_profiles"] || ""} onSearchChange={(q) => setSearchQueries(p => ({...p, finops_profiles: q}))} onToggleItem={(i) => toggleScopeItem("finops_profiles", i)} onToggleAll={(items, sel) => setAllScopeItems("finops_profiles", items, sel)} />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              )}
+            </div>
+
+            
+          </div>
+        </div>
+      )}
+
 
       {result && askColumns ? (
         <article className="gov-ask-output">

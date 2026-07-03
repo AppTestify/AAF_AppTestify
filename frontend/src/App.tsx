@@ -41,7 +41,33 @@ import { WorkspaceTenantsPage } from "./pages/WorkspaceTenantsPage";
 import { WorkspacePlatformSettingsPage } from "./pages/WorkspacePlatformSettingsPage";
 import { OnboardingWizardPage } from "./pages/OnboardingWizardPage";
 import { PublicSharePage } from "./pages/PublicSharePage";
+import React, { ErrorInfo } from "react";
 import "./App.css";
+
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: 'red', background: 'white', zIndex: 9999, position: 'relative', height: '100vh', width: '100vw', overflow: 'auto' }}>
+          <h1>React Runtime Error</h1>
+          <pre>{this.state.error?.toString()}</pre>
+          <pre>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   return (
@@ -171,13 +197,39 @@ function AppRoutes() {
     }
   };
 
-  const handleRun = async () => {
+  const handleRun = async (runScope?: Record<string, string[]>) => {
     if ( !prompt.trim()) return;
+
+    let contextualPrompt = prompt.trim();
+    if (runScope) {
+      const scopeLines: string[] = [];
+      const labels: Record<string, string> = {
+        github_repos: "GitHub Repositories",
+        github_branches: "GitHub Branches",
+        jira_projects: "Jira Projects",
+        jira_boards: "Jira Boards",
+        gitlab_projects: "GitLab Projects",
+        gitlab_branches: "GitLab Branches",
+        finops_providers: "Cloud Providers",
+        finops_profiles: "Billing Profiles"
+      };
+      
+      for (const [key, label] of Object.entries(labels)) {
+        if (runScope[key] && runScope[key].length > 0) {
+          scopeLines.push(`- ${label}: ${runScope[key].join(", ")}`);
+        }
+      }
+
+      if (scopeLines.length > 0) {
+        contextualPrompt += `\n\n[System Runtime Scope Configuration]\nPlease limit your evidence search and analysis to the following specifically requested scopes:\n${scopeLines.join("\n")}`;
+      }
+    }
+
     setError(null);
     setLoading(true);
     setResult(null);
     try {
-      const data = await runGovernance(prompt.trim(), promptId, user?.tenant_slug);
+      const data = await runGovernance(contextualPrompt, promptId, user?.tenant_slug);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Run failed");
@@ -268,28 +320,30 @@ function AppRoutes() {
         <Route
           path="overview"
           element={
-            <GovernanceView
-              user={user as UserPublic}
-              error={error}
-              tenants={tenants}
-              newTenantName={newTenantName}
-              setNewTenantName={setNewTenantName}
-              newTenantSlug={newTenantSlug}
-              setNewTenantSlug={setNewTenantSlug}
-              onCreateTenant={handleCreateTenant}
-              prompt={prompt}
-              setPrompt={setPrompt}
-              promptId={promptId}
-              setPromptId={setPromptId}
-              library={library}
-              applyLibraryPrompt={applyLibraryPrompt}
-              onRunGovernance={handleRun}
-              onBatch={handleBatch}
-              loading={loading}
-              runProgress={runProgress}
-              result={result}
-              batchResult={batchResult}
-            />
+            <ErrorBoundary>
+              <GovernanceView
+                user={user as UserPublic}
+                error={error}
+                tenants={tenants}
+                newTenantName={newTenantName}
+                setNewTenantName={setNewTenantName}
+                newTenantSlug={newTenantSlug}
+                setNewTenantSlug={setNewTenantSlug}
+                onCreateTenant={handleCreateTenant}
+                prompt={prompt}
+                setPrompt={setPrompt}
+                promptId={promptId}
+                setPromptId={setPromptId}
+                library={library}
+                applyLibraryPrompt={applyLibraryPrompt}
+                onRunGovernance={handleRun}
+                onBatch={handleBatch}
+                loading={loading}
+                runProgress={runProgress}
+                result={result}
+                batchResult={batchResult}
+              />
+            </ErrorBoundary>
           }
         />
         <Route path="evidence" element={<WorkspaceEvidencePage />} />

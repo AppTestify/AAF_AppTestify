@@ -44,11 +44,27 @@ async def run_governance(
     for connector in router_result.connectors:
         if connector not in names:
             names.append(connector)
-    ctx: dict[str, str] = {
+    ctx: dict[str, Any] = {
         "prompt": prompt,
         "github_repo": settings.github_repo,
         "jira_project": settings.jira_project,
     }
+    
+    import re
+    scope_match = re.search(r"\[System Runtime Scope Configuration\].*?specifically requested scopes:\n(.*)", prompt, re.DOTALL)
+    if scope_match:
+        scope_text = scope_match.group(1)
+        for line in scope_text.strip().split('\n'):
+            line = line.strip()
+            if line.startswith("- GitHub Repositories:"):
+                ctx["github_repos"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- GitHub Branches:"):
+                ctx["github_branches"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- Jira Projects:"):
+                ctx["jira_projects"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- Jira Boards:"):
+                ctx["jira_boards"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+
     raw, normalized, evidence_package, tool_ctx = await collect_evidence(
         settings=settings,
         prompt=prompt,

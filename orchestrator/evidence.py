@@ -22,7 +22,7 @@ from tools.context import ToolContext, build_tool_context
 async def _fetch_raw_evidence(
     settings: Settings,
     names: list[str],
-    ctx: dict[str, str],
+    ctx: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     connector_map = {
         "github": GitHubConnector,
@@ -173,7 +173,7 @@ async def collect_evidence(
     settings: Settings,
     prompt: str,
     connector_names: list[str],
-    ctx: dict[str, str],
+    ctx: dict[str, Any],
     tenant_ui_preferences: dict[str, Any] | None = None,
     warm_tools: bool = True,
 ) -> tuple[dict[str, Any], list[EvidenceRecord], dict[str, Any], ToolContext]:

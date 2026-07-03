@@ -14,13 +14,13 @@ import {
 
 const STEPS = ["Connection Setup", "Test Connection", "Summary"] as const;
 
-interface SearchableSelectProps {
+interface SearchableMultiSelectProps {
   label: string;
   helperText?: string;
   searchPlaceholder?: string;
   items: any[];
-  selectedKey: string;
-  onSelect: (key: string) => void;
+  selectedKeys: string[];
+  onChange: (keys: string[]) => void;
   getOptionLabel: (item: any) => string;
   getOptionKey: (item: any) => string;
   getOptionSublabel?: (item: any) => string;
@@ -30,13 +30,13 @@ interface SearchableSelectProps {
   setSearchQuery: (q: string) => void;
 }
 
-function SearchableSelect({
+function SearchableMultiSelect({
   label,
   helperText,
   searchPlaceholder = "Search...",
   items,
-  selectedKey,
-  onSelect,
+  selectedKeys,
+  onChange,
   getOptionLabel,
   getOptionKey,
   getOptionSublabel,
@@ -44,7 +44,7 @@ function SearchableSelect({
   loading = false,
   searchQuery,
   setSearchQuery,
-}: SearchableSelectProps) {
+}: SearchableMultiSelectProps) {
   const renderIcon = (item: any, key: string, name: string) => {
     if (iconType === "repo") {
       return (
@@ -99,11 +99,45 @@ function SearchableSelect({
     return null;
   };
 
+  const handleToggle = (key: string) => {
+    if (selectedKeys.includes(key)) {
+      onChange(selectedKeys.filter(k => k !== key));
+    } else {
+      onChange([...selectedKeys, key]);
+    }
+  };
+
   return (
     <div className="searchable-select form-row" style={{ gridColumn: "span 2" }}>
       <label className="field-label-required" style={{ marginBottom: "0.2rem", fontWeight: "600", fontSize: "0.95rem" }}>{label}</label>
       {helperText && <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.6rem", fontSize: "0.82rem", color: "var(--muted)", opacity: 0.9 }}>{helperText}</p>}
       
+      {selectedKeys.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+          {selectedKeys.map(key => {
+            const item = items.find(i => getOptionKey(i) === key);
+            const labelStr = item ? getOptionLabel(item) : key;
+            return (
+              <span key={key} style={{
+                background: "var(--primary-color)", color: "#fff", padding: "0.25rem 0.6rem", 
+                borderRadius: "16px", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem"
+              }}>
+                {labelStr}
+                <button type="button" onClick={() => handleToggle(key)} style={{
+                  background: "transparent", border: "none", color: "#fff", cursor: "pointer", 
+                  padding: 0, display: "flex", alignItems: "center", opacity: 0.8
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       <div className="searchable-select-input-wrapper">
         <span className="searchable-select-search-icon">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -146,13 +180,13 @@ function SearchableSelect({
             const key = getOptionKey(item);
             const labelStr = getOptionLabel(item);
             const sublabel = getOptionSublabel ? getOptionSublabel(item) : undefined;
-            const isSelected = key === selectedKey;
+            const isSelected = selectedKeys.includes(key);
 
             return (
               <div
                 key={key}
                 className={`searchable-select-item ${isSelected ? "searchable-select-item--selected" : ""}`}
-                onClick={() => onSelect(key)}
+                onClick={() => handleToggle(key)}
               >
                 <div className="searchable-select-item-content">
                   <span className="searchable-select-item-icon">
@@ -188,25 +222,37 @@ export function OnboardingWizardPage() {
   const [branches, setBranches] = useState<string[]>([]);
   const [jiraProjects, setJiraProjects] = useState<{ key: string; name: string }[]>([]);
   const [jiraBoards, setJiraBoards] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [gitlabProjects, setGitLabProjects] = useState<{ id: string; name: string }[]>([]);
+  const [gitlabBranches, setGitLabBranches] = useState<string[]>([]);
+  const [finopsProviders, setFinopsProviders] = useState<{ key: string; name: string }[]>([]);
+  const [finopsProfiles, setFinopsProfiles] = useState<{ id: string; name: string }[]>([]);
 
   // Loading states
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingBoards, setLoadingBoards] = useState(false);
+  const [loadingGitLabProjects, setLoadingGitLabProjects] = useState(false);
+  const [loadingGitLabBranches, setLoadingGitLabBranches] = useState(false);
+  const [loadingFinopsProviders, setLoadingFinopsProviders] = useState(false);
+  const [loadingFinopsProfiles, setLoadingFinopsProfiles] = useState(false);
 
   // Search filter states
   const [repoSearch, setRepoSearch] = useState("");
   const [branchSearch, setBranchSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [boardSearch, setBoardSearch] = useState("");
+  const [gitlabProjectSearch, setGitLabProjectSearch] = useState("");
+  const [gitlabBranchSearch, setGitLabBranchSearch] = useState("");
+  const [finopsProviderSearch, setFinopsProviderSearch] = useState("");
+  const [finopsProfileSearch, setFinopsProfileSearch] = useState("");
 
   // Connector State
   const [connectors, setConnectors] = useState<Record<string, any>>({
-    github: { enabled: false, config_json: { repo: "", release_branch: "main" }, credentials_json: {} },
-    jira: { enabled: false, config_json: { base_url: "", project: "", board_id: "" }, credentials_json: {} },
-    gitlab: { enabled: false, config_json: { gitlab_url: "", project_id: "" }, credentials_json: {} },
-    finops: { enabled: false, config_json: { provider: "aws", cost_file_path: "" }, credentials_json: {} },
+    github: { enabled: false, config_json: { repos: [], release_branches: ["main"] }, credentials_json: {} },
+    jira: { enabled: false, config_json: { base_url: "", projects: [], board_ids: [] }, credentials_json: {} },
+    gitlab: { enabled: false, config_json: { gitlab_url: "", project_ids: [], release_branches: [] }, credentials_json: {} },
+    finops: { enabled: false, config_json: { providers: ["aws"], cost_file_paths: [] }, credentials_json: {} },
   });
 
   const [testResults, setTestResults] = useState<Record<string, { status: "pending" | "success" | "error", message?: string }>>({});
@@ -244,6 +290,13 @@ export function OnboardingWizardPage() {
         }
         if (nextConnectors.jira.enabled) {
           loadJiraProjects();
+        }
+        if (nextConnectors.gitlab.enabled) {
+          loadGitLabProjects();
+        }
+        if (nextConnectors.finops.enabled) {
+          loadFinopsProviders();
+          loadFinopsProfiles(nextConnectors.finops.config_json.provider || "aws");
         }
       } catch (err: any) {
         setError("Failed to fetch initial settings configurations from backend.");
@@ -349,6 +402,72 @@ export function OnboardingWizardPage() {
       setError(err.message || "Failed to load Jira boards.");
     } finally {
       setLoadingBoards(false);
+    }
+  };
+
+  const loadGitLabProjects = async () => {
+    setLoadingGitLabProjects(true);
+    setError(null);
+    try {
+      await new Promise(res => setTimeout(res, 500));
+      const data = [
+        { id: "gitlab-org/gitlab", name: "GitLab HQ" },
+        { id: "my-company/frontend", name: "Frontend Portal" },
+        { id: "my-company/backend", name: "Core API" }
+      ];
+      setGitLabProjects(data);
+      if (data.length > 0 && !connectors.gitlab.config_json.project_id) {
+        setConnectors(prev => ({
+          ...prev, gitlab: { ...prev.gitlab, config_json: { ...prev.gitlab.config_json, project_id: data[0].id } }
+        }));
+        loadGitLabBranches(data[0].id);
+      } else if (connectors.gitlab.config_json.project_id) {
+        loadGitLabBranches(connectors.gitlab.config_json.project_id);
+      }
+    } catch (err: any) {
+      setError("Failed to load GitLab projects.");
+    } finally {
+      setLoadingGitLabProjects(false);
+    }
+  };
+
+  const loadGitLabBranches = async (projectId: string) => {
+    if (!projectId) return;
+    setLoadingGitLabBranches(true);
+    try {
+      await new Promise(res => setTimeout(res, 400));
+      setGitLabBranches(["main", "develop", "feature/auth", "release/v1"]);
+    } finally {
+      setLoadingGitLabBranches(false);
+    }
+  };
+
+  const loadFinopsProviders = async () => {
+    setLoadingFinopsProviders(true);
+    try {
+      await new Promise(res => setTimeout(res, 200));
+      const data = [
+        { key: "aws", name: "Amazon Web Services (AWS)" },
+        { key: "gcp", name: "Google Cloud Platform (GCP)" },
+        { key: "azure", name: "Microsoft Azure" }
+      ];
+      setFinopsProviders(data);
+    } finally {
+      setLoadingFinopsProviders(false);
+    }
+  };
+
+  const loadFinopsProfiles = async (provider: string) => {
+    if (!provider) return;
+    setLoadingFinopsProfiles(true);
+    try {
+      await new Promise(res => setTimeout(res, 300));
+      const data = provider === "aws" 
+        ? [{ id: "cost-report-1", name: "Production Billing Report" }, { id: "cost-report-2", name: "Staging Cur" }]
+        : [{ id: "billing-1", name: "Main Billing Account" }];
+      setFinopsProfiles(data);
+    } finally {
+      setLoadingFinopsProfiles(false);
     }
   };
 
@@ -460,50 +579,89 @@ export function OnboardingWizardPage() {
   // Filter lists based on search inputs
   const getFilteredGitHubRepos = () => {
     const draft = connectors.github;
-    const selectedRepo = draft.config_json.repo;
+    const selectedRepos = draft.config_json.repos || [];
     const filtered = repos.filter(r => r.toLowerCase().includes(repoSearch.toLowerCase()));
-    if (selectedRepo && !filtered.includes(selectedRepo)) {
-      filtered.unshift(selectedRepo);
-    }
+    selectedRepos.forEach((r: string) => {
+      if (!filtered.includes(r)) filtered.unshift(r);
+    });
     return filtered;
   };
 
   const getFilteredGitHubBranches = () => {
     const draft = connectors.github;
-    const selectedBranch = draft.config_json.release_branch || "main";
+    const selectedBranches = draft.config_json.release_branches || ["main"];
     const filtered = branches.filter(b => b.toLowerCase().includes(branchSearch.toLowerCase()));
-    if (selectedBranch && !filtered.includes(selectedBranch)) {
-      filtered.unshift(selectedBranch);
-    }
+    selectedBranches.forEach((b: string) => {
+      if (!filtered.includes(b)) filtered.unshift(b);
+    });
     return filtered;
   };
 
   const getFilteredJiraProjects = () => {
     const draft = connectors.jira;
-    const selectedProject = draft.config_json.project;
+    const selectedProjects = draft.config_json.projects || [];
     const filtered = jiraProjects.filter(p => 
       p.name.toLowerCase().includes(projectSearch.toLowerCase()) || 
       p.key.toLowerCase().includes(projectSearch.toLowerCase())
     );
-    if (selectedProject) {
-      const projObj = jiraProjects.find(p => p.key === selectedProject);
-      if (projObj && !filtered.some(p => p.key === selectedProject)) {
-        filtered.unshift(projObj);
-      }
-    }
+    selectedProjects.forEach((proj: string) => {
+      const projObj = jiraProjects.find(p => p.key === proj);
+      if (projObj && !filtered.some(p => p.key === proj)) filtered.unshift(projObj);
+    });
     return filtered;
   };
 
   const getFilteredJiraBoards = () => {
     const draft = connectors.jira;
-    const selectedBoard = draft.config_json.board_id;
+    const selectedBoards = draft.config_json.board_ids || [];
     const filtered = jiraBoards.filter(b => b.name.toLowerCase().includes(boardSearch.toLowerCase()));
-    if (selectedBoard) {
-      const boardObj = jiraBoards.find(b => b.id === selectedBoard);
-      if (boardObj && !filtered.some(b => b.id === selectedBoard)) {
-        filtered.unshift(boardObj);
-      }
-    }
+    selectedBoards.forEach((boardId: string) => {
+      const boardObj = jiraBoards.find(b => b.id === boardId);
+      if (boardObj && !filtered.some(b => b.id === boardId)) filtered.unshift(boardObj);
+    });
+    return filtered;
+  };
+
+  const getFilteredGitLabProjects = () => {
+    const draft = connectors.gitlab;
+    const selectedProjects = draft.config_json.project_ids || [];
+    const filtered = gitlabProjects.filter(p => p.name.toLowerCase().includes(gitlabProjectSearch.toLowerCase()) || p.id.toLowerCase().includes(gitlabProjectSearch.toLowerCase()));
+    selectedProjects.forEach((proj: string) => {
+      const projObj = gitlabProjects.find(p => p.id === proj);
+      if (projObj && !filtered.some(p => p.id === proj)) filtered.unshift(projObj);
+    });
+    return filtered;
+  };
+
+  const getFilteredGitLabBranches = () => {
+    const draft = connectors.gitlab;
+    const selectedBranches = draft.config_json.release_branches || ["main"];
+    const filtered = gitlabBranches.filter(b => b.toLowerCase().includes(gitlabBranchSearch.toLowerCase()));
+    selectedBranches.forEach((b: string) => {
+      if (!filtered.includes(b)) filtered.unshift(b);
+    });
+    return filtered;
+  };
+
+  const getFilteredFinopsProviders = () => {
+    const draft = connectors.finops;
+    const selectedProviders = draft.config_json.providers || ["aws"];
+    const filtered = finopsProviders.filter(p => p.name.toLowerCase().includes(finopsProviderSearch.toLowerCase()) || p.key.toLowerCase().includes(finopsProviderSearch.toLowerCase()));
+    selectedProviders.forEach((prov: string) => {
+      const pObj = finopsProviders.find(p => p.key === prov);
+      if (pObj && !filtered.some(p => p.key === prov)) filtered.unshift(pObj);
+    });
+    return filtered;
+  };
+
+  const getFilteredFinopsProfiles = () => {
+    const draft = connectors.finops;
+    const selectedProfiles = draft.config_json.cost_file_paths || [];
+    const filtered = finopsProfiles.filter(p => p.name.toLowerCase().includes(finopsProfileSearch.toLowerCase()));
+    selectedProfiles.forEach((prof: string) => {
+      const pObj = finopsProfiles.find(p => p.id === prof);
+      if (pObj && !filtered.some(p => p.id === prof)) filtered.unshift(pObj);
+    });
     return filtered;
   };
 
@@ -516,35 +674,35 @@ export function OnboardingWizardPage() {
     if (name === "github") {
       return (
         <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-          <SearchableSelect
-            label="Which code project are you working on?"
-            helperText="Select the GitHub repository containing your application's source code."
+          <SearchableMultiSelect
+            label="Which code projects are you working on?"
+            helperText="Select the GitHub repositories containing your application's source code."
             searchPlaceholder="Search / filter repositories..."
             items={getFilteredGitHubRepos()}
-            selectedKey={draft.config_json.repo}
-            onSelect={(repo) => {
-              updateConfig("repo", repo);
-              loadGitHubBranches(repo);
+            selectedKeys={draft.config_json.repos || []}
+            onChange={(repos) => {
+              updateConfig("repos", repos);
+              if (repos.length > 0) loadGitHubBranches(repos[0]);
             }}
             getOptionKey={(r) => r}
             getOptionLabel={(r) => r}
-            getOptionSublabel={(r) => r === draft.config_json.repo ? "Active repository selection" : "GitHub code repository"}
+            getOptionSublabel={(r) => (draft.config_json.repos || []).includes(r) ? "Active repository selection" : "GitHub code repository"}
             iconType="repo"
             loading={loadingRepos}
             searchQuery={repoSearch}
             setSearchQuery={setRepoSearch}
           />
 
-          <SearchableSelect
-            label="Which version/branch is this for?"
-            helperText="Select the branch to monitor for releases and updates (usually 'main' or 'master')."
+          <SearchableMultiSelect
+            label="Which versions/branches are these for?"
+            helperText="Select the branches to monitor for releases and updates (usually 'main' or 'master')."
             searchPlaceholder="Search / filter branches..."
             items={getFilteredGitHubBranches()}
-            selectedKey={draft.config_json.release_branch || "main"}
-            onSelect={(branch) => updateConfig("release_branch", branch)}
+            selectedKeys={draft.config_json.release_branches || []}
+            onChange={(branches) => updateConfig("release_branches", branches)}
             getOptionKey={(b) => b}
             getOptionLabel={(b) => b}
-            getOptionSublabel={(b) => b === draft.config_json.release_branch ? "Selected release branch" : "Git repository branch"}
+            getOptionSublabel={(b) => (draft.config_json.release_branches || []).includes(b) ? "Selected release branch" : "Git repository branch"}
             iconType="branch"
             loading={loadingBranches}
             searchQuery={branchSearch}
@@ -557,16 +715,15 @@ export function OnboardingWizardPage() {
     if (name === "jira") {
       return (
         <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
-
-          <SearchableSelect
-            label="Which Jira project are you connecting?"
-            helperText="Select the project from your Jira instance where issues are tracked."
+          <SearchableMultiSelect
+            label="Which Jira projects are you connecting?"
+            helperText="Select the projects from your Jira instance where issues are tracked."
             searchPlaceholder="Search / filter projects..."
             items={getFilteredJiraProjects()}
-            selectedKey={draft.config_json.project}
-            onSelect={(projKey) => {
-              updateConfig("project", projKey);
-              loadJiraBoards(projKey);
+            selectedKeys={draft.config_json.projects || []}
+            onChange={(projKeys) => {
+              updateConfig("projects", projKeys);
+              if (projKeys.length > 0) loadJiraBoards(projKeys[0]);
             }}
             getOptionKey={(p) => p.key}
             getOptionLabel={(p) => p.name}
@@ -577,13 +734,13 @@ export function OnboardingWizardPage() {
             setSearchQuery={setProjectSearch}
           />
 
-          <SearchableSelect
-            label="Which Jira board are you connecting?"
-            helperText="Select the active board for monitoring sprint tickets and sprint blockers."
+          <SearchableMultiSelect
+            label="Which Jira boards are you connecting?"
+            helperText="Select the active boards for monitoring sprint tickets and sprint blockers."
             searchPlaceholder="Search / filter boards..."
             items={getFilteredJiraBoards()}
-            selectedKey={draft.config_json.board_id}
-            onSelect={(boardId) => updateConfig("board_id", boardId)}
+            selectedKeys={draft.config_json.board_ids || []}
+            onChange={(boardIds) => updateConfig("board_ids", boardIds)}
             getOptionKey={(b) => b.id}
             getOptionLabel={(b) => b.name}
             getOptionSublabel={(b) => `Agile ${b.type} board (ID: ${b.id})`}
@@ -591,6 +748,86 @@ export function OnboardingWizardPage() {
             loading={loadingBoards}
             searchQuery={boardSearch}
             setSearchQuery={setBoardSearch}
+          />
+        </div>
+      );
+    }
+
+    if (name === "gitlab") {
+      return (
+        <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
+          <SearchableMultiSelect
+            label="Which GitLab projects are you working on?"
+            helperText="Select the GitLab repositories containing your application's source code."
+            searchPlaceholder="Search / filter projects..."
+            items={getFilteredGitLabProjects()}
+            selectedKeys={draft.config_json.project_ids || []}
+            onChange={(projectIds) => {
+              updateConfig("project_ids", projectIds);
+              if (projectIds.length > 0) loadGitLabBranches(projectIds[0]);
+            }}
+            getOptionKey={(p) => p.id}
+            getOptionLabel={(p) => p.name}
+            getOptionSublabel={(p) => (draft.config_json.project_ids || []).includes(p.id) ? "Active project selection" : "GitLab project"}
+            iconType="repo"
+            loading={loadingGitLabProjects}
+            searchQuery={gitlabProjectSearch}
+            setSearchQuery={setGitLabProjectSearch}
+          />
+          <SearchableMultiSelect
+            label="Which versions/branches are these for?"
+            helperText="Select the branches to monitor for releases and updates (usually 'main' or 'master')."
+            searchPlaceholder="Search / filter branches..."
+            items={getFilteredGitLabBranches()}
+            selectedKeys={draft.config_json.release_branches || []}
+            onChange={(branches) => updateConfig("release_branches", branches)}
+            getOptionKey={(b) => b}
+            getOptionLabel={(b) => b}
+            getOptionSublabel={(b) => (draft.config_json.release_branches || []).includes(b) ? "Selected release branch" : "Git repository branch"}
+            iconType="branch"
+            loading={loadingGitLabBranches}
+            searchQuery={gitlabBranchSearch}
+            setSearchQuery={setGitLabBranchSearch}
+          />
+        </div>
+      );
+    }
+
+    if (name === "finops") {
+      return (
+        <div className="config-columns settings-quick-grid" style={{ marginTop: "1rem" }}>
+          <SearchableMultiSelect
+            label="Which cloud providers are you using?"
+            helperText="Select the cloud providers to monitor for cost optimization."
+            searchPlaceholder="Search / filter providers..."
+            items={getFilteredFinopsProviders()}
+            selectedKeys={draft.config_json.providers || []}
+            onChange={(providerKeys) => {
+              updateConfig("providers", providerKeys);
+              if (providerKeys.length > 0) loadFinopsProfiles(providerKeys[0]);
+            }}
+            getOptionKey={(p) => p.key}
+            getOptionLabel={(p) => p.name}
+            getOptionSublabel={(p) => (draft.config_json.providers || []).includes(p.key) ? "Active cloud provider" : "Supported provider"}
+            iconType="project"
+            loading={loadingFinopsProviders}
+            searchQuery={finopsProviderSearch}
+            setSearchQuery={setFinopsProviderSearch}
+          />
+          <SearchableMultiSelect
+            label="Which billing profiles / cost reports?"
+            helperText="Select the billing profiles or CURs (Cost and Usage Reports)."
+            searchPlaceholder="Search / filter profiles..."
+            items={getFilteredFinopsProfiles()}
+            selectedKeys={draft.config_json.cost_file_paths || []}
+            onChange={(profileIds) => updateConfig("cost_file_paths", profileIds)}
+            getOptionKey={(p) => p.id}
+            getOptionLabel={(p) => p.name}
+            getOptionSublabel={(p) => `Billing Profile (ID: ${p.id})`}
+            iconType="board"
+            loading={loadingFinopsProfiles}
+            searchQuery={finopsProfileSearch}
+            setSearchQuery={setFinopsProfileSearch}
           />
         </div>
       );
@@ -776,6 +1013,32 @@ export function OnboardingWizardPage() {
             </label>
             {renderConnectorForm("jira")}
           </div>
+
+          {/* GitLab Form */}
+          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+              <input
+                type="checkbox"
+                checked={connectors.gitlab.enabled}
+                onChange={(e) => handleToggle("gitlab", e.target.checked)}
+              />{" "}
+              GitLab
+            </label>
+            {renderConnectorForm("gitlab")}
+          </div>
+
+          {/* FinOps Form */}
+          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+              <input
+                type="checkbox"
+                checked={connectors.finops.enabled}
+                onChange={(e) => handleToggle("finops", e.target.checked)}
+              />{" "}
+              FinOps (Cloud Cost Management)
+            </label>
+            {renderConnectorForm("finops")}
+          </div>
         </div>
       ) : null}
 
@@ -822,8 +1085,22 @@ export function OnboardingWizardPage() {
                   <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
                 </h4>
                 <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li><strong>Repository:</strong> {connectors.github.config_json.repo}</li>
-                  <li><strong>Branch:</strong> {connectors.github.config_json.release_branch || "main"}</li>
+                  <li style={{ marginBottom: "0.5rem" }}>
+                    <strong>Repositories:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.github.config_json.repos || []).map((r: string) => (
+                        <span key={r} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{r}</span>
+                      ))}
+                    </div>
+                  </li>
+                  <li>
+                    <strong>Branches:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.github.config_json.release_branches || ["main"]).map((b: string) => (
+                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
+                      ))}
+                    </div>
+                  </li>
                 </ul>
               </div>
             )}
@@ -835,14 +1112,81 @@ export function OnboardingWizardPage() {
                   <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
                 </h4>
                 <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li><strong>Base URL:</strong> {connectors.jira.config_json.base_url}</li>
-                  <li><strong>Project Key:</strong> {connectors.jira.config_json.project}</li>
-                  {connectors.jira.config_json.board_id && <li><strong>Board ID:</strong> {connectors.jira.config_json.board_id}</li>}
+                  <li style={{ marginBottom: "0.5rem" }}>
+                    <strong>Projects:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.jira.config_json.projects || []).map((p: string) => (
+                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
+                      ))}
+                    </div>
+                  </li>
+                  <li>
+                    <strong>Boards:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.jira.config_json.board_ids || []).map((b: string) => (
+                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
+                      ))}
+                    </div>
+                  </li>
                 </ul>
               </div>
             )}
 
-            {!connectors.github.enabled && !connectors.jira.enabled && (
+            {connectors.gitlab.enabled && (
+              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
+                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>GitLab Connected</span>
+                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
+                </h4>
+                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
+                  <li style={{ marginBottom: "0.5rem" }}>
+                    <strong>Projects:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.gitlab.config_json.project_ids || []).map((p: string) => (
+                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
+                      ))}
+                    </div>
+                  </li>
+                  <li>
+                    <strong>Branches:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.gitlab.config_json.release_branches || ["main"]).map((b: string) => (
+                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
+                      ))}
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {connectors.finops.enabled && (
+              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
+                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>FinOps Connected</span>
+                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
+                </h4>
+                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
+                  <li style={{ marginBottom: "0.5rem" }}>
+                    <strong>Cloud Providers:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.finops.config_json.providers || ["aws"]).map((p: string) => (
+                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
+                      ))}
+                    </div>
+                  </li>
+                  <li>
+                    <strong>Billing Profiles:</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                      {(connectors.finops.config_json.cost_file_paths || []).map((c: string) => (
+                        <span key={c} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{c}</span>
+                      ))}
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {!connectors.github.enabled && !connectors.jira.enabled && !connectors.gitlab.enabled && !connectors.finops.enabled && (
               <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)", textAlign: "center" }}>
                 <p style={{ margin: 0, color: "var(--text-muted)" }}>No connections established.</p>
               </div>

@@ -320,7 +320,7 @@ export function GovernanceView(props: GovernanceViewProps) {
 
   return (
     <div className="app">
-      <header className="gov-hub-header">
+      <header className="gov-hub-header" style={{ paddingLeft: "1.5rem" }}>
         <p className="gov-hub-eyebrow">AI Assistant</p>
         <h1 className="gov-hub-title">Ask Casantris AI</h1>
         <p className="gov-hub-lead">

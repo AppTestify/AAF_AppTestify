@@ -12,7 +12,7 @@ import {
   fetchJiraBoardsApi,
 } from "../api";
 
-const STEPS = ["Connection Setup", "Test Connection", "Summary"] as const;
+const STEPS = ["DevOps", "PM", "FinOps", "DevSecOps", "Test Connection", "Summary"] as const;
 
 interface SearchableMultiSelectProps {
   label: string;
@@ -493,13 +493,19 @@ export function OnboardingWizardPage() {
         setError("Please select a GitHub repository.");
         return;
       }
-      if (connectors.jira.enabled && (!connectors.jira.config_json.base_url || !connectors.jira.config_json.project)) {
-        setError("Please ensure JIRA Base URL and Project are selected.");
-        return;
-      }
       setStep(1);
     } else if (step === 1) {
+      if (connectors.jira.enabled && (!connectors.jira.config_json.base_url || !connectors.jira.config_json.project)) {
+        setError("Please provide Jira URL and select a project.");
+        return;
+      }
       setStep(2);
+    } else if (step === 2) {
+      setStep(3);
+    } else if (step === 3) {
+      setStep(4);
+    } else if (step === 4) {
+      setStep(5);
     } else if (step === STEPS.length - 1) {
       setSaving(true);
       try {
@@ -974,7 +980,7 @@ export function OnboardingWizardPage() {
       
       <ol className="onboarding-steps">
         {STEPS.map((label, i) => (
-          <li key={label} className={i === step ? "onboarding-step--active" : i < step ? "onboarding-step--done" : ""}>
+          <li key={label} className={i === step ? "onboarding-step--active" : i < step ? "onboarding-step--done" : ""} onClick={() => setStep(i)} style={{ cursor: "pointer" }}>
             <span className="onboarding-step-index">{i + 1}</span>
             {label}
           </li>
@@ -983,10 +989,11 @@ export function OnboardingWizardPage() {
 
       {error && <div className="alert alert-danger" style={{ marginBottom: "1rem", color: "var(--danger-color)" }}>{error}</div>}
 
-      {step === 0 ? (
+            {step === 0 ? (
         <div className="onboarding-panel card">
-          <h2>Choose and configure connectors</h2>
-          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Select the active repository, release branch, and JIRA project/board for your workspace context.</p>
+          <h2>DevOps Connections</h2>
+          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Configure source control and CI/CD tools to monitor release branch safety.</p>
+
           
           {/* GitHub Form */}
           <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
@@ -1001,18 +1008,6 @@ export function OnboardingWizardPage() {
             {renderConnectorForm("github")}
           </div>
 
-          {/* Jira Form */}
-          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
-            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
-              <input
-                type="checkbox"
-                checked={connectors.jira.enabled}
-                onChange={(e) => handleToggle("jira", e.target.checked)}
-              />{" "}
-              Jira
-            </label>
-            {renderConnectorForm("jira")}
-          </div>
 
           {/* GitLab Form */}
           <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
@@ -1026,6 +1021,35 @@ export function OnboardingWizardPage() {
             </label>
             {renderConnectorForm("gitlab")}
           </div>
+        </div>
+      ) : null}
+
+      {step === 1 ? (
+        <div className="onboarding-panel card">
+          <h2>PM Connections</h2>
+          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Configure project management tools to track sprint delivery health.</p>
+
+
+          {/* Jira Form */}
+          <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+            <label className="onboarding-check" style={{ fontWeight: "bold", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+              <input
+                type="checkbox"
+                checked={connectors.jira.enabled}
+                onChange={(e) => handleToggle("jira", e.target.checked)}
+              />{" "}
+              Jira
+            </label>
+            {renderConnectorForm("jira")}
+          </div>
+        </div>
+      ) : null}
+
+      {step === 2 ? (
+        <div className="onboarding-panel card">
+          <h2>FinOps Connections</h2>
+          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Configure cloud cost providers to monitor efficiency and anomalies.</p>
+
 
           {/* FinOps Form */}
           <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border-color)" }}>
@@ -1042,7 +1066,18 @@ export function OnboardingWizardPage() {
         </div>
       ) : null}
 
-      {step === 1 ? (
+      {step === 3 ? (
+        <div className="onboarding-panel card">
+          <h2>DevSecOps Connections</h2>
+          <p className="field-hint" style={{ marginBottom: "1.25rem" }}>Configure security scanning tools to ensure a ship-safe security posture.</p>
+          <div style={{ padding: "2rem", textAlign: "center", border: "1px dashed var(--border-color)", borderRadius: "var(--border-radius)", backgroundColor: "var(--bg-subtle)", color: "var(--text-muted)" }}>
+            <h3 style={{ marginBottom: "0.5rem" }}>Coming Soon</h3>
+            <p>Integrations with Snyk, SonarQube, and advanced security scanners are currently under development.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {step === 4 ? (
         <div className="onboarding-panel card">
           <h2>Test connections</h2>
           <p className="field-hint" style={{ marginBottom: "1rem" }}>We will ping the APIs of the connectors you enabled to ensure credentials are correct.</p>
@@ -1070,127 +1105,88 @@ export function OnboardingWizardPage() {
         </div>
       ) : null}
 
-      {step === 2 ? (
+            {step === 5 ? (
         <div className="onboarding-panel card">
           <h2>Connection Summary</h2>
           <p className="field-hint" style={{ marginBottom: "1.5rem" }}>
             Review the connections established for your workspace.
           </p>
-          
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {connectors.github.enabled && (
-              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
-                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span>GitHub Connected</span>
-                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
-                </h4>
-                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li style={{ marginBottom: "0.5rem" }}>
-                    <strong>Repositories:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.github.config_json.repos || []).map((r: string) => (
-                        <span key={r} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{r}</span>
-                      ))}
-                    </div>
-                  </li>
-                  <li>
-                    <strong>Branches:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.github.config_json.release_branches || ["main"]).map((b: string) => (
-                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
-                      ))}
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            )}
 
-            {connectors.jira.enabled && (
-              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
-                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span>Jira Connected</span>
-                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
-                </h4>
-                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li style={{ marginBottom: "0.5rem" }}>
-                    <strong>Projects:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.jira.config_json.projects || []).map((p: string) => (
-                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
-                      ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            {/* DevOps Summary */}
+            <div className="summary-section">
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.25rem" }}>DevOps</h3>
+              {(!connectors.github.enabled && !connectors.gitlab.enabled) ? (
+                 <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No DevOps connections configured.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {connectors.github.enabled && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", background: "var(--bg-subtle)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid var(--border-color)" }}>
+                      <div style={{ fontSize: "1.5rem" }}>🐙</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: "bold", fontSize: "0.95rem" }}>GitHub</div>
+                        <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                          Repo: {connectors.github.config_json.repos?.join(", ") || "None"} • Branch: {connectors.github.config_json.release_branches?.join(", ") || "None"}
+                        </div>
+                      </div>
                     </div>
-                  </li>
-                  <li>
-                    <strong>Boards:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.jira.config_json.board_ids || []).map((b: string) => (
-                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
-                      ))}
+                  )}
+                  {connectors.gitlab.enabled && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", background: "var(--bg-subtle)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid var(--border-color)" }}>
+                      <div style={{ fontSize: "1.5rem" }}>🦊</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: "bold", fontSize: "0.95rem" }}>GitLab</div>
+                        <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                          Project: {connectors.gitlab.config_json.project_ids?.join(", ") || "None"} • Branch: {connectors.gitlab.config_json.release_branches?.join(", ") || "None"}
+                        </div>
+                      </div>
                     </div>
-                  </li>
-                </ul>
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
 
-            {connectors.gitlab.enabled && (
-              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
-                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span>GitLab Connected</span>
-                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
-                </h4>
-                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li style={{ marginBottom: "0.5rem" }}>
-                    <strong>Projects:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.gitlab.config_json.project_ids || []).map((p: string) => (
-                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
-                      ))}
+            {/* PM Summary */}
+            <div className="summary-section">
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.25rem" }}>PM</h3>
+              {!connectors.jira.enabled ? (
+                 <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No PM connections configured.</div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", background: "var(--bg-subtle)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid var(--border-color)" }}>
+                  <div style={{ fontSize: "1.5rem", color: "#0052CC" }}>🔵</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: "bold", fontSize: "0.95rem" }}>Jira</div>
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                      URL: {connectors.jira.config_json.base_url || "None"} • Project: {connectors.jira.config_json.projects?.join(", ") || "None"}
                     </div>
-                  </li>
-                  <li>
-                    <strong>Branches:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.gitlab.config_json.release_branches || ["main"]).map((b: string) => (
-                        <span key={b} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{b}</span>
-                      ))}
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            )}
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {connectors.finops.enabled && (
-              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
-                <h4 style={{ margin: 0, color: "var(--primary-color)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span>FinOps Connected</span>
-                  <span style={{ color: "var(--success-color)", fontSize: "0.9rem" }}>✓</span>
-                </h4>
-                <ul style={{ marginTop: "0.75rem", paddingLeft: "1.25rem", margin: "0.75rem 0 0 0", wordBreak: "break-all" }}>
-                  <li style={{ marginBottom: "0.5rem" }}>
-                    <strong>Cloud Providers:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.finops.config_json.providers || ["aws"]).map((p: string) => (
-                        <span key={p} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{p}</span>
-                      ))}
+            {/* FinOps Summary */}
+            <div className="summary-section">
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.25rem" }}>FinOps</h3>
+              {!connectors.finops.enabled ? (
+                 <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No FinOps connections configured.</div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", background: "var(--bg-subtle)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid var(--border-color)" }}>
+                  <div style={{ fontSize: "1.5rem" }}>💰</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: "bold", fontSize: "0.95rem" }}>FinOps</div>
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                      Provider: {connectors.finops.config_json.providers?.join(", ") || "None"} • Profile: {connectors.finops.config_json.cost_file_paths?.join(", ") || "None"}
                     </div>
-                  </li>
-                  <li>
-                    <strong>Billing Profiles:</strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
-                      {(connectors.finops.config_json.cost_file_paths || []).map((c: string) => (
-                        <span key={c} style={{ background: "var(--bg-muted)", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85rem", border: "1px solid var(--border-color)" }}>{c}</span>
-                      ))}
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            )}
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {!connectors.github.enabled && !connectors.jira.enabled && !connectors.gitlab.enabled && !connectors.finops.enabled && (
-              <div style={{ background: "var(--bg-subtle)", padding: "1.25rem", borderRadius: "6px", border: "1px solid var(--border-color)", textAlign: "center" }}>
-                <p style={{ margin: 0, color: "var(--text-muted)" }}>No connections established.</p>
-              </div>
-            )}
+            {/* DevSecOps Summary */}
+            <div className="summary-section">
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.25rem" }}>DevSecOps</h3>
+              <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Security integrations coming soon.</div>
+            </div>
           </div>
         </div>
       ) : null}

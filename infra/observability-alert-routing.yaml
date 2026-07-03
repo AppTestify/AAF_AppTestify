@@ -4,12 +4,18 @@ environments:
     slack_channel: "#casantris-staging-alerts"
     pagerduty_service: "none"
     routing_rules:
+      - when: "alert_id == 'kafka_dlq_depth' and severity == 'warning'"
+        route_to: "slack"
+      - when: "alert_id == 'governance_run_dead_letter' and severity == 'warning'"
+        route_to: "slack"
       - when: "severity in ['warning','critical']"
         route_to: "slack"
   pre-prod:
     slack_channel: "#casantris-preprod-alerts"
     pagerduty_service: "casantris-preprod"
     routing_rules:
+      - when: "alert_id == 'governance_run_dead_letter'"
+        route_to: "pagerduty"
       - when: "severity == 'critical'"
         route_to: "pagerduty"
       - when: "severity == 'warning'"
@@ -18,6 +24,8 @@ environments:
     slack_channel: "#casantris-prod-alerts"
     pagerduty_service: "casantris-prod"
     routing_rules:
+      - when: "alert_id == 'governance_run_dead_letter'"
+        route_to: "pagerduty"
       - when: "severity == 'critical'"
         route_to: "pagerduty"
       - when: "severity == 'warning'"

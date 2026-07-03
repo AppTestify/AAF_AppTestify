@@ -16,22 +16,28 @@ from app import db as db_mod
 from app.models.governance import AuditEvent, EvidenceSnapshot, GovernanceRun
 from app.models.governance import AgentFinding, CorrelatedIncident, ExecutiveSummary
 from app.models.config import TenantConnectorConfig, TenantSettings
+from app.models.metrics import LLMCallLog
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.services.agentic_intelligence import (
     build_agent_findings_with_llm,
     build_executive_summary,
     build_incident,
     compute_consensus,
 )
-from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings
+from app.services.config_resolver import apply_pipeline_overrides, get_ai_runtime_summary, resolve_effective_settings, resolve_tenant_for_user
+from guardrails.budget_cap import enforce_budget_cap
+from guardrails.exceptions import GuardrailBlockedError
 from app.services.governance_service import run_governance
 from app.services.llm_runtime import resolve_provider_chain
 from app.services.integration_signals import connector_signal
 from app.services.observability import record_connector_call, record_dead_letter, record_llm_invocation, record_run, set_run_queue_depth
 from app.services.observability import snapshot as observability_snapshot
-from app.services.decision_framing import build_decision_framing, orchestration_snapshot_from_run_payload
+from app.services.decision_framing import orchestration_snapshot_from_run_payload
+from app.services.run_payload import enrich_run_payload
 from app.services.governance_delivery import deliver_run_complete_notifications
 from pm_interface.decision_formatter import pipeline_result_to_jsonable
+from app.services.run_events import publish_run_event_sync
 
 _queue: "Queue[int]" = Queue()
 _thread: Optional[Thread] = None
@@ -58,7 +64,43 @@ def stop_worker() -> None:
     _thread = None
 
 
+def use_celery() -> bool:
+    settings = get_settings()
+    return bool(settings.celery_broker_url or settings.redis_url)
+
+
+def _use_celery() -> bool:
+    return use_celery()
+
+
+def should_use_in_process_worker() -> bool:
+    """In-process thread queue only when Celery broker is not configured."""
+    return not use_celery()
+
+
+def get_run_queue_depth() -> int:
+    if use_celery():
+        try:
+            from app.celery_app import celery_app
+
+            inspect = celery_app.control.inspect()
+            if inspect is None:
+                return 0
+            reserved = inspect.reserved() or {}
+            scheduled = inspect.scheduled() or {}
+            return sum(len(v) for v in reserved.values()) + sum(len(v) for v in scheduled.values())
+        except Exception:  # noqa: BLE001
+            return 0
+    return _queue.qsize()
+
+
 def enqueue_run(run_id: int) -> None:
+    if _use_celery():
+        from app.celery_app import process_run_task
+
+        process_run_task.delay(run_id)
+        set_run_queue_depth(1)
+        return
     _queue.put(run_id)
     set_run_queue_depth(_queue.qsize())
 
@@ -69,10 +111,10 @@ def _worker_loop() -> None:
         set_run_queue_depth(_queue.qsize())
         if run_id < 0:
             return
-        _process_one(run_id)
+        process_run_sync(run_id)
 
 
-def _process_one(run_id: int) -> None:
+def process_run_sync(run_id: int) -> None:
     db = db_mod.SessionLocal()
     started_perf = datetime.now(timezone.utc)
     try:
@@ -95,17 +137,104 @@ def _process_one(run_id: int) -> None:
         db.commit()
 
         settings = get_settings()
-        tenant = db.get(Tenant, run.tenant_id) if run.tenant_id else None
+        # Resolve tenant correctly
+        user_requested = db.get(User, run.requested_by_user_id)
+        tenant_slug = (run.runtime_config_json or {}).get("tenant_slug")
+        tenant = resolve_tenant_for_user(db, user_requested, tenant_slug) if user_requested else None
+        
         settings_row_early = (
-            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
-            if run.tenant_id
+            db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+            if tenant
             else None
         )
         effective = resolve_effective_settings(db, settings, tenant)
         effective = apply_pipeline_overrides(effective, settings_row_early)
         provider_chain = resolve_provider_chain(db, tenant)
-        result = asyncio.run(run_governance(run.prompt, run.prompt_id, effective, llm_providers=provider_chain))
+        if effective.guardrails_enabled and run.tenant_id:
+            try:
+                enforce_budget_cap(db, run.tenant_id, settings_row_early, effective)
+            except GuardrailBlockedError as budget_exc:
+                run.status = "failed"
+                run.error_message = str(budget_exc)
+                run.finished_at = datetime.now(timezone.utc)
+                db.add(
+                    AuditEvent(
+                        tenant_id=run.tenant_id,
+                        actor_user_id=run.requested_by_user_id,
+                        area="guardrails",
+                        action="budget_blocked",
+                        entity_type="governance_run",
+                        entity_id=run.id,
+                        severity="warn",
+                        summary=f"Run {run.id} blocked by {budget_exc.result.guard_name}",
+                        after_json={"violations": [v.model_dump() for v in budget_exc.result.violations]},
+                    )
+                )
+                db.commit()
+                elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+                record_run(run.status, elapsed_ms, run.retry_count)
+                try:
+                    from app.services.search_index import index_governance_run
+                    index_governance_run(run)
+                except Exception:  # noqa: BLE001
+                    _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
+                return
+        try:
+            result = asyncio.run(
+                run_governance(
+                    run.prompt,
+                    run.prompt_id,
+                    effective,
+                    llm_providers=provider_chain,
+                    tenant_ui_preferences=(settings_row_early.ui_preferences if settings_row_early else None),
+                )
+            )
+        except GuardrailBlockedError as guard_exc:
+            run.status = "failed"
+            run.error_message = str(guard_exc)
+            run.finished_at = datetime.now(timezone.utc)
+            db.add(
+                AuditEvent(
+                    tenant_id=run.tenant_id,
+                    actor_user_id=run.requested_by_user_id,
+                    area="guardrails",
+                    action="blocked",
+                    entity_type="governance_run",
+                    entity_id=run.id,
+                    severity="warn",
+                    summary=f"Run {run.id} blocked by {guard_exc.result.guard_name}",
+                    after_json={
+                        "violations": [v.model_dump() for v in guard_exc.result.violations],
+                    },
+                )
+            )
+            db.commit()
+            elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
+            record_run(run.status, elapsed_ms, run.retry_count)
+            try:
+                from app.services.search_index import index_governance_run
+                index_governance_run(run)
+            except Exception:  # noqa: BLE001
+                _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
+            return
         out = pipeline_result_to_jsonable(result)
+        llm_cost = out.get("llm_cost") if isinstance(out.get("llm_cost"), dict) else {}
+        for call in llm_cost.get("calls") or []:
+            if not isinstance(call, dict):
+                continue
+            db.add(
+                LLMCallLog(
+                    run_id=run.id,
+                    tenant_id=run.tenant_id,
+                    agent_id=str(call.get("agent_id") or "unknown"),
+                    provider_name=str(call.get("provider_name") or "unknown"),
+                    model_name=str(call.get("model_name") or "unknown"),
+                    prompt_tokens=int(call.get("prompt_tokens") or 0),
+                    completion_tokens=int(call.get("completion_tokens") or 0),
+                    cost_usd=float(call.get("cost_usd") or 0.0),
+                    latency_ms=int(call.get("latency_ms") or 0),
+                )
+            )
         connector_rows = (
             db.execute(select(TenantConnectorConfig).where(TenantConnectorConfig.tenant_id == run.tenant_id))
             .scalars()
@@ -172,7 +301,7 @@ def _process_one(run_id: int) -> None:
         }
         record_llm_invocation(out["llm_invocation"]["status"])
 
-        out["decision_framing"] = build_decision_framing(out)
+        out = enrich_run_payload(out, db=db, tenant=tenant, settings=effective, ts_row=settings_row)
 
         run.result_json = out
         run.status = "succeeded"
@@ -247,8 +376,17 @@ def _process_one(run_id: int) -> None:
             )
         )
         db.commit()
+        publish_run_event_sync(run.id, "result_ready", {"run_id": run.id, "consensus": float(incident["consensus_score"])})
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
+        try:
+            from app.services.kafka_producer import publish_governance_run_event
+            from app.services.search_index import index_governance_run
+
+            publish_governance_run_event(run.id, run.tenant_id, status="succeeded")
+            index_governance_run(run)
+        except Exception:  # noqa: BLE001
+            _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
         try:
             deliver_run_complete_notifications(run.id)
         except Exception:  # noqa: BLE001
@@ -264,8 +402,7 @@ def _process_one(run_id: int) -> None:
         if run.retry_count <= _MAX_RETRIES:
             run.status = "queued"
             db.commit()
-            _queue.put(run_id)
-            set_run_queue_depth(_queue.qsize())
+            enqueue_run(run_id)
             elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
             record_run("retry", elapsed_ms, run.retry_count)
             return
@@ -284,8 +421,21 @@ def _process_one(run_id: int) -> None:
             )
         )
         db.commit()
+        publish_run_event_sync(run.id, "error", {"error": run.error_message})
         elapsed_ms = (datetime.now(timezone.utc) - started_perf).total_seconds() * 1000
         record_run(run.status, elapsed_ms, run.retry_count)
+        try:
+            from app.services.notification_router import deliver_run_failed
+
+            deliver_run_failed(run.id)
+        except Exception:  # noqa: BLE001
+            _log.exception("governance_failed_notify_error", extra={"run_id": run.id})
+        try:
+            from app.services.search_index import index_governance_run
+            
+            index_governance_run(run)
+        except Exception:  # noqa: BLE001
+            _log.exception("post_run_index_publish_failed", extra={"run_id": run.id})
     finally:
         db.close()
 

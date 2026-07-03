@@ -8,7 +8,62 @@ from aaf.schema import (
     GovernanceAction,
     RARResult,
     UtilityResult,
+    GovernanceDecision,
 )
+from app.services.llm_runtime import ActiveProvider
+from typing import Any
+
+def generate_explanation(
+    decision: GovernanceDecision,
+    llm_providers: list[ActiveProvider] | None = None,
+    tracker: Any = None,
+) -> tuple[str, dict[str, Any]]:
+    """Phase 1 single constrained LLM call to explain the decision."""
+    deterministic = build_explanation(
+        prompt=decision.prompt,
+        opinions=decision.opinions,
+        consensus=decision.consensus,
+        rar=decision.rar,
+        utility=decision.utility,
+    )
+    
+    if not llm_providers:
+        return deterministic, {"status": "degraded", "reason": "no_active_provider"}
+        
+    if not tracker:
+        from guardrails.llm_cost_tracker import LlmCostTracker
+        tracker = LlmCostTracker()
+    
+    # We restrict context to just the structured JSON for tokens/cost.
+    # We avoid passing raw signals or tool logic.
+    decision_json = decision.model_dump_json(exclude={"opinions": {"__all__": {"raw_signals"}}})
+    
+    prompt = (
+        "Create a concise executive governance explanation in markdown with sections: "
+        "What we evaluated, Consensus, Recommended action, Why trustworthy. "
+        "The response must be brief (~500 tokens max) and rely ONLY on the provided JSON.\n"
+        "Critically: Incorporate the specific agent 'evidence' strings into your explanation narrative "
+        "(e.g., if the evidence mentions 'payments-service', use that exact detail).\n\n"
+        f"JSON Context:\n{decision_json}"
+    )
+    
+    try:
+        llm_text, meta = tracker.invoke_tracked(
+            llm_providers,
+            prompt,
+            phase="explanation",
+            agent_id="orchestrator",
+        )
+        if llm_text.strip():
+            return llm_text.strip()[:1000], {"status": "ok", **meta}
+    except Exception:
+        return deterministic, {
+            "status": "degraded",
+            "reason": "invocation_failed",
+            "providers_attempted": [p.provider_name for p in llm_providers],
+        }
+    
+    return deterministic, {"status": "degraded", "reason": "empty_output"}
 
 
 def build_explanation(
@@ -28,6 +83,8 @@ def build_explanation(
         lines.append(
             f"- **{o.agent_id}** ({o.risk_theme.value}, confidence {o.confidence:.2f}): {o.claim}"
         )
+        for ev in o.evidence:
+            lines.append(f"  - {ev}")
     lines.append("")
     lines.append("## Consensus")
     lines.append(
@@ -73,5 +130,6 @@ def _action_label(a: GovernanceAction) -> str:
         GovernanceAction.MITIGATE_MONITOR: "Mitigate and monitor",
         GovernanceAction.SCALE_ADJUST: "Scale / capacity adjustment",
         GovernanceAction.PATCH_BLOCK_RELEASE: "Patch or block release",
+        GovernanceAction.HOLD_RELEASE: "Hold release",
         GovernanceAction.OBSERVE: "No immediate action / observe",
     }.get(a, a.value)

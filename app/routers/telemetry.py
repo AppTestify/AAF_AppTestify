@@ -79,6 +79,16 @@ class DecisionLifecycleOut(BaseModel):
     defendability: dict
 
 
+class RunsTimeseriesDayPoint(BaseModel):
+    date: str
+    counts: dict[str, int]
+
+
+class RunsTimeseriesOut(BaseModel):
+    days: int
+    series: list[RunsTimeseriesDayPoint]
+
+
 def _tenant_scope(where_col, current: User):
     if current.is_superadmin:
         return None
@@ -241,6 +251,38 @@ def get_dashboard_summary(
     )
 
 
+@router.get("/runs-timeseries", response_model=RunsTimeseriesOut)
+def get_runs_timeseries(
+    days: int = Query(default=7, ge=1, le=90),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    run_scope = _tenant_scope(GovernanceRun.tenant_id, current)
+    day_expr = func.date(GovernanceRun.created_at)
+    ts_q = (
+        select(day_expr, GovernanceRun.status, func.count(GovernanceRun.id))
+        .where(GovernanceRun.created_at >= since)
+        .group_by(day_expr, GovernanceRun.status)
+    )
+    if run_scope is not None:
+        ts_q = ts_q.where(run_scope)
+
+    day_counts: dict[str, dict[str, int]] = {}
+    for day, status, count in db.execute(ts_q).all():
+        day_str = str(day)
+        day_counts.setdefault(day_str, {})[status] = int(count)
+
+    series: list[RunsTimeseriesDayPoint] = []
+    for i in range(days):
+        d = (since + timedelta(days=i)).date().isoformat()
+        series.append(RunsTimeseriesDayPoint(date=d, counts=day_counts.get(d, {})))
+
+    return RunsTimeseriesOut(days=days, series=series)
+
+
 @router.get("/observability/summary", response_model=ObservabilitySummaryOut)
 def get_observability_summary(
     window_seconds: int = Query(default=300, ge=60, le=3600),
@@ -302,6 +344,7 @@ def get_decision_lifecycle(
     connector_rows = db.execute(connectors_q).scalars().all()
     connector_payload = {r.connector_name: (r.telemetry_json or {}) for r in connector_rows}
     github = connector_payload.get("github", {})
+    gitlab = connector_payload.get("gitlab", {})
     jira = connector_payload.get("jira", {})
     azure = connector_payload.get("azure", {})
 
@@ -309,6 +352,8 @@ def get_decision_lifecycle(
     release_signals = {
         "github_success_rate": float(github.get("success_rate") or 0.0),
         "github_failing_checks": int(github.get("failing_checks") or 0),
+        "gitlab_success_rate": float(gitlab.get("success_rate") or 0.0),
+        "gitlab_failing_checks": int(gitlab.get("failing_checks") or 0),
         "jira_blocked_tickets": int(jira.get("blocked_tickets") or 0),
         "azure_release_readiness": str(azure.get("release_readiness") or "unknown"),
         "azure_build_success_rate": float(azure.get("build_success_rate") or 0.0),
@@ -316,6 +361,8 @@ def get_decision_lifecycle(
     release_confidence = 0.0
     if release_signals["github_success_rate"] > 0:
         release_confidence += 0.4 * release_signals["github_success_rate"]
+    elif release_signals["gitlab_success_rate"] > 0:
+        release_confidence += 0.4 * release_signals["gitlab_success_rate"]
     if release_signals["azure_build_success_rate"] > 0:
         release_confidence += 0.4 * release_signals["azure_build_success_rate"]
     if release_signals["jira_blocked_tickets"] == 0:

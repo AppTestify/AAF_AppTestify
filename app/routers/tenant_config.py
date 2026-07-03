@@ -14,16 +14,18 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_active_user, require_tenant_admin_or_superadmin
 from aaf.config import get_settings
-from app.models.config import ConfigAuditLog, TenantAIProviderConfig, TenantConnectorConfig, TenantNotificationConfig, TenantSettings
+from app.models.config import ConfigAuditLog, PlatformNotificationConfig, TenantAIProviderConfig, TenantConnectorConfig, TenantNotificationConfig, TenantSettings
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.security import decrypt_json, encrypt_json
 from app.services.email_runtime import resolved_templates, send_templated_email, test_smtp_connection
+from app.services.notification_router import DEFAULT_CHANNELS
+from app.services.smtp_resolver import resolve_smtp_dataclass
 
 router = APIRouter(prefix="/tenant", tags=["tenant-config"])
 
-_CONNECTORS = {"github", "jira", "finops", "azure", "aws", "vps"}
-_PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock"}
+_CONNECTORS = {"github", "gitlab", "jira", "finops", "azure", "aws", "vps", "bitbucket"}
+_PROVIDERS = {"openai", "anthropic", "azure_openai", "aws_bedrock", "ollama"}
 _SECRET_KEYS = {"token", "api_token", "password", "secret", "key"}
 
 
@@ -67,6 +69,7 @@ class ConnectorConfigOut(ConnectorConfigIn):
     last_validated_at: Optional[datetime] = None
     telemetry_json: dict[str, Any] = Field(default_factory=dict)
     last_sync_at: Optional[datetime] = None
+    credentials_keys_configured: list[str] = Field(default_factory=list)
 
 
 class ConnectorSetBody(BaseModel):
@@ -136,6 +139,21 @@ class NotificationTemplateOut(BaseModel):
     body: str
 
 
+class NotificationChannelToggles(BaseModel):
+    email: bool = True
+    slack: bool = False
+    teams: bool = False
+
+
+class DigestScheduleOut(BaseModel):
+    daily_enabled: bool = False
+    daily_time_utc: str = "08:00"
+    weekly_enabled: bool = False
+    weekly_day: str = "monday"
+    weekly_time_utc: str = "08:00"
+    recipients: list[str] = Field(default_factory=list)
+
+
 class NotificationConfigOut(BaseModel):
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -145,9 +163,14 @@ class NotificationConfigOut(BaseModel):
     use_tls: bool = True
     use_ssl: bool = False
     notifications_enabled: bool = False
+    using_platform_smtp: bool = False
+    platform_smtp_configured: bool = False
     slack_webhook_configured: bool = False
+    teams_webhook_configured: bool = False
     governance_notify_on_run_complete: bool = False
     governance_run_notify_emails: list[str] = Field(default_factory=list)
+    notification_channels: dict[str, NotificationChannelToggles] = Field(default_factory=dict)
+    digest_schedule: DigestScheduleOut = Field(default_factory=DigestScheduleOut)
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
     last_test_ok: Optional[bool] = None
     last_test_error: Optional[str] = None
@@ -165,13 +188,19 @@ class NotificationConfigIn(BaseModel):
     notifications_enabled: bool = False
     slack_incoming_webhook: Optional[str] = None
     clear_slack_incoming_webhook: bool = False
+    teams_incoming_webhook: Optional[str] = None
+    clear_teams_incoming_webhook: bool = False
     governance_notify_on_run_complete: bool = False
     governance_run_notify_emails: list[str] = Field(default_factory=list)
+    notification_channels: dict[str, NotificationChannelToggles] = Field(default_factory=dict)
+    digest_schedule: Optional[DigestScheduleOut] = None
     templates: dict[str, NotificationTemplateOut] = Field(default_factory=dict)
 
 
 class NotificationTestIn(BaseModel):
     to_email: Optional[str] = None
+    test_slack: bool = False
+    slack_webhook: Optional[str] = None
 
 
 def _resolve_tenant_for_user(
@@ -335,8 +364,10 @@ def get_connector_configs(
     )
     by_name = {r.connector_name: r for r in rows}
     out: list[ConnectorConfigOut] = []
+    encryption_key = get_settings().app_encryption_key
     for name in sorted(_CONNECTORS):
         r = by_name.get(name)
+        cred = decrypt_json(r.encrypted_credentials_json, secret=encryption_key) if r and r.encrypted_credentials_json else {}
         out.append(
             ConnectorConfigOut(
                 connector_name=name,
@@ -348,6 +379,7 @@ def get_connector_configs(
                 last_validated_at=r.last_validated_at if r else None,
                 telemetry_json=r.telemetry_json if r else {},
                 last_sync_at=r.last_sync_at if r else None,
+                credentials_keys_configured=sorted([k for k, v in cred.items() if v]),
             )
         )
     return out
@@ -362,6 +394,7 @@ def put_connector_configs(
 ):
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     out: list[ConnectorConfigOut] = []
+    encryption_key = get_settings().app_encryption_key
     for name, cfg in body.connectors.items():
         key = name.strip().lower()
         if key not in _CONNECTORS:
@@ -392,13 +425,34 @@ def put_connector_configs(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"connector '{key}' config must use secret references, not inline secret keys",
             )
-        row.config_json = cfg.config_json
-        row.encrypted_credentials_json = (
-            encrypt_json(cfg.credentials_json, secret=get_settings().app_encryption_key) if cfg.credentials_json else None
-        )
+        
+        # Clean Jira base URL in config if present
+        if key == "jira" and cfg.config_json:
+            config_copy = dict(cfg.config_json)
+            burl = config_copy.get("base_url")
+            if burl and isinstance(burl, str):
+                import re
+                if "atlassian.net" in burl:
+                    match = re.search(r"(https?://[^\/]+\.atlassian\.net)", burl)
+                    if match:
+                        config_copy["base_url"] = match.group(1)
+            row.config_json = config_copy
+        else:
+            row.config_json = cfg.config_json
+
+        if cfg.credentials_json:
+            cleaned_creds = {k: (v.strip() if isinstance(v, str) else v) for k, v in cfg.credentials_json.items()}
+            row.encrypted_credentials_json = encrypt_json(cleaned_creds, secret=encryption_key)
+        
         row.last_validation_error = None
         row.last_validation_ok = None
         row.last_validated_at = None
+        
+        cred_keys = []
+        if row.encrypted_credentials_json:
+            cred_dec = decrypt_json(row.encrypted_credentials_json, secret=encryption_key)
+            cred_keys = sorted([k for k, v in cred_dec.items() if v])
+
         _audit(
             db,
             tenant_id=tenant.id,
@@ -420,6 +474,7 @@ def put_connector_configs(
                 last_validated_at=row.last_validated_at,
                 telemetry_json=row.telemetry_json or {},
                 last_sync_at=row.last_sync_at,
+                credentials_keys_configured=cred_keys,
             )
         )
     db.commit()
@@ -450,8 +505,10 @@ def validate_connector_config(
     err: Optional[str] = None
     if key == "github" and row.enabled and not cfg.get("repo"):
         err = "github.repo is required when connector is enabled"
-    if key == "jira" and row.enabled and (not cfg.get("project") or not cfg.get("base_url")):
-        err = "jira.base_url and jira.project are required when connector is enabled"
+    if key == "gitlab" and row.enabled and not cfg.get("project_id"):
+        err = "gitlab.project_id is required when connector is enabled"
+    if key == "jira" and row.enabled and ((not cfg.get("project") and not cfg.get("project_key")) or not cfg.get("base_url")):
+        err = "jira.base_url and jira.project (or project_key) are required when connector is enabled"
     if key == "finops" and row.enabled and not cfg.get("cost_file"):
         err = "finops.cost_file is required when connector is enabled"
     if key == "azure" and row.enabled and (not cfg.get("organization") or not cfg.get("project")):
@@ -566,7 +623,7 @@ def put_ai_provider_configs(
                 "api_key_ref": _mask_api_key_ref(row.api_key_ref),
             }
         row.enabled = cfg.enabled
-        row.model_name = cfg.model_name
+        row.model_name = cfg.model_name.strip() if cfg.model_name else None
         row.temperature = cfg.temperature
         row.max_tokens = cfg.max_tokens
         row.endpoint_url = cfg.endpoint_url
@@ -622,7 +679,7 @@ def validate_ai_provider_config(
     err: Optional[str] = None
     if row.enabled and not row.model_name:
         err = "model_name is required when provider is enabled"
-    if row.enabled and not (row.api_key_ref or row.api_key_encrypted):
+    if row.enabled and not (row.api_key_ref or row.api_key_encrypted) and key != "ollama":
         err = "api_key_ref or api_key is required when provider is enabled"
     if row.enabled and key == "azure_openai" and not row.endpoint_url:
         err = "endpoint_url is required for azure_openai when enabled"
@@ -672,6 +729,32 @@ def validate_ai_provider_config(
     )
 
 
+def _digest_schedule_out(raw: dict[str, Any] | None) -> DigestScheduleOut:
+    data = raw if isinstance(raw, dict) else {}
+    recipients = data.get("recipients")
+    return DigestScheduleOut(
+        daily_enabled=bool(data.get("daily_enabled", False)),
+        daily_time_utc=str(data.get("daily_time_utc") or "08:00"),
+        weekly_enabled=bool(data.get("weekly_enabled", False)),
+        weekly_day=str(data.get("weekly_day") or "monday"),
+        weekly_time_utc=str(data.get("weekly_time_utc") or "08:00"),
+        recipients=[str(x).strip() for x in recipients if str(x).strip()] if isinstance(recipients, list) else [],
+    )
+
+
+def _channels_out(row: TenantNotificationConfig | None) -> dict[str, NotificationChannelToggles]:
+    raw = row.notification_channels_json if row and isinstance(row.notification_channels_json, dict) else {}
+    out: dict[str, NotificationChannelToggles] = {}
+    for event_type, defaults in DEFAULT_CHANNELS.items():
+        event_cfg = raw.get(event_type) if isinstance(raw.get(event_type), dict) else {}
+        out[event_type] = NotificationChannelToggles(
+            email=bool(event_cfg.get("email", defaults.get("email", True))),
+            slack=bool(event_cfg.get("slack", defaults.get("slack", False))),
+            teams=bool(event_cfg.get("teams", defaults.get("teams", False))),
+        )
+    return out
+
+
 @router.get("/notifications", response_model=NotificationConfigOut)
 def get_notification_config(
     tenant_slug: Optional[str] = Query(default=None),
@@ -686,6 +769,14 @@ def get_notification_config(
         raw = row.governance_run_notify_emails_json
         if isinstance(raw, list):
             emails = [str(x).strip() for x in raw if str(x).strip()]
+    smtp = resolve_smtp_dataclass(db, tenant.id)
+    platform_row = db.execute(select(PlatformNotificationConfig).order_by(PlatformNotificationConfig.id.asc())).scalars().first()
+    platform_configured = bool(
+        platform_row
+        and platform_row.smtp_host
+        and platform_row.smtp_port
+        and platform_row.notifications_enabled
+    )
     return NotificationConfigOut(
         smtp_host=row.smtp_host if row else None,
         smtp_port=row.smtp_port if row else None,
@@ -695,10 +786,18 @@ def get_notification_config(
         use_tls=row.use_tls if row else True,
         use_ssl=row.use_ssl if row else False,
         notifications_enabled=row.notifications_enabled if row else False,
+        using_platform_smtp=smtp.source == "platform",
+        platform_smtp_configured=platform_configured,
         slack_webhook_configured=bool(row and row.slack_incoming_webhook_encrypted),
+        teams_webhook_configured=bool(row and row.teams_incoming_webhook_encrypted),
         governance_notify_on_run_complete=bool(row and row.governance_notify_on_run_complete),
         governance_run_notify_emails=emails,
-        templates={k: NotificationTemplateOut(**v) for k, v in templates.items()},
+        notification_channels=_channels_out(row),
+        digest_schedule=_digest_schedule_out(row.digest_schedule_json if row else None),
+        templates={
+            k: NotificationTemplateOut(subject=v["subject"], body=v.get("body_text") or v.get("body", ""))
+            for k, v in templates.items()
+        },
         last_test_ok=row.last_test_ok if row else None,
         last_test_error=row.last_test_error if row else None,
         last_tested_at=row.last_tested_at if row else None,
@@ -723,7 +822,14 @@ def put_notification_config(
     row.use_tls = body.use_tls
     row.use_ssl = body.use_ssl
     row.notifications_enabled = body.notifications_enabled
-    row.templates_json = {k: v.model_dump() for k, v in body.templates.items()}
+    row.templates_json = {
+        k: {
+            "subject": v.subject,
+            "body_text": v.body,
+            "body_html": v.body.replace("\n", "<br/>"),
+        }
+        for k, v in body.templates.items()
+    }
     if body.clear_slack_incoming_webhook:
         row.slack_incoming_webhook_encrypted = None
     elif body.slack_incoming_webhook:
@@ -731,8 +837,22 @@ def put_notification_config(
             {"url": body.slack_incoming_webhook.strip()},
             secret=get_settings().app_encryption_key,
         )
+    if body.clear_teams_incoming_webhook:
+        row.teams_incoming_webhook_encrypted = None
+    elif body.teams_incoming_webhook:
+        row.teams_incoming_webhook_encrypted = encrypt_json(
+            {"url": body.teams_incoming_webhook.strip()},
+            secret=get_settings().app_encryption_key,
+        )
     row.governance_notify_on_run_complete = body.governance_notify_on_run_complete
     row.governance_run_notify_emails_json = [e.strip().lower() for e in body.governance_run_notify_emails if e.strip()]
+    if body.notification_channels:
+        row.notification_channels_json = {
+            k: {"email": v.email, "slack": v.slack, "teams": v.teams}
+            for k, v in body.notification_channels.items()
+        }
+    if body.digest_schedule is not None:
+        row.digest_schedule_json = body.digest_schedule.model_dump()
     _audit(
         db,
         tenant_id=tenant.id,
@@ -746,6 +866,8 @@ def put_notification_config(
     db.commit()
     return get_notification_config(tenant_slug=tenant.slug, db=db, current=current)
 
+from app.services.notification_router import _decrypt_webhook_url
+from app.services.slack_notifier import send_slack_message
 
 @router.post("/notifications/test")
 def test_notification_config(
@@ -757,6 +879,19 @@ def test_notification_config(
     tenant = _resolve_tenant_for_user(db, current, tenant_slug)
     row = _get_or_create_notification_config(db, tenant.id)
     try:
+        if body.test_slack:
+            slack_url = body.slack_webhook.strip() if body.slack_webhook else None
+            if not slack_url:
+                slack_url = _decrypt_webhook_url(row.slack_incoming_webhook_encrypted)
+            if not slack_url:
+                platform_row = db.execute(select(PlatformNotificationConfig)).scalar_one_or_none()
+                if platform_row:
+                    slack_url = _decrypt_webhook_url(platform_row.slack_incoming_webhook_encrypted)
+            if not slack_url:
+                raise ValueError("No Slack webhook configured on tenant or platform.")
+            send_slack_message(slack_url, title="Webhook Test", body="This is a test notification from the workspace settings.", fields=[])
+            return {"ok": True, "message": "Slack webhook test succeeded"}
+
         test_smtp_connection(row)
         if body.to_email:
             send_templated_email(
@@ -771,8 +906,214 @@ def test_notification_config(
         db.commit()
         return {"ok": True, "message": "SMTP test succeeded"}
     except Exception as exc:  # noqa: BLE001
-        row.last_test_ok = False
-        row.last_test_error = str(exc)
-        row.last_tested_at = datetime.now(timezone.utc)
-        db.commit()
-        raise HTTPException(status_code=422, detail=f"SMTP test failed: {exc}") from exc
+        if not body.test_slack:
+            row.last_test_ok = False
+            row.last_test_error = str(exc)
+            row.last_tested_at = datetime.now(timezone.utc)
+        return {"ok": False, "message": f"Test failed: {exc}"}
+
+
+@router.get("/connectors/github/repos")
+def get_github_repos(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "github"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="GitHub connector not enabled")
+    
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+    
+    token = cred.get("token") or row.config_json.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="GitHub token not configured")
+    
+    token = token.strip()
+        
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AAF-AppTestify"
+    }
+    
+    try:
+        resp = httpx.get("https://api.github.com/user/repos?per_page=100", headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"GitHub API error: {resp.text}")
+        repos_data = resp.json()
+        return [r.get("full_name") for r in repos_data if r.get("full_name")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch repositories: {e}")
+
+
+@router.get("/connectors/github/branches")
+def get_github_branches(
+    repo: str = Query(...),
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "github"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="GitHub connector not enabled")
+    
+    if "/" not in repo:
+        raise HTTPException(status_code=400, detail="Invalid repo name")
+        
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+    
+    token = cred.get("token") or row.config_json.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="GitHub token not configured")
+        
+    token = token.strip()
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AAF-AppTestify"
+    }
+    
+    try:
+        owner, name = repo.split("/", 1)
+        resp = httpx.get(f"https://api.github.com/repos/{owner}/{name}/branches?per_page=100", headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"GitHub API error: {resp.text}")
+        branches_data = resp.json()
+        return [b.get("name") for b in branches_data if b.get("name")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch branches: {e}")
+
+
+@router.get("/connectors/jira/projects")
+def get_jira_projects(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "jira"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="Jira connector not enabled")
+        
+    cfg = row.config_json or {}
+    base_url = cfg.get("base_url")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL not configured")
+        
+    if isinstance(base_url, str) and "atlassian.net" in base_url:
+        import re
+        match = re.search(r"(https?://[^\/]+\.atlassian\.net)", base_url)
+        if match:
+            base_url = match.group(1)
+
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
+        
+    email = cred.get("email") or cfg.get("email")
+    token = cred.get("token") or cfg.get("token") or cred.get("api_token") or cfg.get("api_token")
+    
+    if not email or not token:
+        raise HTTPException(status_code=400, detail="Jira email or token not configured")
+        
+    email = email.strip()
+    token = token.strip()
+
+    auth = (email, token)
+    url = f"{base_url.rstrip('/')}/rest/api/3/project"
+    
+    try:
+        resp = httpx.get(url, auth=auth, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Jira API error: {resp.text}")
+        projects_data = resp.json()
+        return [{"key": p.get("key"), "name": p.get("name")} for p in projects_data if p.get("key")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {e}")
+
+
+@router.get("/connectors/jira/boards")
+def get_jira_boards(
+    project_key: Optional[str] = Query(default=None),
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    tenant = _resolve_tenant_for_user(db, current, tenant_slug)
+    row = db.execute(
+        select(TenantConnectorConfig).where(
+            TenantConnectorConfig.tenant_id == tenant.id, TenantConnectorConfig.connector_name == "jira"
+        )
+    ).scalar_one_or_none()
+    if not row or not row.enabled:
+        raise HTTPException(status_code=400, detail="Jira connector not enabled")
+        
+    cfg = row.config_json or {}
+    base_url = cfg.get("base_url")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL not configured")
+        
+    if isinstance(base_url, str) and "atlassian.net" in base_url:
+        import re
+        match = re.search(r"(https?://[^\/]+\.atlassian\.net)", base_url)
+        if match:
+            base_url = match.group(1)
+
+    encryption_key = get_settings().app_encryption_key
+    try:
+        cred = decrypt_json(row.encrypted_credentials_json, secret=encryption_key) if row.encrypted_credentials_json else {}
+    except Exception:
+        raise HTTPException(status_code=500, detail=f"Failed to decrypt credentials")
+        
+    email = cred.get("email") or cfg.get("email")
+    token = cred.get("token") or cfg.get("token") or cred.get("api_token") or cfg.get("api_token")
+    
+    if not email or not token:
+        raise HTTPException(status_code=400, detail="Jira email or token not configured")
+        
+    email = email.strip()
+    token = token.strip()
+
+    auth = (email, token)
+    url = f"{base_url.rstrip('/')}/rest/agile/1.0/board"
+    params = {}
+    if project_key:
+        params["projectKeyOrId"] = project_key
+        
+    try:
+        resp = httpx.get(url, auth=auth, params=params, timeout=10.0)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Jira Agile API error: {resp.text}")
+        boards_data = resp.json()
+        values = boards_data.get("values") or []
+        return [{"id": str(b.get("id")), "name": b.get("name"), "type": b.get("type")} for b in values if b.get("id")]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch boards: {e}")

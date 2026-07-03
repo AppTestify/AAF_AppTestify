@@ -1,0 +1,16 @@
+{
+  "simulated": true,
+  "merge_requests": [
+    {"id": 1, "title": "feat: governance API", "state": "opened", "work_in_progress": false},
+    {"id": 2, "title": "wip: draft MR", "state": "opened", "work_in_progress": true},
+    {"id": 3, "title": "feat: block this release", "state": "opened", "work_in_progress": false}
+  ],
+  "pipelines": [
+    {"id": 42, "status": "success", "ref": "main"},
+    {"id": 43, "status": "failed", "ref": "main"}
+  ],
+  "issues": [
+    {"id": 101, "title": "bug: payments fail", "state": "opened", "labels": ["bug"]},
+    {"id": 102, "title": "chore: documentation", "state": "opened", "labels": ["documentation"]}
+  ]
+}

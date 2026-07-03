@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { createTenant, fetchTenants, type TenantRow } from "../api";
 
 type WorkspaceTenantsPageProps = {
-  token: string;
-};
+  };
 
-export function WorkspaceTenantsPage({ token }: WorkspaceTenantsPageProps) {
+export function WorkspaceTenantsPage({}: WorkspaceTenantsPageProps) {
   const [rows, setRows] = useState<TenantRow[]>([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -18,7 +17,7 @@ export function WorkspaceTenantsPage({ token }: WorkspaceTenantsPageProps) {
     setLoading(true);
     setError(null);
     try {
-      const list = await fetchTenants(token);
+      const list = await fetchTenants();
       setRows(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load tenants");
@@ -29,7 +28,7 @@ export function WorkspaceTenantsPage({ token }: WorkspaceTenantsPageProps) {
 
   useEffect(() => {
     load().catch(() => undefined);
-  }, [token]);
+  }, []);
 
   const onCreate = async () => {
     if (!name.trim() || !slug.trim()) return;
@@ -37,7 +36,7 @@ export function WorkspaceTenantsPage({ token }: WorkspaceTenantsPageProps) {
     setError(null);
     setMessage(null);
     try {
-      await createTenant(token, { name: name.trim(), slug: slug.trim() });
+      await createTenant({ name: name.trim(), slug: slug.trim() });
       setName("");
       setSlug("");
       setMessage("Tenant created successfully.");

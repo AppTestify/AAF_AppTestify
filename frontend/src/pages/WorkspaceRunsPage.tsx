@@ -1,29 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   createGovernanceRun,
   createGovernanceRunShareLink,
   fetchGovernanceRun,
   fetchGovernanceRuns,
+  streamGovernanceRun,
   fetchPortfolioProjects,
+  exportRunBriefPdf,
   fetchSingleRunExport,
   type GovernanceRunV1,
   type PortfolioProject,
 } from "../api";
+import { AgentReasoningGrid } from "../components/governance/AgentReasoningGrid";
+import { ConsensusDecisionPanel } from "../components/governance/ConsensusDecisionPanel";
+import { GovernanceFlowStepper } from "../components/governance/GovernanceFlowStepper";
+import { GuardrailStatusPanel } from "../components/governance/GuardrailStatusPanel";
+import { RunsListPanel } from "../components/governance/RunsListPanel";
+import { WorkspacePageShell } from "../components/layout/WorkspacePageShell";
+import { DeepLinkCopyBar } from "../components/ui/DeepLinkCopyBar";
+import { KpiStrip } from "../components/ui/KpiStrip";
+import { PaginationBar } from "../components/ui/PaginationBar";
+import { EmptyState } from "../components/ui/EmptyState";
+import { formatRelativeTime } from "../lib/governancePresentation";
+import { deriveAgentGrid, parseGovernanceRunResult } from "../lib/governancePresentation";
 
 type WorkspaceRunsPageProps = {
-  token: string;
   tenantSlug?: string | null;
 };
 
-export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps) {
+export function WorkspaceRunsPage({ tenantSlug }: WorkspaceRunsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const runIdFromUrl = searchParams.get("run_id") ?? "";
+  const queryFromUrl = searchParams.get("query") ?? "";
   const listProjectFilter = searchParams.get("portfolio_project_id") ?? "";
   const setListProjectFilter = (v: string) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set("portfolio_project_id", v);
     else next.delete("portfolio_project_id");
+    next.delete("page");
     setSearchParams(next, { replace: true });
   };
 
@@ -35,6 +50,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   };
 
   const [runs, setRuns] = useState<GovernanceRunV1[]>([]);
+  const [runsTotal, setRunsTotal] = useState(0);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [prompt, setPrompt] = useState("");
   const [promptId, setPromptId] = useState("");
@@ -42,7 +58,22 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   const [selectedRun, setSelectedRun] = useState<GovernanceRunV1 | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [query, setQuery] = useState<string>("");
-  const [offset, setOffset] = useState(0);
+  const [isAgentDrawerOpen, setIsAgentDrawerOpen] = useState(false);
+  const pageFromUrl = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+  const pageSizeFromUrl = Math.max(1, Number(searchParams.get("page_size") ?? "50") || 50);
+  const offset = (pageFromUrl - 1) * pageSizeFromUrl;
+
+  const syncPaginationToUrl = (page: number, size: number) => {
+    const next = new URLSearchParams(searchParams);
+    if (page <= 1) next.delete("page");
+    else next.set("page", String(page));
+    if (size === 50) next.delete("page_size");
+    else next.set("page_size", String(size));
+    setSearchParams(next, { replace: true });
+  };
+
+  const setPage = (page: number) => syncPaginationToUrl(page, pageSizeFromUrl);
+  const setPageSize = (size: number) => syncPaginationToUrl(1, size);
   const [toast, setToast] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
@@ -67,51 +98,104 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   }, [runs]);
 
   useEffect(() => {
-    fetchPortfolioProjects(token)
+    if (queryFromUrl) setQuery(queryFromUrl);
+  }, [queryFromUrl]);
+
+  useEffect(() => {
+    fetchPortfolioProjects()
       .then(setProjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load portfolio projects"));
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     const id = Number(runIdFromUrl);
-    if (!token || !runIdFromUrl.trim() || !Number.isFinite(id)) return;
-    fetchGovernanceRun(token, id)
+    if (!runIdFromUrl.trim() || !Number.isFinite(id)) return;
+    fetchGovernanceRun(id)
       .then(setSelectedRun)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load run from link"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, runIdFromUrl]);
+  }, [runIdFromUrl]);
 
-  const loadRuns = async () => {
+  const loadRuns = async (): Promise<GovernanceRunV1[]> => {
     try {
       setListLoading(true);
-      const list = await fetchGovernanceRuns(token, {
-        limit: 50,
+      const page = await fetchGovernanceRuns({
+        limit: pageSizeFromUrl,
         offset,
         status: statusFilter === "all" ? undefined : statusFilter,
         query: query || undefined,
         portfolio_project_id: listProjectFilter ? Number(listProjectFilter) : undefined,
       });
-      setRuns(list);
+      setRuns(page.items);
+      setRunsTotal(page.total);
       if (selectedRun) {
-        const next = list.find((r) => r.id === selectedRun.id);
+        const next = page.items.find((r) => r.id === selectedRun.id);
         if (next) setSelectedRun(next);
       }
+      return page.items;
     } finally {
       setListLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRuns().catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
+    loadRuns()
+      .then(async (list) => {
+        if (!runIdFromUrl && !selectedRun) {
+          const latest = list.find((r) => r.status === "succeeded");
+          if (latest) {
+            const full = await fetchGovernanceRun(latest.id);
+            setSelectedRun(full);
+            syncRunIdToUrl(latest.id);
+          }
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load runs"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, offset, statusFilter, query, listProjectFilter]);
+  }, [offset, statusFilter, query, listProjectFilter, pageSizeFromUrl]);
+
+  const parsedSelected = useMemo(
+    () => (selectedRun?.status === "succeeded" ? parseGovernanceRunResult(selectedRun) : null),
+    [selectedRun]
+  );
+  const agentGrid = parsedSelected
+    ? deriveAgentGrid(parsedSelected.result.agent_opinions ?? [], parsedSelected.framing)
+    : [];
 
   useEffect(() => {
     if (activeRunIds.length === 0) return;
-    const id = setInterval(() => {
-      loadRuns().catch(() => undefined);
-    }, 1200);
-    return () => clearInterval(id);
+    const closers: (() => void)[] = [];
+    let pollFallback: ReturnType<typeof setInterval> | null = null;
+
+    const startPollingFallback = () => {
+      if (pollFallback) return;
+      pollFallback = setInterval(() => {
+        loadRuns().catch(() => undefined);
+      }, 1200);
+    };
+
+    for (const id of activeRunIds) {
+      const close = streamGovernanceRun(id, {
+        onStatus: () => {
+          loadRuns().catch(() => undefined);
+        },
+        onResultReady: () => {
+          fetchGovernanceRun(id)
+            .then((run) => {
+              setSelectedRun((prev) => (prev?.id === id ? run : prev));
+            })
+            .catch(() => undefined);
+          loadRuns().catch(() => undefined);
+        },
+        onError: startPollingFallback,
+      });
+      closers.push(close);
+    }
+
+    return () => {
+      closers.forEach((close) => close());
+      if (pollFallback) clearInterval(pollFallback);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRunIds.join(",")]);
 
@@ -120,9 +204,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     try {
       setLoading(true);
       setError(null);
-      const created = await createGovernanceRun(
-        token,
-        {
+      const created = await createGovernanceRun({
           prompt: prompt.trim(),
           prompt_id: promptId.trim() || null,
           portfolio_project_id: createProjectId ? Number(createProjectId) : null,
@@ -133,6 +215,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
       setPromptId("");
       setCreateProjectId("");
       setSelectedRun(created);
+      syncRunIdToUrl(created.id);
       setToast(`Run #${created.id} queued`);
       setTimeout(() => setToast(""), 2000);
       await loadRuns();
@@ -146,7 +229,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
   const handleSelectRun = async (runId: number) => {
     syncRunIdToUrl(runId);
     try {
-      const row = await fetchGovernanceRun(token, runId);
+      const row = await fetchGovernanceRun(runId);
       setSelectedRun(row);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load run");
@@ -162,19 +245,13 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     URL.revokeObjectURL(url);
   };
 
-  const copyShareLink = () => {
-    if (!selectedRun) return;
-    const url = `${window.location.origin}/app/runs?run_id=${selectedRun.id}`;
-    void navigator.clipboard.writeText(url);
-    setToast("Workspace link copied (sign-in required)");
-    setTimeout(() => setToast(""), 2500);
-  };
+  const selectedRunPath = selectedRun ? `/app/runs?run_id=${selectedRun.id}` : "";
 
   const copySignedShareLink = async () => {
     if (!selectedRun || selectedRun.status !== "succeeded") return;
     try {
       setError(null);
-      const { url } = await createGovernanceRunShareLink(token, selectedRun.id);
+      const { url } = await createGovernanceRunShareLink(selectedRun.id);
       await navigator.clipboard.writeText(url);
       setToast("Signed public share URL copied (time-limited, no login)");
       setTimeout(() => setToast(""), 2800);
@@ -187,7 +264,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     if (!selectedRun) return;
     try {
       setError(null);
-      const data = await fetchSingleRunExport(token, selectedRun.id, "json");
+      const data = await fetchSingleRunExport(selectedRun.id, "json");
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       downloadBlob(blob, `governance_run_${selectedRun.id}.json`);
       setToast("Executive export downloaded");
@@ -201,7 +278,7 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     if (!selectedRun) return;
     try {
       setError(null);
-      const blob = (await fetchSingleRunExport(token, selectedRun.id, "csv")) as Blob;
+      const blob = (await fetchSingleRunExport(selectedRun.id, "csv")) as Blob;
       downloadBlob(blob, `governance_run_${selectedRun.id}.csv`);
       setToast("CSV export downloaded");
       setTimeout(() => setToast(""), 2200);
@@ -210,48 +287,76 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
     }
   };
 
+  const exportSelectedRunPdf = async () => {
+    if (!selectedRun) return;
+    try {
+      setError(null);
+      const blob = await exportRunBriefPdf(selectedRun.id);
+      downloadBlob(blob, `governance_run_${selectedRun.id}.pdf`);
+      setToast("Export Brief PDF downloaded");
+      setTimeout(() => setToast(""), 2200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF export failed");
+    }
+  };
+
   return (
-    <div className="app">
-      <header className="app-header workspace-page-head">
-        <div className="brand">
-          <h1>Runs</h1>
-          <span>Asynchronous governance run history and details</span>
-        </div>
-      </header>
+    <WorkspacePageShell
+      variant="governance"
+      eyebrow="Agentic Governance"
+      title="How Casantris reasons about this decision"
+      subtitle="Specialist agents evaluate domains independently while the orchestrator synthesizes the final recommendation."
+    >
       {toast ? <div className="alert alert-success">{toast}</div> : null}
       {error ? (
         <div className="alert alert-error" role="alert">
           {error}
         </div>
       ) : null}
-      <div className="workspace-kpi-strip">
-        <div className="metric">
-          <div className="label">Visible runs</div>
-          <div className="value">{runs.length}</div>
-        </div>
-        <div className="metric">
-          <div className="label">Queued</div>
-          <div className="value">{runStats.queued}</div>
-        </div>
-        <div className="metric">
-          <div className="label">Running</div>
-          <div className="value warn">{runStats.running}</div>
-        </div>
-        <div className="metric">
-          <div className="label">Succeeded</div>
-          <div className="value good">{runStats.succeeded}</div>
-        </div>
-        <div className="metric">
-          <div className="label">Failed</div>
-          <div className="value bad">{runStats.failed}</div>
-        </div>
-      </div>
-      <div className="workspace-split">
+      {parsedSelected ? (
+        <>
+
+          <GovernanceFlowStepper
+            runId={parsedSelected.run.id}
+            activeStep="runs"
+            pipelinePhase={parsedSelected.result.pipeline_phase}
+          />
+          <ConsensusDecisionPanel
+            result={parsedSelected.result}
+            framing={parsedSelected.framing}
+            runId={parsedSelected.run.id}
+            canExecute={parsedSelected.run.status === "succeeded"}
+          />
+          <GuardrailStatusPanel
+            guardrails={parsedSelected.result.guardrails}
+            llmCost={parsedSelected.result.llm_cost}
+            llmBudget={parsedSelected.result.llm_budget}
+          />
+        </>
+      ) : null}
+
+      <KpiStrip
+        items={[
+          { label: "Visible runs", value: runs.length },
+          { label: "Queued", value: runStats.queued },
+          { label: "Running", value: runStats.running, tone: "warn" },
+          { label: "Succeeded", value: runStats.succeeded, tone: "good" },
+          { label: "Failed", value: runStats.failed, tone: "bad" },
+        ]}
+      />
+      <div className="master-detail-layout">
+      <div className="master-detail-list">
       <div className="card">
         <div className="workspace-section-intro">
           <div>
-            <h2>Create run</h2>
-            <p>Submit a governance run and monitor status from the run console.</p>
+            <h2>Create run (advanced)</h2>
+            <p>
+              Prefer the guided prompt on{" "}
+              <Link to="/app/overview" className="btn btn-ghost btn-sm">
+                Ask Casantris AI
+              </Link>{" "}
+              — use this form for async queue runs with portfolio linkage.
+            </p>
           </div>
           <div className="workspace-meta">Inputs are tenant-scoped</div>
         </div>
@@ -285,15 +390,26 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
       <div className="card">
         <div className="workspace-section-intro">
           <div>
-            <h2>Run history</h2>
-            <p>Filter and inspect asynchronous governance execution records.</p>
+            <h2>Governance runs</h2>
+            <p>
+              {runsTotal} total
+              {runStats.running + runStats.queued > 0 ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <span className="runs-live-summary">
+                    <span className="status-pulse-dot" aria-hidden="true" />
+                    {runStats.running + runStats.queued} running
+                  </span>
+                </>
+              ) : null}
+            </p>
           </div>
-          <div className="workspace-meta">Page offset: {offset}</div>
         </div>
         <div className="workspace-toolbar">
           <div className="form-row">
             <label htmlFor="status-filter">Status filter</label>
-            <select id="status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <select id="status-filter" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
               <option value="all">All</option>
               <option value="queued">Queued</option>
               <option value="running">Running</option>
@@ -306,7 +422,10 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
             <input
               id="query-filter"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
               placeholder="Prompt text"
             />
           </div>
@@ -325,74 +444,62 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               ))}
             </select>
           </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            type="button"
-            onClick={() => setOffset(Math.max(0, offset - 50))}
-            disabled={offset === 0}
-          >
-            Prev
-          </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setOffset(offset + 50)} disabled={runs.length < 50}>
-            Next
-          </button>
-          <span className="workspace-meta">Showing {runs.length} runs</span>
         </div>
-        <div className="table-wrap">
-          {listLoading ? <div className="table-skeleton" /> : null}
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Status</th>
-                <th>Project</th>
-                <th>Prompt</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => handleSelectRun(r.id)}
-                    className={selectedRun?.id === r.id ? "row-selected" : ""}
-                  >
-                    <td>#{r.id}</td>
-                    <td>
-                      <span className={`status-chip ${r.status}`}>{r.status}</span>
-                    </td>
-                    <td className="mono">
-                      {r.portfolio_project_id != null
-                        ? projectById.get(r.portfolio_project_id)?.key ?? `#${r.portfolio_project_id}`
-                        : "—"}
-                    </td>
-                    <td className="mono">{r.prompt.slice(0, 88)}</td>
-                    <td>{new Date(r.created_at).toLocaleString()}</td>
-                  </tr>
-                ))}
-              {runs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="table-empty">
-                    No runs found for the current filters.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+        <RunsListPanel
+          runs={runs}
+          selectedRunId={selectedRun?.id ?? null}
+          onSelect={(id) => void handleSelectRun(id)}
+          loading={listLoading}
+        />
+        <PaginationBar
+          offset={offset}
+          pageSize={pageSizeFromUrl}
+          itemCount={runs.length}
+          totalCount={runsTotal}
+          onOffsetChange={(nextOffset) => setPage(Math.floor(nextOffset / pageSizeFromUrl) + 1)}
+          onPageSizeChange={setPageSize}
+        />
       </div>
       </div>
+      <div className="master-detail-pane">
       {selectedRun ? (
-        <div className="card">
+        <div className="card master-detail-detail-card">
+          <div className="runs-detail-header">
+            <div>
+              <span className="mono">#{selectedRun.id}</span>
+              <span className={`status-chip status-chip--inline ${selectedRun.status}`}>
+                {(selectedRun.status === "running" || selectedRun.status === "queued") && (
+                  <span className="status-pulse-dot" aria-hidden="true" />
+                )}
+                {selectedRun.status}
+              </span>
+              <span className="workspace-meta">
+                · {formatRelativeTime(selectedRun.finished_at ?? selectedRun.created_at)}
+              </span>
+            </div>
+            <DeepLinkCopyBar path={selectedRunPath} />
+          </div>
+          <div className="detail-action-bar">
+            <Link to={`/app/evidence?run_id=${selectedRun.id}`} className="btn btn-ghost btn-sm">
+              Evidence
+            </Link>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => setIsAgentDrawerOpen(true)}>
+              View agent reasoning
+            </button>
+            <Link to={`/app/brief?run_id=${selectedRun.id}`} className="btn btn-primary btn-sm">
+              View brief
+            </Link>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void exportSelectedRunPdf()}>
+              Export PDF
+            </button>
+            <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
+          </div>
           <div className="workspace-section-intro">
             <div>
-              <h2>Run detail #{selectedRun.id}</h2>
+              <h2>{selectedRun.prompt}</h2>
               <p>Detailed execution payload for investigation and explainability.</p>
             </div>
             <div className="actions" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={copyShareLink}>
-                Copy link to this run
-              </button>
               <button
                 className="btn btn-ghost btn-sm"
                 type="button"
@@ -408,7 +515,9 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
               <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunCsv}>
                 Export CSV
               </button>
-              <span className={`status-chip ${selectedRun.status}`}>{selectedRun.status}</span>
+              <button className="btn btn-primary btn-sm" type="button" onClick={exportSelectedRunPdf}>
+                Export Brief (PDF)
+              </button>
             </div>
           </div>
           <p className="mono" style={{ marginTop: 0 }}>
@@ -420,10 +529,10 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
           {selectedRun.result_json &&
           typeof selectedRun.result_json === "object" &&
           selectedRun.result_json !== null &&
-          "decision_framing" in selectedRun.result_json ? (
+          ("decision_framing" in selectedRun.result_json || "utility" in selectedRun.result_json) ? (
             <div className="workspace-kpi-strip" style={{ marginBottom: "1rem" }}>
               {(() => {
-                const df = selectedRun.result_json.decision_framing as {
+                const df = ((selectedRun.result_json as { decision_framing?: unknown }).decision_framing ?? {}) as {
                   orchestration?: {
                     consensus_score?: number;
                     rar_triggered?: boolean;
@@ -437,6 +546,13 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
                 };
                 const o = df.orchestration;
                 const f = df.findings_synthesis;
+                const util = (selectedRun.result_json as { utility?: {
+                  global_utility?: number;
+                  perf_index?: number;
+                  cost_index?: number;
+                  risk_index?: number;
+                } }).utility;
+                const fmt = (v: number | undefined) => (v != null ? v.toFixed(2) : "—");
                 return (
                   <>
                     <div className="metric">
@@ -461,14 +577,54 @@ export function WorkspaceRunsPage({ token, tenantSlug }: WorkspaceRunsPageProps)
                       <div className="label">Primary source</div>
                       <div className="value">{df.primary_recommendation_source ?? "—"}</div>
                     </div>
+                    {util ? (
+                      <>
+                        <div className="metric">
+                          <div className="label">Global U</div>
+                          <div className="value">{fmt(util.global_utility)}</div>
+                        </div>
+                        <div className="metric">
+                          <div className="label">P / Ci / R</div>
+                          <div className="value mono" style={{ fontSize: "0.85rem" }}>
+                            {fmt(util.perf_index)} / {fmt(util.cost_index)} / {fmt(util.risk_index)}
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
                   </>
                 );
               })()}
             </div>
           ) : null}
-          <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
+          <details className="accordion">
+            <summary>Full run JSON</summary>
+            <pre className="json-preview">{JSON.stringify(selectedRun.result_json, null, 2)}</pre>
+          </details>
         </div>
+      ) : (
+        <div className="card master-detail-empty">
+          <EmptyState>Select a run from the list to view details and actions.</EmptyState>
+        </div>
+      )}
+      </div>
+      </div>
+      {isAgentDrawerOpen && parsedSelected ? (
+        <>
+          <div className="side-drawer-overlay" onClick={() => setIsAgentDrawerOpen(false)} />
+          <div className="side-drawer">
+            <div className="side-drawer-header">
+              <h2>Agent Reasoning</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setIsAgentDrawerOpen(false)}>Close</button>
+            </div>
+            <div className="side-drawer-content">
+              <AgentReasoningGrid
+                agents={agentGrid}
+                rarLoops={parsedSelected.result.rar?.rar_loops ?? 0}
+              />
+            </div>
+          </div>
+        </>
       ) : null}
-    </div>
+    </WorkspacePageShell>
   );
 }

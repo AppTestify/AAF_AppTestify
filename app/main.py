@@ -22,6 +22,8 @@ from app.bootstrap import (
     ensure_tenant_notification_delivery_columns,
 )
 from app.db import get_engine, init_db
+from app.logging_config import configure_structlog
+from app.middleware.tenant_rate_limit import TenantRateLimitMiddleware
 from app.routers import (
     admin_tenants,
     auth,
@@ -29,48 +31,62 @@ from app.routers import (
     governance_intelligence,
     governance_policy,
     leads,
+    metrics,
+    platform_config,
     portfolio,
     governance_v1,
     prompts,
     public_share,
     rbac,
     reports,
+    search,
+    services_catalog,
     telemetry,
     tenant_config,
+    tool_registry,
+    webhooks,
 )
 from app.services.observability import record_request, record_span, render_prometheus, request_started
 from app.services.otel import configure_otel, instrument_fastapi, shutdown_otel
-from app.services.run_jobs import start_worker, stop_worker
+from app.services.run_jobs import should_use_in_process_worker, start_worker, stop_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_structlog()
     settings = get_settings()
     validate_runtime_safety(settings)
     configure_otel(settings)
     if settings.database_url.startswith("sqlite") and ":memory:" not in settings.database_url:
         Path("data").mkdir(parents=True, exist_ok=True)
     init_db(settings.database_url)
-    create_tables()
-    ensure_portfolio_project_link_columns()
-    ensure_tenant_notification_delivery_columns()
+    # Postgres production schema is owned by Alembic; SQLite dev uses create_all + legacy patches.
+    if settings.database_url.startswith("sqlite"):
+        create_tables()
+        ensure_portfolio_project_link_columns()
+        ensure_tenant_notification_delivery_columns()
     db = db_mod.SessionLocal()
     try:
         bootstrap_tenancy(db, settings)
     finally:
         db.close()
     instrument_fastapi(app)
-    start_worker()
+    if should_use_in_process_worker():
+        start_worker()
+    else:
+        _log.info("celery_broker_configured; skipping in-process governance thread worker")
     yield
-    stop_worker()
+    if should_use_in_process_worker():
+        stop_worker()
     shutdown_otel()
     # dispose engine on shutdown (helps tests / reload)
     get_engine().dispose()
 
 
+import structlog
 settings = get_settings()
 app = FastAPI(title="Casantris Agentic Governance Platform", version="0.1.0", lifespan=lifespan)
-_log = logging.getLogger("aaf.api")
+_log = structlog.get_logger("aaf.api")
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
@@ -80,17 +96,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TenantRateLimitMiddleware)
 
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid4())
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
     start = time.time()
     request_started()
     try:
         response = await call_next(request)
     except Exception:  # noqa: BLE001
         elapsed_ms = int((time.time() - start) * 1000)
+        structlog.contextvars.bind_contextvars(duration_ms=elapsed_ms)
         record_request(request.method, request.url.path, 500, elapsed_ms)
         record_span(
             name=f"{request.method} {request.url.path}",
@@ -100,15 +120,12 @@ async def request_logging_middleware(request: Request, call_next):
         )
         _log.exception(
             "request_failed",
-            extra={
-                "request_id": request_id,
-                "path": request.url.path,
-                "method": request.method,
-                "elapsed_ms": elapsed_ms,
-            },
+            path=request.url.path,
+            method=request.method,
         )
         return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
     elapsed_ms = int((time.time() - start) * 1000)
+    structlog.contextvars.bind_contextvars(duration_ms=elapsed_ms)
     record_request(request.method, request.url.path, response.status_code, elapsed_ms)
     record_span(
         name=f"{request.method} {request.url.path}",
@@ -119,18 +136,15 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["x-request-id"] = request_id
     _log.info(
         "request_complete",
-        extra={
-            "request_id": request_id,
-            "path": request.url.path,
-            "method": request.method,
-            "status_code": response.status_code,
-            "elapsed_ms": elapsed_ms,
-        },
+        path=request.url.path,
+        method=request.method,
+        status_code=response.status_code,
     )
     return response
 
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(admin_tenants.router, prefix=settings.api_v1_prefix)
+app.include_router(webhooks.router, prefix=settings.api_v1_prefix)
 app.include_router(governance.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_intelligence.router, prefix=settings.api_v1_prefix)
 app.include_router(governance_v1.router, prefix=settings.api_v1_prefix)
@@ -141,8 +155,13 @@ app.include_router(reports.router, prefix=settings.api_v1_prefix)
 app.include_router(telemetry.router, prefix=settings.api_v1_prefix)
 app.include_router(prompts.router, prefix=settings.api_v1_prefix)
 app.include_router(tenant_config.router, prefix=settings.api_v1_prefix)
+app.include_router(platform_config.router, prefix=settings.api_v1_prefix)
 app.include_router(leads.router, prefix=settings.api_v1_prefix)
 app.include_router(portfolio.router, prefix=settings.api_v1_prefix)
+app.include_router(metrics.router, prefix=settings.api_v1_prefix)
+app.include_router(search.router, prefix=settings.api_v1_prefix)
+app.include_router(services_catalog.router, prefix=settings.api_v1_prefix)
+app.include_router(tool_registry.router, prefix=settings.api_v1_prefix)
 
 # Optional production static hosting fallback for React SPA.
 _dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"

@@ -7,26 +7,13 @@ from typing import Any
 from aaf.config import Settings
 from aaf.schema import EvidenceRecord, PipelineResult
 from app.services.llm_runtime import ActiveProvider
-from connectors.evidence_normalizer import normalize_all
-from connectors.finops_connector import FinopsConnector
-from connectors.github_connector import GitHubConnector
-from connectors.jira_connector import JiraConnector
+from guardrails.llm_cost_tracker import LlmCostTracker
+from guardrails.pipeline import run_input_guards, run_pm_prompt_guard
+from llm.intent_router import route_pm_intent
+from orchestrator.connector_router import route_connectors_semantic
+from orchestrator.evidence import collect_evidence
 from orchestrator.pipeline import run_pipeline
-from pm_interface.router import route_connectors
-
-
-async def _fetch_raw_evidence(settings: Settings, names: list[str], ctx: dict[str, str]) -> dict[str, dict[str, Any]]:
-    raw: dict[str, dict[str, Any]] = {}
-    if "github" in names:
-        gh = GitHubConnector(settings)
-        raw["github"] = await gh.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "jira" in names:
-        ji = JiraConnector(settings)
-        raw["jira"] = await ji.fetch_evidence(ctx)  # type: ignore[arg-type]
-    if "finops" in names:
-        fo = FinopsConnector(settings)
-        raw["finops"] = await fo.fetch_evidence(ctx)  # type: ignore[arg-type]
-    return raw
+from app.services.run_events import publish_run_event_sync
 
 
 async def run_governance(
@@ -34,15 +21,92 @@ async def run_governance(
     prompt_id: str | None,
     settings: Settings,
     llm_providers: list[ActiveProvider] | None = None,
+    *,
+    tenant_ui_preferences: dict[str, Any] | None = None,
+    run_id: int | None = None,
 ) -> PipelineResult:
-    names = route_connectors(prompt)
-    ctx: dict[str, str] = {"prompt": prompt, "github_repo": settings.github_repo, "jira_project": "PROJ"}
-    raw = await _fetch_raw_evidence(settings, names, ctx)
-    normalized = normalize_all(raw)
+    input_reports: list = []
+    cost_tracker = LlmCostTracker()
+
+    pm_outcome = run_pm_prompt_guard(prompt, settings)
+    prompt = pm_outcome.prompt
+    input_reports.extend(pm_outcome.reports)
+
+    router_result = route_pm_intent(
+        prompt,
+        settings=settings,
+        llm_providers=llm_providers,
+        cost_tracker=cost_tracker,
+    )
+    intent_payload = router_result.to_intent_payload(pipeline_phase=settings.pipeline_phase)
+
+    names, _routing_confidence = route_connectors_semantic(prompt)
+    for connector in router_result.connectors:
+        if connector not in names:
+            names.append(connector)
+    ctx: dict[str, Any] = {
+        "prompt": prompt,
+        "github_repo": settings.github_repo,
+        "jira_project": settings.jira_project,
+    }
+    
+    import re
+    scope_match = re.search(r"\[System Runtime Scope Configuration\].*?specifically requested scopes:\n(.*)", prompt, re.DOTALL)
+    if scope_match:
+        scope_text = scope_match.group(1)
+        for line in scope_text.strip().split('\n'):
+            line = line.strip()
+            if line.startswith("- GitHub Repositories:"):
+                ctx["github_repos"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- GitHub Branches:"):
+                ctx["github_branches"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- Jira Projects:"):
+                ctx["jira_projects"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+            elif line.startswith("- Jira Boards:"):
+                ctx["jira_boards"] = [x.strip() for x in line.split(":", 1)[1].split(",") if x.strip()]
+
+    raw, normalized, evidence_package, tool_ctx = await collect_evidence(
+        settings=settings,
+        prompt=prompt,
+        connector_names=names,
+        ctx=ctx,
+        tenant_ui_preferences=tenant_ui_preferences,
+        warm_tools=settings.pipeline_phase >= 3,
+    )
+    if run_id is not None:
+        publish_run_event_sync(run_id, "evidence_fetched", {"run_id": run_id})
+    guard_outcome = run_input_guards(
+        prompt,
+        normalized,
+        raw,
+        settings,
+        pm_already_checked=True,
+    )
+    prompt = guard_outcome.prompt
+    normalized = guard_outcome.evidence
+    input_reports.extend(guard_outcome.reports)
+    evidence_package["records"] = [r.model_dump(mode="json") for r in normalized]
+    if tool_ctx.evidence_package is not None:
+        tool_ctx.evidence_package["records"] = evidence_package["records"]
 
     async def live_refresh_evidence() -> list[EvidenceRecord]:
-        raw_fresh = await _fetch_raw_evidence(settings, names, ctx)
-        return normalize_all(raw_fresh)
+        raw_fresh, normalized_fresh, package_fresh, refreshed_ctx = await collect_evidence(
+            settings=settings,
+            prompt=prompt,
+            connector_names=names,
+            ctx=ctx,
+            tenant_ui_preferences=tenant_ui_preferences,
+            warm_tools=True,
+        )
+        del package_fresh, refreshed_ctx
+        fresh_outcome = run_input_guards(
+            prompt,
+            normalized_fresh,
+            raw_fresh,
+            settings,
+            pm_already_checked=True,
+        )
+        return fresh_outcome.evidence
 
     return await run_pipeline(
         prompt=prompt,
@@ -53,4 +117,11 @@ async def run_governance(
         connectors_used=names,
         llm_providers=llm_providers or [],
         live_refresh_evidence=live_refresh_evidence,
+        tool_ctx=tool_ctx,
+        input_guard_reports=input_reports,
+        agent_ids=router_result.agents_needed,
+        intent=intent_payload,
+        cost_tracker=cost_tracker,
+        evidence_package=evidence_package,
+        run_id=run_id,
     )

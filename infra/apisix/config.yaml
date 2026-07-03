@@ -1,0 +1,16 @@
+apisix:
+  node_listen: 9080
+  enable_admin: true
+  admin_key:
+    - name: admin
+      key: casantris-dev-admin-key
+      role: admin
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: yaml
+
+nginx_config:
+  error_log: /dev/stderr
+  error_log_level: warn

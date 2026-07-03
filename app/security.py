@@ -41,19 +41,55 @@ def decode_access_token(token: str, *, secret: str, algorithm: str) -> Optional[
         return None
 
 
+from cryptography.fernet import Fernet, InvalidToken
+
 def _derive_key(secret: str) -> bytes:
     return hashlib.sha256(secret.encode("utf-8")).digest()
 
+def _get_fernet(secret: str) -> Fernet:
+    """Derive a 32-byte url-safe base64-encoded key for Fernet from the app secret."""
+    key = base64.urlsafe_b64encode(_derive_key(secret))
+    return Fernet(key)
 
 def encrypt_json(data: dict, *, secret: str) -> str:
+    """Securely encrypt dict using Fernet (AES-128-CBC + HMAC-SHA256)."""
+    raw = json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    f = _get_fernet(secret)
+    return f.encrypt(raw).decode("ascii")
+
+def decrypt_json(ciphertext: Optional[str], *, secret: str) -> dict:
+    """Decrypt Fernet ciphertext. Falls back to legacy XOR decryption if needed."""
+    if not ciphertext:
+        return {}
+    
+    f = _get_fernet(secret)
+    try:
+        raw = f.decrypt(ciphertext.encode("ascii"))
+        return json.loads(raw.decode("utf-8"))
+    except InvalidToken:
+        import os
+        old_secret = os.environ.get("OLD_APP_ENCRYPTION_KEY")
+        if old_secret:
+            try:
+                f_old = _get_fernet(old_secret)
+                raw = f_old.decrypt(ciphertext.encode("ascii"))
+                return json.loads(raw.decode("utf-8"))
+            except InvalidToken:
+                pass
+        try:
+            return decrypt_json_legacy(ciphertext, secret=secret)
+        except Exception as exc:
+            raise ValueError("Invalid encrypted payload or incorrect key") from exc
+
+def encrypt_json_legacy(data: dict, *, secret: str) -> str:
     raw = json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
     key = _derive_key(secret)
     out = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))
     sig = hmac.new(key, out, hashlib.sha256).hexdigest().encode("ascii")
     return base64.urlsafe_b64encode(sig + b"." + out).decode("ascii")
 
-
-def decrypt_json(ciphertext: Optional[str], *, secret: str) -> dict:
+def decrypt_json_legacy(ciphertext: Optional[str], *, secret: str) -> dict:
+    """Deprecated: Insecure XOR cipher decryption."""
     if not ciphertext:
         return {}
     payload = base64.urlsafe_b64decode(ciphertext.encode("ascii"))

@@ -16,7 +16,7 @@ export function MarketingLayout({ signupOpen, children }: MarketingLayoutProps) 
           </Link>
           <nav className="site-nav-links" aria-label="Primary">
             <Link to="/platform">Platform</Link>
-            <Link to="/capabilities">Capabilities</Link>
+            <Link to="/capabilities">Agents & tools</Link>
             <Link to="/how-it-works">How it works</Link>
             <Link to="/enterprise">Enterprise</Link>
           </nav>
@@ -46,13 +46,16 @@ export function MarketingLayout({ signupOpen, children }: MarketingLayoutProps) 
               <span className="site-logo-mark site-logo-mark--footer" aria-hidden="true" />
               <span className="site-footer-name">Casantris</span>
             </div>
-            <p className="site-footer-tagline">Governed delivery intelligence and operational decision platform.</p>
+            <p className="site-footer-tagline">
+              Four-agent governance — DevOps, PM, FinOps, DevSecOps — with seventeen live tools and audit-ready decisions.
+            </p>
           </div>
           <div className="site-footer-col">
             <span className="site-footer-heading">Product</span>
             <Link to="/login">Workspace</Link>
             {signupOpen ? <Link to="/signup">Create organization</Link> : null}
             <Link to="/platform">Platform</Link>
+            <Link to="/capabilities">Agents & tools</Link>
           </div>
           <div className="site-footer-col">
             <span className="site-footer-heading">Company</span>

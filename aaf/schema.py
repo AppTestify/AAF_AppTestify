@@ -27,6 +27,7 @@ class GovernanceAction(str, Enum):
     MITIGATE_MONITOR = "mitigate_monitor"
     SCALE_ADJUST = "scale_adjust"
     PATCH_BLOCK_RELEASE = "patch_block_release"
+    HOLD_RELEASE = "hold_release"
     OBSERVE = "observe"
 
 
@@ -44,9 +45,11 @@ class AgentOpinion(BaseModel):
     """Single domain agent output."""
 
     agent_id: str
+    display_id: Optional[str] = None
     claim: str
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_refs: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list, description="Human-readable evidence strings for PM")
     risk_theme: RiskTheme = RiskTheme.UNKNOWN
     raw_signals: Dict[str, Any] = Field(default_factory=dict)
 
@@ -71,6 +74,10 @@ class UtilityResult(BaseModel):
     utility_score: float
     scores_by_action: Dict[str, float] = Field(default_factory=dict)
     weights_used: Dict[str, float] = Field(default_factory=dict)
+    perf_index: float = Field(default=0.0, ge=0.0, le=1.0, description="P performance index")
+    cost_index: float = Field(default=0.0, ge=0.0, le=1.0, description="Ci cost efficiency index")
+    risk_index: float = Field(default=0.0, ge=0.0, le=1.0, description="R risk index")
+    global_utility: float = Field(default=0.0, ge=0.0, le=1.0, description="U = w_perf*P + w_cost*Ci + w_risk*R")
 
 
 class ExplainabilityResult(BaseModel):
@@ -82,6 +89,28 @@ class PMFormattedDecision(BaseModel):
     title: str
     summary_markdown: str
     detail_json: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GovernanceBrief(BaseModel):
+    markdown: str
+    executive_title: str
+    executive_summary: str
+    audit_detail: Dict[str, Any] = Field(default_factory=dict)
+    source: str = "deterministic"
+
+
+class GovernanceDecision(BaseModel):
+    """Structured decision context passed to the explanation LLM."""
+    prompt: str
+    consensus: ConsensusResult
+    rar: RARResult
+    utility: UtilityResult
+    opinions: List[AgentOpinion]
+
+
+
+# Canonical alias — AgentOutput is the same shape as AgentOpinion
+AgentOutput = AgentOpinion
 
 
 class PipelineResult(BaseModel):
@@ -100,3 +129,9 @@ class PipelineResult(BaseModel):
     explainability: ExplainabilityResult
     pm_view: PMFormattedDecision
     llm_invocation: Dict[str, Any] = Field(default_factory=dict)
+    guardrails: Dict[str, Any] = Field(default_factory=dict)
+    llm_cost: Dict[str, Any] = Field(default_factory=dict)
+    governance_brief: Optional[GovernanceBrief] = None
+    intent: Dict[str, Any] = Field(default_factory=dict)
+    agents_activated: List[str] = Field(default_factory=list)
+    pipeline_phase: int = 1

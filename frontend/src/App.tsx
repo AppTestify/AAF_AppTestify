@@ -15,7 +15,6 @@ import {
   type TenantRow,
   type UserPublic,
 } from "./api";
-import { loadToken, saveToken } from "./authStorage";
 import { WorkspaceShell } from "./components/WorkspaceShell";
 import { GovernanceView } from "./GovernanceView";
 import { LoginPage } from "./pages/LoginPage";
@@ -34,10 +33,41 @@ import { WorkspacePortfolioPage } from "./pages/WorkspacePortfolioPage";
 import { RequestAccessPage } from "./pages/RequestAccessPage";
 import { WorkspaceReportsPage } from "./pages/WorkspaceReportsPage";
 import { WorkspaceRunsPage } from "./pages/WorkspaceRunsPage";
+import { WorkspaceBriefPage } from "./pages/WorkspaceBriefPage";
 import { WorkspaceSettingsPage } from "./pages/WorkspaceSettingsPage";
+import { WorkspaceToolRegistryPage } from "./pages/WorkspaceToolRegistryPage";
 import { WorkspaceLeadsPage } from "./pages/WorkspaceLeadsPage";
 import { WorkspaceTenantsPage } from "./pages/WorkspaceTenantsPage";
+import { WorkspacePlatformSettingsPage } from "./pages/WorkspacePlatformSettingsPage";
+import { OnboardingWizardPage } from "./pages/OnboardingWizardPage";
+import { PublicSharePage } from "./pages/PublicSharePage";
+import React, { ErrorInfo } from "react";
 import "./App.css";
+
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: 'red', background: 'white', zIndex: 9999, position: 'relative', height: '100vh', width: '100vw', overflow: 'auto' }}>
+          <h1>React Runtime Error</h1>
+          <pre>{this.state.error?.toString()}</pre>
+          <pre>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   return (
@@ -52,8 +82,8 @@ function AppRoutes() {
     const saved = localStorage.getItem("workspace-theme");
     return saved === "dark" ? "dark" : "light";
   });
-  const [token, setToken] = useState<string | null>(() => loadToken());
   const [user, setUser] = useState<UserPublic | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [tenants, setTenants] = useState<TenantRow[] | null>(null);
   const [newTenantName, setNewTenantName] = useState("");
   const [newTenantSlug, setNewTenantSlug] = useState("");
@@ -63,9 +93,25 @@ function AppRoutes() {
   const [result, setResult] = useState<GovernanceRunResult | null>(null);
   const [batchResult, setBatchResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
+  const [runProgress, setRunProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [signupEnabled, setSignupEnabled] = useState<boolean | null>(null);
   const [apiCompatibilityWarning, setApiCompatibilityWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setRunProgress(100);
+      return;
+    }
+    setRunProgress(0);
+    const interval = setInterval(() => {
+      setRunProgress((p) => {
+        if (p > 95) return p;
+        return p + Math.max(1, (95 - p) / 10);
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -79,17 +125,11 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      return;
-    }
-    fetchMe(token)
+    fetchMe()
       .then(setUser)
-      .catch(() => {
-        saveToken(null);
-        setToken(null);
-      });
-  }, [token]);
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
+  }, []);
 
   useEffect(() => {
     fetchPromptLibrary()
@@ -98,38 +138,37 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
-    if (!token || !user?.is_superadmin) {
+    if (!user?.is_superadmin) {
       setTenants(null);
       return;
     }
-    fetchTenants(token)
+    fetchTenants()
       .then(setTenants)
       .catch(() => setTenants([]));
-  }, [token, user?.is_superadmin]);
+  }, [user?.is_superadmin]);
 
   useEffect(() => {
-    if (!token) {
+    if (!user) {
       setApiCompatibilityWarning(null);
       return;
     }
-    fetchDashboardSummary(token)
+    fetchDashboardSummary()
       .then(() => setApiCompatibilityWarning(null))
       .catch(() =>
         setApiCompatibilityWarning(
           "Backend API appears outdated or mismatched. Restart backend on port 8000 from this repo."
         )
       );
-  }, [token]);
+  }, [user]);
 
   const handleAuthed = (data: LoginResponse) => {
-    saveToken(data.access_token);
-    setToken(data.access_token);
     setUser(data.user);
   };
 
-  const handleLogout = () => {
-    saveToken(null);
-    setToken(null);
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
+    } catch { }
     setUser(null);
     setTenants(null);
     setResult(null);
@@ -142,14 +181,14 @@ function AppRoutes() {
 
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !newTenantName.trim() || !newTenantSlug.trim()) return;
+    if ( !newTenantName.trim() || !newTenantSlug.trim()) return;
     setError(null);
     setLoading(true);
     try {
-      await createTenant(token, { name: newTenantName.trim(), slug: newTenantSlug.trim() });
+      await createTenant({ name: newTenantName.trim(), slug: newTenantSlug.trim() });
       setNewTenantName("");
       setNewTenantSlug("");
-      const list = await fetchTenants(token);
+      const list = await fetchTenants();
       setTenants(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create tenant");
@@ -158,13 +197,39 @@ function AppRoutes() {
     }
   };
 
-  const handleRun = async () => {
-    if (!token || !prompt.trim()) return;
+  const handleRun = async (runScope?: Record<string, string[]>) => {
+    if ( !prompt.trim()) return;
+
+    let contextualPrompt = prompt.trim();
+    if (runScope) {
+      const scopeLines: string[] = [];
+      const labels: Record<string, string> = {
+        github_repos: "GitHub Repositories",
+        github_branches: "GitHub Branches",
+        jira_projects: "Jira Projects",
+        jira_boards: "Jira Boards",
+        gitlab_projects: "GitLab Projects",
+        gitlab_branches: "GitLab Branches",
+        finops_providers: "Cloud Providers",
+        finops_profiles: "Billing Profiles"
+      };
+      
+      for (const [key, label] of Object.entries(labels)) {
+        if (runScope[key] && runScope[key].length > 0) {
+          scopeLines.push(`- ${label}: ${runScope[key].join(", ")}`);
+        }
+      }
+
+      if (scopeLines.length > 0) {
+        contextualPrompt += `\n\n[System Runtime Scope Configuration]\nPlease limit your evidence search and analysis to the following specifically requested scopes:\n${scopeLines.join("\n")}`;
+      }
+    }
+
     setError(null);
     setLoading(true);
     setResult(null);
     try {
-      const data = await runGovernance(token, prompt.trim(), promptId);
+      const data = await runGovernance(contextualPrompt, promptId, user?.tenant_slug);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Run failed");
@@ -174,12 +239,12 @@ function AppRoutes() {
   };
 
   const handleBatch = async () => {
-    if (!token) return;
+    
     setError(null);
     setLoading(true);
     setBatchResult(null);
     try {
-      const data = await runGovernanceBatch(token);
+      const data = await runGovernanceBatch(user?.tenant_slug);
       setBatchResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Batch failed");
@@ -196,6 +261,8 @@ function AppRoutes() {
     }
   };
 
+  if (!authChecked) return <div className="app">Loading...</div>;
+
   return (
     <Routes>
       <Route path="/" element={<MarketingPage />} />
@@ -207,14 +274,8 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          token && user ? (
+          user ? (
             <Navigate to="/app" replace />
-          ) : token && !user ? (
-            <div className="marketing auth-page">
-              <div className="auth-panel">
-                <p style={{ color: "var(--muted)" }}>Restoring session…</p>
-              </div>
-            </div>
           ) : (
             <LoginPage onAuthed={handleAuthed} signupEnabled={signupEnabled} />
           )
@@ -223,30 +284,21 @@ function AppRoutes() {
       <Route
         path="/signup"
         element={
-          token && user ? (
+          user ? (
             <Navigate to="/app" replace />
-          ) : token && !user ? (
-            <div className="marketing auth-page">
-              <div className="auth-panel">
-                <p style={{ color: "var(--muted)" }}>Restoring session…</p>
-              </div>
-            </div>
           ) : (
             <SignupPage onAuthed={handleAuthed} />
           )
         }
       />
+      <Route path="/share/:token" element={<PublicSharePage />} />
       <Route
         path="/app"
         element={
-          !token ? (
-            <Navigate to="/login" replace />
-          ) : !user ? (
-            <div className="app" style={{ padding: "2rem" }}>
-              <p style={{ color: "var(--muted)" }}>Loading workspace…</p>
-            </div>
-          ) : (
+          user ? (
             <WorkspaceShell user={user} onLogout={handleLogout} theme={theme} onToggleTheme={handleToggleTheme} />
+          ) : (
+            <Navigate to="/login" replace />
           )
         }
       >
@@ -262,51 +314,55 @@ function AppRoutes() {
         ) : null}
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="home" element={<Navigate to="/app/dashboard" replace />} />
-        <Route path="dashboard" element={<WorkspaceHomePage token={token} user={user as UserPublic} />} />
-        <Route path="runs" element={<WorkspaceRunsPage token={token} tenantSlug={user?.tenant_slug} />} />
+        <Route path="dashboard" element={<WorkspaceHomePage user={user as UserPublic} />} />
+        <Route path="runs" element={<WorkspaceRunsPage tenantSlug={user?.tenant_slug} />} />
+        <Route path="brief" element={<WorkspaceBriefPage />} />
         <Route
           path="overview"
           element={
-            <GovernanceView
-              user={user as UserPublic}
-              error={error}
-              tenants={tenants}
-              newTenantName={newTenantName}
-              setNewTenantName={setNewTenantName}
-              newTenantSlug={newTenantSlug}
-              setNewTenantSlug={setNewTenantSlug}
-              onCreateTenant={handleCreateTenant}
-              prompt={prompt}
-              setPrompt={setPrompt}
-              promptId={promptId}
-              setPromptId={setPromptId}
-              library={library}
-              applyLibraryPrompt={applyLibraryPrompt}
-              onRunGovernance={handleRun}
-              onBatch={handleBatch}
-              loading={loading}
-              result={result}
-              batchResult={batchResult}
-            />
+            <ErrorBoundary>
+              <GovernanceView
+                user={user as UserPublic}
+                error={error}
+                tenants={tenants}
+                newTenantName={newTenantName}
+                setNewTenantName={setNewTenantName}
+                newTenantSlug={newTenantSlug}
+                setNewTenantSlug={setNewTenantSlug}
+                onCreateTenant={handleCreateTenant}
+                prompt={prompt}
+                setPrompt={setPrompt}
+                promptId={promptId}
+                setPromptId={setPromptId}
+                library={library}
+                applyLibraryPrompt={applyLibraryPrompt}
+                onRunGovernance={handleRun}
+                onBatch={handleBatch}
+                loading={loading}
+                runProgress={runProgress}
+                result={result}
+                batchResult={batchResult}
+              />
+            </ErrorBoundary>
           }
         />
-        <Route path="evidence" element={<WorkspaceEvidencePage token={token} />} />
+        <Route path="evidence" element={<WorkspaceEvidencePage />} />
         <Route
           path="cases"
           element={
             <WorkspaceCasesPage
-              token={token}
+              
               tenantSlug={user?.tenant_slug}
               canManage={Boolean(user?.is_superadmin || user?.is_admin)}
             />
           }
         />
-        <Route path="alerts" element={<WorkspaceAlertsPage token={token} />} />
+        <Route path="alerts" element={<WorkspaceAlertsPage />} />
         <Route
           path="integrations"
           element={
             <WorkspaceIntegrationsPage
-              token={token}
+              
               tenantSlug={user?.tenant_slug}
               canManage={Boolean(user?.is_superadmin || user?.is_admin)}
             />
@@ -314,19 +370,22 @@ function AppRoutes() {
         />
         <Route
           path="portfolio"
-          element={<WorkspacePortfolioPage token={token} canManage={Boolean(user?.is_superadmin || user?.is_admin)} />}
+          element={<WorkspacePortfolioPage canManage={Boolean(user?.is_superadmin || user?.is_admin)} />}
         />
-        <Route path="reports" element={<WorkspaceReportsPage token={token} />} />
+        <Route path="reports" element={<WorkspaceReportsPage />} />
         <Route
           path="settings"
-          element={<WorkspaceSettingsPage token={token} user={user as UserPublic} tenants={tenants} initialTab="general" />}
+          element={<WorkspaceSettingsPage user={user as UserPublic} tenants={tenants} initialTab="general" />}
         />
+        <Route path="ai-config" element={<Navigate to="/app/settings?tab=ai" replace />} />
+        <Route path="tool-registry" element={<WorkspaceToolRegistryPage />} />
+        <Route path="onboarding" element={<OnboardingWizardPage />} />
+        <Route path="leads" element={<WorkspaceLeadsPage />} />
+        <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage /> : <Navigate to="/app/dashboard" replace />} />
         <Route
-          path="ai-config"
-          element={<WorkspaceSettingsPage token={token} user={user as UserPublic} tenants={tenants} initialTab="ai" />}
+          path="platform-settings"
+          element={user?.is_superadmin ? <WorkspacePlatformSettingsPage /> : <Navigate to="/app/dashboard" replace />}
         />
-        <Route path="leads" element={<WorkspaceLeadsPage token={token} />} />
-        <Route path="tenants" element={user?.is_superadmin ? <WorkspaceTenantsPage token={token} /> : <Navigate to="/app/dashboard" replace />} />
       </Route>
       <Route
         path="*"

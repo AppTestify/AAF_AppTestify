@@ -1,0 +1,19 @@
+# Apache Camel route: Kafka automation.actions → Jira REST create issue
+# Runtime: app/integration/camel_worker.py (Python bridge) or Camel K in production
+- route:
+    id: jira-blocker
+    from:
+      uri: kafka:casantris.automation.actions
+      parameters:
+        brokers: "{{env:KAFKA_BOOTSTRAP_SERVERS}}"
+        groupId: casantris-camel-jira
+    steps:
+      - filter:
+          simple: "${body[action_type]} == 'jira_blocker'"
+      - setHeader:
+          name: Content-Type
+          constant: application/json
+      - to:
+          uri: https://{{env:JIRA_URL}}/rest/api/3/issue
+          parameters:
+            httpMethod: POST

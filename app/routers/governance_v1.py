@@ -2,24 +2,51 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, AsyncIterator, Generic, Optional, TypeVar
+
+T = TypeVar("T")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from aaf.config import get_settings
 from app.db import get_db
 from app.deps import get_current_active_user, require_permission
-from app.models.governance import AuditEvent, Decision, EvidenceSnapshot, GovernanceCase, GovernanceRun, PortfolioProject
+from app.models.config import TenantSettings
+from app.models.governance import (
+    AgentFinding,
+    AuditEvent,
+    CorrelatedIncident,
+    Decision,
+    DecisionAction,
+    EvidenceSnapshot,
+    ExecutiveSummary,
+    GovernanceCase,
+    GovernanceRun,
+    GovernanceWorkflowRun,
+    PortfolioProject,
+    ProjectRelease,
+    RARIteration,
+)
+from app.services.action_automation import get_automation_config, queue_decision_actions, queue_run_actions
+from app.models.metrics import DeploymentEvent, LLMCallLog, Service
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.services.config_resolver import resolve_tenant_for_user
+from guardrails.budget_cap import enforce_budget_cap
+from guardrails.exceptions import GuardrailBlockedError
+from guardrails.pm_prompt_guard import check_pm_prompt
+from app.models.config import TenantSettings
+from app.services.config_resolver import apply_pipeline_overrides, resolve_effective_settings, resolve_tenant_for_user
 from app.services.run_jobs import enqueue_run
 from app.services.share_link import mint_governance_share_token
+from app.services.run_events import subscribe_run_events
 
 router = APIRouter(prefix="/governance", tags=["governance-v1"])
 
@@ -107,6 +134,17 @@ class DecisionOut(BaseModel):
     created_at: datetime
 
 
+class DecisionActionOut(BaseModel):
+    id: int
+    decision_id: int
+    action_type: str
+    state: str
+    payload_json: dict[str, Any] = Field(default_factory=dict)
+    result_json: Optional[dict[str, Any]] = None
+    created_at: datetime
+    finished_at: Optional[datetime] = None
+
+
 class AuditOut(BaseModel):
     id: int
     tenant_id: Optional[int] = None
@@ -126,6 +164,13 @@ class EvidenceOut(BaseModel):
     connector_name: str
     payload_json: dict
     created_at: datetime
+
+
+class PaginatedOut(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
 
 
 def _validate_portfolio_project_for_context(
@@ -213,11 +258,44 @@ def create_run_v1(
     current: User = Depends(require_permission("runs.create")),
 ):
     tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    settings = get_settings()
+    effective = resolve_effective_settings(db, settings, tenant)
+    ts_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == tenant.id)).scalar_one_or_none()
+        if tenant
+        else None
+    )
+    effective = apply_pipeline_overrides(effective, ts_row)
+    if effective.guardrails_enabled and tenant:
+        try:
+            enforce_budget_cap(db, tenant.id, ts_row, effective)
+        except GuardrailBlockedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "budget_exceeded",
+                    "guard": exc.result.guard_name,
+                    "violations": [v.model_dump() for v in exc.result.violations],
+                },
+            ) from exc
+    sanitized_prompt = body.prompt.strip()
+    if effective.guardrails_enabled:
+        guard = check_pm_prompt(body.prompt, effective)
+        if guard.blocked:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "guardrail_blocked",
+                    "guard": guard.guard_name,
+                    "violations": [v.model_dump() for v in guard.violations],
+                },
+            )
+        sanitized_prompt = guard.sanitized_prompt
     portfolio_project_id = _validate_portfolio_project_for_context(db, current, tenant, body.portfolio_project_id)
     run = GovernanceRun(
         tenant_id=tenant.id if tenant else None,
         requested_by_user_id=current.id,
-        prompt=body.prompt.strip(),
+        prompt=sanitized_prompt,
         prompt_id=body.prompt_id,
         portfolio_project_id=portfolio_project_id,
         status="queued",
@@ -240,6 +318,115 @@ def create_run_v1(
     enqueue_run(run.id)
     db.refresh(run)
     return _run_out(run)
+@router.get("/runs/{run_id}/stream")
+async def stream_run_v1(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+
+    return StreamingResponse(
+        subscribe_run_events(run_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+
+@router.get("/runs/{run_id}/llm-log")
+def run_llm_log_v1(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+    rows = db.execute(select(LLMCallLog).where(LLMCallLog.run_id == run_id)).scalars().all()
+    return {
+        "run_id": run_id,
+        "calls": [
+            {
+                "agent_id": r.agent_id,
+                "provider_name": r.provider_name,
+                "model_name": r.model_name,
+                "prompt_tokens": r.prompt_tokens,
+                "completion_tokens": r.completion_tokens,
+                "cost_usd": r.cost_usd,
+                "latency_ms": r.latency_ms,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/tenant/data")
+def delete_tenant_data_v1(
+    tenant_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    """GDPR-style tenant data purge (superadmin only). Retains audit_events."""
+    if not current.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
+    tenant = resolve_tenant_for_user(db, current, tenant_slug)
+    if tenant is None:
+        raise HTTPException(status_code=400, detail="tenant_required")
+    # 1. Fetch case_ids and run_ids to handle cascade for entities not directly linked to tenant_id
+    run_ids = [
+        r.id
+        for r in db.execute(select(GovernanceRun.id).where(GovernanceRun.tenant_id == tenant.id)).scalars().all()
+    ]
+    case_ids = [
+        c.id
+        for c in db.execute(select(GovernanceCase.id).where(GovernanceCase.tenant_id == tenant.id)).scalars().all()
+    ]
+
+    # 2. Delete EvidenceSnapshot (linked by run_id)
+    if run_ids:
+        db.execute(delete(EvidenceSnapshot).where(EvidenceSnapshot.run_id.in_(run_ids)))
+
+    # 3. Delete Decisions and DecisionActions
+    # Decisions can belong to a run or a case
+    decision_ids = []
+    if run_ids:
+        decision_ids.extend([d.id for d in db.execute(select(Decision.id).where(Decision.run_id.in_(run_ids))).scalars().all()])
+    if case_ids:
+        decision_ids.extend([d.id for d in db.execute(select(Decision.id).where(Decision.case_id.in_(case_ids))).scalars().all()])
+    decision_ids = list(set(decision_ids))
+    
+    if decision_ids:
+        db.execute(delete(DecisionAction).where(DecisionAction.decision_id.in_(decision_ids)))
+        db.execute(delete(Decision).where(Decision.id.in_(decision_ids)))
+
+    # 4. Delete models with direct tenant_id linkage
+    db.execute(delete(ProjectRelease).where(ProjectRelease.tenant_id == tenant.id))
+    db.execute(delete(PortfolioProject).where(PortfolioProject.tenant_id == tenant.id))
+    db.execute(delete(GovernanceWorkflowRun).where(GovernanceWorkflowRun.tenant_id == tenant.id))
+    db.execute(delete(RARIteration).where(RARIteration.tenant_id == tenant.id))
+    db.execute(delete(ExecutiveSummary).where(ExecutiveSummary.tenant_id == tenant.id))
+    db.execute(delete(CorrelatedIncident).where(CorrelatedIncident.tenant_id == tenant.id))
+    db.execute(delete(AgentFinding).where(AgentFinding.tenant_id == tenant.id))
+    
+    # 5. Delete metrics operational models
+    db.execute(delete(DeploymentEvent).where(DeploymentEvent.tenant_id == tenant.id))
+    db.execute(delete(LLMCallLog).where(LLMCallLog.tenant_id == tenant.id))
+    db.execute(delete(Service).where(Service.tenant_id == tenant.id))
+
+    # 6. Delete base cases and runs
+    db.execute(delete(GovernanceCase).where(GovernanceCase.tenant_id == tenant.id))
+    db.execute(delete(GovernanceRun).where(GovernanceRun.tenant_id == tenant.id))
+
+    db.commit()
+    return {"status": "purged", "tenant_id": tenant.id, "runs_deleted": len(run_ids)}
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)
@@ -278,14 +465,15 @@ def create_run_share_link(
             detail="Share links are only available for succeeded runs",
         )
     ttl = body.expires_in_hours * 3600
+    from app.services.share_link import build_public_share_url
+
     token = mint_governance_share_token(run_id=run.id, tenant_id=run.tenant_id, ttl_seconds=ttl)
-    base = settings.public_share_base_url.strip().rstrip("/") or str(request.base_url).rstrip("/")
-    url = f"{base}{settings.api_v1_prefix}/public/share/{token}"
+    url = build_public_share_url(token)
     exp = datetime.fromtimestamp(int(time.time()) + ttl, tz=timezone.utc)
     return ShareLinkOut(url=url, expires_at=exp)
 
 
-@router.get("/runs", response_model=list[RunOut])
+@router.get("/runs", response_model=PaginatedOut[RunOut])
 def list_runs_v1(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     prompt_contains: Optional[str] = Query(default=None),
@@ -295,7 +483,7 @@ def list_runs_v1(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_active_user),
 ):
-    q = select(GovernanceRun).order_by(GovernanceRun.created_at.desc()).offset(offset).limit(limit)
+    q = select(GovernanceRun)
     if not current.is_superadmin:
         q = q.where(GovernanceRun.tenant_id == current.tenant_id)
     if status_filter:
@@ -304,8 +492,13 @@ def list_runs_v1(
         q = q.where(GovernanceRun.prompt.ilike(f"%{prompt_contains.strip()}%"))
     if portfolio_project_id is not None:
         q = q.where(GovernanceRun.portfolio_project_id == portfolio_project_id)
-    rows = db.execute(q).scalars().all()
-    return [_run_out(r) for r in rows]
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = (
+        db.execute(q.order_by(GovernanceRun.created_at.desc()).offset(offset).limit(limit))
+        .scalars()
+        .all()
+    )
+    return PaginatedOut(items=[_run_out(r) for r in rows], total=total, limit=limit, offset=offset)
 
 
 @router.post("/cases", response_model=CaseOut, status_code=status.HTTP_201_CREATED)
@@ -355,10 +548,22 @@ def create_case(
     )
     db.commit()
     db.refresh(case)
+    try:
+        from app.services.notification_router import deliver_case_created
+
+        deliver_case_created(case.id)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.services.search_index import index_governance_case
+
+        index_governance_case(case)
+    except Exception:  # noqa: BLE001
+        pass
     return _case_out(case)
 
 
-@router.get("/cases", response_model=list[CaseOut])
+@router.get("/cases", response_model=PaginatedOut[CaseOut])
 def list_cases(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     title_contains: Optional[str] = Query(default=None),
@@ -368,7 +573,7 @@ def list_cases(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_active_user),
 ):
-    q = select(GovernanceCase).order_by(GovernanceCase.updated_at.desc()).offset(offset).limit(limit)
+    q = select(GovernanceCase)
     if not current.is_superadmin:
         q = q.where(GovernanceCase.tenant_id == current.tenant_id)
     if status_filter:
@@ -377,11 +582,16 @@ def list_cases(
         q = q.where(GovernanceCase.title.ilike(f"%{title_contains.strip()}%"))
     if portfolio_project_id is not None:
         q = q.where(GovernanceCase.portfolio_project_id == portfolio_project_id)
-    rows = db.execute(q).scalars().all()
-    return [_case_out(r) for r in rows]
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = (
+        db.execute(q.order_by(GovernanceCase.updated_at.desc()).offset(offset).limit(limit))
+        .scalars()
+        .all()
+    )
+    return PaginatedOut(items=[_case_out(r) for r in rows], total=total, limit=limit, offset=offset)
 
 
-@router.get("/evidence", response_model=list[EvidenceOut])
+@router.get("/evidence", response_model=PaginatedOut[EvidenceOut])
 def list_evidence(
     connector: Optional[str] = Query(default=None),
     run_id: Optional[int] = Query(default=None),
@@ -391,13 +601,7 @@ def list_evidence(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_active_user),
 ):
-    q = (
-        select(EvidenceSnapshot)
-        .join(GovernanceRun, GovernanceRun.id == EvidenceSnapshot.run_id)
-        .order_by(EvidenceSnapshot.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    q = select(EvidenceSnapshot).join(GovernanceRun, GovernanceRun.id == EvidenceSnapshot.run_id)
     if not current.is_superadmin:
         q = q.where(GovernanceRun.tenant_id == current.tenant_id)
     if connector:
@@ -406,8 +610,32 @@ def list_evidence(
         q = q.where(EvidenceSnapshot.run_id == run_id)
     if portfolio_project_id is not None:
         q = q.where(GovernanceRun.portfolio_project_id == portfolio_project_id)
-    rows = db.execute(q).scalars().all()
-    return [EvidenceOut(**r.__dict__) for r in rows]
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = (
+        db.execute(q.order_by(EvidenceSnapshot.created_at.desc()).offset(offset).limit(limit))
+        .scalars()
+        .all()
+    )
+    return PaginatedOut(
+        items=[EvidenceOut(**r.__dict__) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/cases/{case_id}", response_model=CaseOut)
+def get_case(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    row = db.get(GovernanceCase, case_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+    if not current.is_superadmin and current.tenant_id != row.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this case")
+    return _case_out(row)
 
 
 @router.patch("/cases/{case_id}", response_model=CaseOut)
@@ -476,6 +704,12 @@ def update_case(
     )
     db.commit()
     db.refresh(row)
+    try:
+        from app.services.search_index import index_governance_case
+
+        index_governance_case(row)
+    except Exception:  # noqa: BLE001
+        pass
     return _case_out(row)
 
 
@@ -548,28 +782,137 @@ def approve_decision(
             summary=f"Decision {row.id} approved",
         )
     )
+    settings_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == case.tenant_id)).scalar_one_or_none()
+        if case.tenant_id
+        else None
+    )
+    config = get_automation_config(settings_row)
+    if config.get("enabled"):
+        tenant = db.get(Tenant, case.tenant_id) if case.tenant_id else None
+        run = db.get(GovernanceRun, row.run_id) if row.run_id else None
+        queue_decision_actions(
+            db,
+            decision=row,
+            tenant=tenant,
+            settings_row=settings_row,
+            actor_user_id=current.id,
+            run=run,
+        )
     db.commit()
     db.refresh(row)
     return DecisionOut(**row.__dict__)
 
 
-@router.get("/audit-events", response_model=list[AuditOut])
+@router.post("/decisions/{decision_id}/execute-actions", response_model=list[DecisionActionOut])
+def execute_decision_actions(
+    decision_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("decisions.approve")),
+):
+    row = db.get(Decision, decision_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
+    case = db.get(GovernanceCase, row.case_id)
+    if case is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+    if not current.is_superadmin and current.tenant_id != case.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this decision")
+    settings_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == case.tenant_id)).scalar_one_or_none()
+        if case.tenant_id
+        else None
+    )
+    tenant = db.get(Tenant, case.tenant_id) if case.tenant_id else None
+    run = db.get(GovernanceRun, row.run_id) if row.run_id else None
+    actions = queue_decision_actions(
+        db,
+        decision=row,
+        tenant=tenant,
+        settings_row=settings_row,
+        actor_user_id=current.id,
+        run=run,
+    )
+    db.commit()
+    for action in actions:
+        db.refresh(action)
+    return [DecisionActionOut(**a.__dict__) for a in actions]
+
+
+@router.get("/decisions/{decision_id}/actions", response_model=list[DecisionActionOut])
+def list_decision_actions(
+    decision_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("cases.manage")),
+):
+    row = db.get(Decision, decision_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
+    case = db.get(GovernanceCase, row.case_id)
+    if case and not current.is_superadmin and current.tenant_id != case.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this decision")
+    actions = db.execute(select(DecisionAction).where(DecisionAction.decision_id == decision_id)).scalars().all()
+    return [DecisionActionOut(**a.__dict__) for a in actions]
+
+
+@router.post("/runs/{run_id}/execute-actions", response_model=list[DecisionActionOut])
+def execute_run_actions(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("decisions.approve")),
+):
+    run = db.get(GovernanceRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not current.is_superadmin and current.tenant_id != run.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this run")
+    settings_row = (
+        db.execute(select(TenantSettings).where(TenantSettings.tenant_id == run.tenant_id)).scalar_one_or_none()
+        if run.tenant_id
+        else None
+    )
+    tenant = db.get(Tenant, run.tenant_id) if run.tenant_id else None
+    actions = queue_run_actions(
+        db,
+        run=run,
+        tenant=tenant,
+        settings_row=settings_row,
+        actor_user_id=current.id,
+    )
+    db.commit()
+    for action in actions:
+        db.refresh(action)
+    return [DecisionActionOut(**a.__dict__) for a in actions]
+
+
+@router.get("/audit-events", response_model=PaginatedOut[AuditOut])
 def list_audit_events(
     area: Optional[str] = Query(default=None),
     severity: Optional[str] = Query(default=None),
+    offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     current: User = Depends(require_permission("cases.manage")),
 ):
-    q = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)
+    q = select(AuditEvent)
     if area:
         q = q.where(AuditEvent.area == area)
     if severity:
         q = q.where(AuditEvent.severity == severity)
     if not current.is_superadmin:
         q = q.where(AuditEvent.tenant_id == current.tenant_id)
-    rows = db.execute(q).scalars().all()
-    return [AuditOut(**r.__dict__) for r in rows]
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = (
+        db.execute(q.order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit))
+        .scalars()
+        .all()
+    )
+    return PaginatedOut(
+        items=[AuditOut(**r.__dict__) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/audit-events/{event_id}/acknowledge", response_model=AuditOut)

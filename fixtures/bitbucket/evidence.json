@@ -1,0 +1,24 @@
+{
+  "simulated": true,
+  "pull_requests": [
+    {
+      "title": "Fix critical security flaw",
+      "state": "OPEN",
+      "links": {"html": {"href": "https://bitbucket.org/workspace/repo/pull-requests/1"}}
+    }
+  ],
+  "pipelines": [
+    {
+      "state": {"name": "COMPLETED", "result": {"name": "FAILED"}},
+      "repository": {"links": {"html": {"href": "https://bitbucket.org/workspace/repo"}}}
+    }
+  ],
+  "issues": [
+    {
+      "title": "Database connection timeout",
+      "state": "new",
+      "priority": "major",
+      "links": {"html": {"href": "https://bitbucket.org/workspace/repo/issues/1"}}
+    }
+  ]
+}

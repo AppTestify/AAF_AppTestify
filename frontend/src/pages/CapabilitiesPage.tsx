@@ -1,105 +1,122 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchSignupStatus } from "../api";
+import { fetchSignupStatus, fetchToolRegistry, type ToolRegistryResponse } from "../api";
+import { WORKSPACE_FEATURES } from "../marketing/content";
+import { ToolRegistryTable } from "../components/governance/ToolRegistryTable";
 import { MarketingLayout } from "./MarketingLayout";
 import "../App.css";
 
 export function CapabilitiesPage() {
   const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
+  const [registry, setRegistry] = useState<ToolRegistryResponse | null>(null);
+  const [showFullRegistry, setShowFullRegistry] = useState(false);
   useEffect(() => {
     fetchSignupStatus()
       .then((s) => setSignupOpen(s.tenant_signup_enabled))
       .catch(() => setSignupOpen(false));
   }, []);
 
+  useEffect(() => {
+    fetchToolRegistry(showFullRegistry ? { status: "all" } : { status: "shipped" })
+      .then(setRegistry)
+      .catch(() => setRegistry(null));
+  }, [showFullRegistry]);
+
   return (
     <MarketingLayout signupOpen={signupOpen}>
       <section className="marketing-subhero">
         <div className="marketing-subhero-inner">
           <p className="section-eyebrow">Capabilities</p>
-          <h1 className="section-title">Capabilities designed for governance confidence</h1>
-          <p className="section-lead">A complete capability stack for trust-first operational decisioning and governance control.</p>
+          <h1 className="section-title">What Casantris does today</h1>
+          <p className="section-lead">
+            Four domain agents, {registry?.meta.shipped_count ?? "24+"} shipped tools (sim or live), weighted confidence
+            scoring, and a full governance workspace — not generic AI chat wrapped around dashboards.
+          </p>
         </div>
       </section>
 
       <section className="section subpage-band">
-        <p className="section-eyebrow">Decision intelligence</p>
-        <h2 className="section-title">Core capabilities that power defendable outcomes</h2>
-        <div className="feature-grid" style={{ marginTop: "1rem" }}>
-          <article className="feature-card">
-            <h3>Consensus-backed risk posture</h3>
-            <p>Cross-agent synthesis generates confidence-aware recommendations with explicit conflict visibility.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Release governance controls</h3>
-            <p>Go/No-Go recommendations include risk level, rationale, and traceable decision context.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Workflow governance runs</h3>
-            <p>Cost, security, and post-incident workflows produce auditable outcomes and risk resolution history.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Controlled integration + AI config</h3>
-            <p>Tenant-scoped connector/provider setup, validation checks, and runtime telemetry posture.</p>
-          </article>
-        </div>
+        <p className="section-eyebrow">Agent tool layer</p>
+        <h2 className="section-title">Every agent calls real tools — in parallel</h2>
+        <p className="section-lead" style={{ marginTop: "0.75rem" }}>
+          Scroll the registry for API endpoints, MCP mappings, return signals, and PM scenarios per tool.
+        </p>
+        <label className="tool-registry-toggle" style={{ display: "inline-flex", marginTop: "1rem" }}>
+          <input
+            type="checkbox"
+            checked={showFullRegistry}
+            onChange={(e) => setShowFullRegistry(e.target.checked)}
+          />
+          Full registry including roadmap
+        </label>
+        {registry ? (
+          <div style={{ marginTop: "1rem" }}>
+            <ToolRegistryTable data={registry} defaultStatus={showFullRegistry ? "all" : "shipped"} readOnly />
+          </div>
+        ) : (
+          <p className="field-hint" style={{ marginTop: "1rem" }}>
+            Loading tool registry…
+          </p>
+        )}
       </section>
 
       <section className="section subpage-band subpage-band-dark">
-        <p className="section-eyebrow">Operational intelligence</p>
-        <h2 className="section-title">From telemetry to defendable governance outcomes</h2>
+        <p className="section-eyebrow">Scoring & reasoning</p>
+        <h2 className="section-title">Confidence you can explain to a PM</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
           <article className="feature-card">
-            <h3>Correlated incident intelligence</h3>
-            <p>Unify severity, confidence, consensus, and recommendation posture in a single operational view.</p>
+            <h3>Weighted confidence</h3>
+            <p>Each tool returns a 0–1 risk signal. Agent confidence = Σ(weight × signal) with staleness down-weighting.</p>
           </article>
           <article className="feature-card">
-            <h3>Release readiness signals</h3>
-            <p>Risk posture, rationale, and confidence signals are structured for leadership approvals.</p>
+            <h3>FinOps reasoning core</h3>
+            <p>Claim generator, Ci efficiency scorer, and evidence packager produce PM-readable cost narratives.</p>
           </article>
           <article className="feature-card">
-            <h3>Workflow outcome traceability</h3>
-            <p>Each run stores decision, score, payload, and timestamp for repeatable governance review cycles.</p>
+            <h3>DevSecOps binary gates</h3>
+            <p>A single critical CVE or detected secret forces confidence ≥ 0.90 — a hard ship blocker.</p>
           </article>
           <article className="feature-card">
-            <h3>Executive summary assurance</h3>
-            <p>Leadership-ready narratives and explainability scoring bridge technical outputs and board-level reviews.</p>
+            <h3>PM blocker logic</h3>
+            <p>Five or more sprint blockers trigger action-level confidence regardless of velocity ratio.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Global utility U</h3>
+            <p>U = 0.4·P + 0.3·Ci + 0.3·R surfaces perf, cost-efficiency, and security risk in one index.</p>
+          </article>
+          <article className="feature-card">
+            <h3>Explainability (XI)</h3>
+            <p>Heuristic explainability index plus LLM executive narrative for stakeholder communication.</p>
           </article>
         </div>
       </section>
 
       <section className="section subpage-band">
-        <p className="section-eyebrow">Governance operations</p>
-        <h2 className="section-title">Capability depth across the full decision lifecycle</h2>
+        <p className="section-eyebrow">Workspace</p>
+        <h2 className="section-title">Governance operations beyond the agent run</h2>
         <div className="feature-grid" style={{ marginTop: "1rem" }}>
-          <article className="feature-card">
-            <h3>Run lifecycle management</h3>
-            <p>Queued, running, succeeded, failed, and retried states remain visible and auditable end-to-end.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Case and decision governance</h3>
-            <p>Create cases, issue recommendations, approve final actions, and preserve ownership accountability.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Evidence and alert handling</h3>
-            <p>Connector payload snapshots and alert acknowledgements are retained for governance follow-through.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Export and reporting assurance</h3>
-            <p>Comprehensive report center plus CSV/JSON export continuity for audits and leadership reporting.</p>
-          </article>
+          {WORKSPACE_FEATURES.map((f) => (
+            <article key={f.title} className="feature-card">
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="subpage-cta">
         <div className="subpage-cta-inner">
           <div className="subpage-cta-copy">
-            <strong>Validate which capabilities map to your release governance model.</strong>
-            <span>See operational flow detail or begin enterprise onboarding directly.</span>
+            <strong>Map these capabilities to your release governance model.</strong>
+            <span>Walk through the pipeline or start a pilot tenant.</span>
           </div>
           <div className="subpage-cta-actions">
-            <Link to="/how-it-works" className="btn btn-ghost">How it works</Link>
-            <Link to="/request-access" className="btn btn-primary">Request access</Link>
+            <Link to="/how-it-works" className="btn btn-ghost">
+              How it works
+            </Link>
+            <Link to="/request-access" className="btn btn-primary">
+              Request access
+            </Link>
           </div>
         </div>
       </section>

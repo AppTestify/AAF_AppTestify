@@ -24,8 +24,13 @@ def orchestration_snapshot_from_run_payload(out: dict[str, Any]) -> dict[str, An
         "rar_loops": rar.get("rar_loops"),
         "consensus_before": rar.get("consensus_before"),
         "consensus_after": rar.get("consensus_after"),
+        "reground_notes": rar.get("reground_notes") or [],
         "recommended_action": rec_action,
         "utility_score": utility.get("utility_score"),
+        "global_utility": utility.get("global_utility"),
+        "perf_index": utility.get("perf_index"),
+        "cost_index": utility.get("cost_index"),
+        "risk_index": utility.get("risk_index"),
         "xi_score": explain.get("xi_score"),
     }
 
@@ -49,8 +54,12 @@ def build_decision_framing(out: dict[str, Any]) -> dict[str, Any]:
                 "confidence": fc.get("confidence"),
             }
 
+    intent = out.get("intent") if isinstance(out.get("intent"), dict) else {}
+
     return {
         "primary_recommendation_source": "orchestration",
         "orchestration": orch,
         "findings_synthesis": findings_consensus,
+        "intent_category": intent.get("category"),
+        "agents_activated": intent.get("agents_needed") or out.get("agents_activated"),
     }

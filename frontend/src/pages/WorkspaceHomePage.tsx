@@ -1,65 +1,135 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  fetchCases,
   fetchConsensusSummary,
-  fetchDashboardSummary,
   fetchExecutiveSummaries,
+  fetchGovernanceRun,
+  fetchGovernanceRuns,
   fetchWorkflowRuns,
   fetchIntelligenceIncidents,
   fetchObservabilitySummary,
   fetchReleaseGovernance,
+  fetchRunsTimeseries,
   runGovernanceWorkflow,
   runRarIteration,
+  streamGovernanceRun,
   type ConsensusSummary,
-  type DashboardSummary,
   type ExecutiveSummary,
   type IntelligenceIncident,
   type ObservabilitySummary,
   type ReleaseGovernance,
+  type RunsTimeseries,
   type UserPublic,
+  type GovernanceCase,
   type WorkflowRun,
 } from "../api";
+import { CaseStatusBar } from "../components/charts/CaseStatusBar";
+import { ConnectorHealthDonut } from "../components/charts/ConnectorHealthDonut";
+import { LlmCostBar } from "../components/charts/LlmCostBar";
+import { RunsTrendLine } from "../components/charts/RunsTrendLine";
+import { RunStatusDonut } from "../components/charts/RunStatusDonut";
+import { SloBurnChart } from "../components/charts/SloBurnChart";
+import { AIRecommendationCard } from "../components/governance/AIRecommendationCard";
+import { DecisionFlowTrace } from "../components/governance/DecisionFlowTrace";
+import { ConnectorHealthCards } from "../components/governance/ConnectorHealthCards";
+import { RecentDecisionsList } from "../components/governance/RecentDecisionsList";
+import { RecentRunsList } from "../components/governance/RecentRunsList";
+import { RiskMetricCard } from "../components/governance/RiskMetricCard";
+import { IncidentFindingsPanel } from "../components/IncidentFindingsPanel";
+import { WorkspacePageShell } from "../components/layout/WorkspacePageShell";
+import { EmptyState } from "../components/ui/EmptyState";
+import { KpiStrip } from "../components/ui/KpiStrip";
+import { useDashboardSummary } from "../hooks/useDashboardSummary";
+import {
+  deriveDecisionFlow,
+  deriveRecentDecisions,
+  deriveRecommendation,
+  deriveRiskCards,
+  isLiveTrace,
+  parseGovernanceRunResult,
+  type LiveStreamState,
+  type ParsedRunContext,
+} from "../lib/governancePresentation";
 
 type WorkspaceHomePageProps = {
-  token: string;
   user: UserPublic;
 };
 
-export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+export function WorkspaceHomePage({}: WorkspaceHomePageProps) {
+  const { summary, loading: summaryLoading, error: summaryError } = useDashboardSummary();
+  const [timeseries, setTimeseries] = useState<RunsTimeseries | null>(null);
   const [obs, setObs] = useState<ObservabilitySummary | null>(null);
   const [consensus, setConsensus] = useState<ConsensusSummary | null>(null);
   const [incidents, setIncidents] = useState<IntelligenceIncident[]>([]);
   const [execSummaries, setExecSummaries] = useState<ExecutiveSummary[]>([]);
   const [releaseGov, setReleaseGov] = useState<ReleaseGovernance | null>(null);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [parsedRun, setParsedRun] = useState<ParsedRunContext | null>(null);
+  const [cases, setCases] = useState<GovernanceCase[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [opsLoading, setOpsLoading] = useState(true);
+  const [liveState, setLiveState] = useState<LiveStreamState>({});
 
   useEffect(() => {
     Promise.all([
-      fetchDashboardSummary(token),
-      fetchObservabilitySummary(token),
-      fetchConsensusSummary(token),
-      fetchIntelligenceIncidents(token, 6),
-      fetchExecutiveSummaries(token, 3),
-      fetchReleaseGovernance(token),
-      fetchWorkflowRuns(token),
+      fetchRunsTimeseries(7),
+      fetchObservabilitySummary(),
+      fetchConsensusSummary(),
+      fetchIntelligenceIncidents(6),
+      fetchExecutiveSummaries(3),
+      fetchReleaseGovernance(),
+      fetchWorkflowRuns(),
+      fetchCases(20),
+      fetchGovernanceRuns({ limit: 1 }),
     ])
-      .then(([a, b, c, d, e, f, g]) => {
-        setSummary(a);
+      .then(async ([ts, b, c, d, e, f, g, casePage, runPage]) => {
+        setTimeseries(ts);
         setObs(b);
         setConsensus(c);
         setIncidents(d);
         setExecSummaries(e);
         setReleaseGov(f);
         setWorkflowRuns(g);
+        setCases(Array.isArray(casePage) ? casePage : casePage.items);
+        const runs = Array.isArray(runPage) ? runPage : runPage.items;
+        if (runs.length) {
+          const full = await fetchGovernanceRun(runs[0].id);
+          setParsedRun(parseGovernanceRunResult(full));
+        }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"));
-  }, [token]);
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load command center"))
+      .finally(() => setOpsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!parsedRun) return;
+    const { status, id } = parsedRun.run;
+    if (status !== "running" && status !== "queued") return;
+
+    setLiveState({});
+
+    const closeStream = streamGovernanceRun(id, {
+      onStatus: (data) => {
+        if (data.status === "succeeded" || data.status === "failed") {
+          fetchGovernanceRun(id)
+            .then((full) => setParsedRun(parseGovernanceRunResult(full)))
+            .catch(console.error);
+        }
+      },
+      onEvidenceFetched: () => setLiveState((prev) => ({ ...prev, evidenceFetched: true })),
+      onAgentComplete: () => setLiveState((prev) => ({ ...prev, agentCompleteCount: (prev.agentCompleteCount ?? 0) + 1 })),
+      onRarLoop: (data) => setLiveState((prev) => ({ ...prev, rarLoops: data.iteration ?? (prev.rarLoops ?? 0) + 1 })),
+      onResultReady: () => setLiveState((prev) => ({ ...prev, resultReady: true })),
+    });
+
+    return () => closeStream();
+  }, [parsedRun?.run.id, parsedRun?.run.status]);
 
   const runWorkflow = async (workflowType: string) => {
     try {
       const latestIncident = incidents[0];
-      const out = await runGovernanceWorkflow(token, workflowType, latestIncident?.id);
+      const out = await runGovernanceWorkflow(workflowType, latestIncident?.id);
       setWorkflowRuns((prev) => [out, ...prev].slice(0, 10));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Workflow execution failed");
@@ -70,7 +140,7 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
     try {
       const latestIncident = incidents[0];
       if (!latestIncident) return;
-      const rerun = await runRarIteration(token, latestIncident.id);
+      const rerun = await runRarIteration(latestIncident.id);
       setIncidents((prev) =>
         prev.map((i) => (i.id === latestIncident.id ? { ...i, confidence: rerun.confidence_after } : i))
       );
@@ -79,378 +149,198 @@ export function WorkspaceHomePage({ token, user }: WorkspaceHomePageProps) {
     }
   };
 
-  const maxRunCount = Math.max(1, ...Object.values(summary?.run_status_counts ?? { empty: 1 }));
-  const maxCaseCount = Math.max(1, ...Object.values(summary?.case_status_counts ?? { empty: 1 }));
+  const riskCards = deriveRiskCards(releaseGov, consensus, parsedRun);
+  const recommendation = deriveRecommendation(parsedRun, releaseGov);
+  const recentDecisions = deriveRecentDecisions(summary, cases);
+  const flowSteps = deriveDecisionFlow(parsedRun, parsedRun?.run.status, liveState);
+  const liveTrace = parsedRun ? isLiveTrace(parsedRun.run.status, parsedRun.run.finished_at) : false;
+  const displayError = error ?? summaryError;
+  const chartsLoading = summaryLoading || opsLoading;
 
   return (
-    <div className="app dashboard-page">
-      <header className="app-header dashboard-header">
-        <div className="brand">
-          <h1>Enterprise Operations Dashboard</h1>
-          <span>Decision-ready governance posture with execution and risk intelligence</span>
-        </div>
-      </header>
-      {error ? (
+    <WorkspacePageShell
+      variant="governance"
+      dashboard
+      eyebrow="Command Center"
+      title="AI governance for software delivery, cost, and operational risk"
+      subtitle="Real-time decision cockpit synthesizing GitHub, GitLab, Jira, and FinOps signals into one trustworthy recommendation."
+    >
+      {displayError ? (
         <div className="alert alert-error" role="alert">
-          {error}
+          {displayError}
         </div>
       ) : null}
-      <section className="dashboard-section">
-        <div className="dashboard-section-head">
-          <h2>Executive snapshot</h2>
-          <p>Core platform posture across delivery, reliability, and risk in the last 24 hours.</p>
-        </div>
-        <div className="metrics dashboard-kpis">
-          <div className="metric">
-            <div className="label">Runs (24h)</div>
-            <div className="value">{summary?.runs_24h ?? "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Success (24h)</div>
-            <div className="value good">{summary?.runs_success_24h ?? "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Open cases</div>
-            <div className="value warn">{summary?.cases_open ?? "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Alerts (24h)</div>
-            <div className="value bad">{summary?.alerts_24h ?? "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Req/min</div>
-            <div className="value">{obs?.requests_per_min ?? "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Latency p95</div>
-            <div className="value">{obs ? `${obs.latency_ms_p95} ms` : "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Error rate</div>
-            <div className="value bad">{obs ? `${(obs.error_rate * 100).toFixed(2)}%` : "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Consensus score</div>
-            <div className="value">{consensus ? consensus.avg_consensus_score.toFixed(2) : "..."}</div>
-          </div>
-          <div className="metric">
-            <div className="label">Open high risk</div>
-            <div className="value warn">{consensus?.high_risk_open ?? "..."}</div>
-          </div>
-        </div>
-      </section>
 
-      <section className="dashboard-section">
-        <div className="workspace-section-intro">
-          <div>
-            <h2>Decision posture</h2>
-            <p>Release readiness and real-time operational pressure signals for high-impact decisions.</p>
-          </div>
-          <div className="workspace-meta">Updated from governance + telemetry streams in near real time</div>
-        </div>
-        <div className="dashboard-grid dashboard-grid-two">
-          <div className="card dashboard-card-emphasis">
-            <h2>Release governance</h2>
-            <div className="settings-grid">
-              <div className="metric">
-                <div className="label">Decision</div>
-                <div className="value">{releaseGov?.decision ?? "pending"}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Risk level</div>
-                <div className="value warn">{releaseGov?.risk_level ?? "..."}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Consensus</div>
-                <div className="value">{releaseGov ? releaseGov.consensus_score.toFixed(2) : "..."}</div>
-              </div>
-            </div>
-            <p className="field-hint">{releaseGov?.reason ?? "Awaiting enough correlated evidence for recommendation."}</p>
-          </div>
+      <KpiStrip
+        loading={chartsLoading}
+        items={[
+          { label: "Runs (24h)", value: summary?.runs_24h ?? "…" },
+          { label: "Success (24h)", value: summary?.runs_success_24h ?? "…", tone: "good" },
+          { label: "Open cases", value: summary?.cases_open ?? "…", tone: "warn" },
+          { label: "Alerts (24h)", value: summary?.alerts_24h ?? "…", tone: "bad" },
+          { label: "Req/min", value: obs?.requests_per_min ?? "…" },
+          {
+            label: "Consensus",
+            value: consensus ? consensus.avg_consensus_score.toFixed(2) : "…",
+          },
+        ]}
+      />
 
-          <div className="card dashboard-card-emphasis">
-            <h2>Operational pressure</h2>
-            <div className="settings-grid">
-              <div className="metric">
-                <div className="label">In-flight requests</div>
-                <div className="value warn">{obs?.inflight_requests ?? "..."}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Run queue depth</div>
-                <div className="value warn">{obs?.run_queue_depth ?? "..."}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Run p95 latency</div>
-                <div className="value">{obs ? `${obs.run_latency_ms_p95} ms` : "..."}</div>
-              </div>
-              <div className="metric">
-                <div className="label">Runs retried</div>
-                <div className="value">{obs?.runs_retried ?? "..."}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <ConnectorHealthCards connectors={summary?.connector_health} />
 
-      <section className="dashboard-section">
-        <div className="workspace-section-intro">
-          <div>
-            <h2>Operational insights</h2>
-            <p>Delivery distribution, incident intelligence, and immediate corrective actions.</p>
-          </div>
-          <div className="workspace-meta">Prioritized for triage first, investigation second</div>
-        </div>
-        <div className="card">
-          <h2>Delivery posture</h2>
-          <div className="settings-grid delivery-posture-grid">
-            <div className="metric">
-              <div className="label">Connectors enabled</div>
-              <div className="value">{summary ? `${summary.connectors_enabled}/${summary.connectors_total}` : "..."}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Providers enabled</div>
-              <div className="value">{summary ? `${summary.providers_enabled}/${summary.providers_total}` : "..."}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Integration coverage</div>
-              <div className="value">{summary ? `${summary.integration_coverage_pct}%` : "..."}</div>
-            </div>
-            <div className="metric">
-              <div className="label">Integration freshness</div>
-              <div className="value">{summary ? `${summary.integration_fresh_pct}%` : "..."}</div>
-            </div>
-          </div>
-        </div>
+      <RecentRunsList runs={summary?.recent_runs} />
 
-        <div className="dashboard-grid">
-          <div className="card">
-            <h2>Run status graph</h2>
-            <div className="chart-list">
-              {Object.entries(summary?.run_status_counts ?? {}).map(([k, v]) => (
-                <div key={k} className="chart-row">
-                  <div className="chart-label">{k}</div>
-                  <div className="chart-bar-wrap">
-                    <div className={`chart-bar ${k}`} style={{ width: `${(v / maxRunCount) * 100}%` }} />
-                  </div>
-                  <div className="chart-value">{v}</div>
-                </div>
+      <div className="dashboard-charts-row">
+        <RunStatusDonut counts={summary?.run_status_counts} />
+        <CaseStatusBar counts={summary?.case_status_counts} />
+        <ConnectorHealthDonut connectors={summary?.connector_health} />
+      </div>
+
+      <div className="dashboard-charts-row">
+        <RunsTrendLine data={timeseries} loading={chartsLoading} />
+        <SloBurnChart slo={obs?.slo_burn_rate} loading={chartsLoading} />
+        <LlmCostBar invocation={obs?.llm_invocation} loading={chartsLoading} />
+      </div>
+
+      <RiskMetricCard cards={riskCards} />
+
+      {!parsedRun && !recommendation ? (
+        <div className="gov-empty-cta">
+          <strong>No succeeded governance run yet.</strong>
+          <p style={{ margin: "0.35rem 0 0.75rem", color: "var(--muted)" }}>
+            Run a governance check in Ask Casantris AI to populate the command center.
+          </p>
+          <Link to="/app/overview" className="btn btn-primary btn-sm">
+            Ask Casantris AI →
+          </Link>
+        </div>
+      ) : null}
+
+      {recommendation ? (
+        <div className="gov-command-split">
+          <AIRecommendationCard recommendation={recommendation} />
+          <RecentDecisionsList items={recentDecisions} />
+        </div>
+      ) : (
+        <RecentDecisionsList items={recentDecisions} />
+      )}
+
+      <DecisionFlowTrace steps={flowSteps} live={liveTrace} />
+
+      <div className="card">
+        <div className="dashboard-card-toolbar">
+          <h2>Cross-agent incidents</h2>
+          <div className="actions">
+            <button className="btn btn-ghost" type="button" onClick={rerunRar} disabled={!incidents.length}>
+              RAR Re-analyze
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("cost_spike")}>
+              Cost spike workflow
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("security_governance")}>
+              Security workflow
+            </button>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Severity</th>
+                <th>Consensus</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incidents.map((i) => (
+                <tr key={i.id}>
+                  <td>{i.title}</td>
+                  <td>
+                    <span className={`status-chip ${i.severity === "critical" ? "failed" : "running"}`}>{i.severity}</span>
+                  </td>
+                  <td>{i.consensus_score.toFixed(2)}</td>
+                  <td>{i.confidence.toFixed(2)}</td>
+                </tr>
               ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>Case status graph</h2>
-            <div className="chart-list">
-              {Object.entries(summary?.case_status_counts ?? {}).map(([k, v]) => (
-                <div key={k} className="chart-row">
-                  <div className="chart-label">{k}</div>
-                  <div className="chart-bar-wrap">
-                    <div className={`chart-bar ${k}`} style={{ width: `${(v / maxCaseCount) * 100}%` }} />
-                  </div>
-                  <div className="chart-value">{v}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>Executive summaries</h2>
-            {execSummaries.length ? (
-              <ul className="list-plain">
-                {execSummaries.map((s) => (
-                  <li key={s.id}>
-                    <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">No executive summaries generated yet. Run governance workflows to generate leadership narratives.</div>
-            )}
-          </div>
+            </tbody>
+          </table>
         </div>
-
-        <div className="card">
-          <div className="dashboard-card-toolbar">
-            <h2>Cross-agent incidents</h2>
-            <div className="actions">
-              <button className="btn btn-ghost" type="button" onClick={rerunRar} disabled={!incidents.length}>
-                RAR Re-analyze top incident
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("cost_spike")}>
-                Run cost spike workflow
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("security_governance")}>
-                Run security workflow
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => runWorkflow("post_incident_review")}>
-                Run post-incident review
-              </button>
-            </div>
+        {incidents[0] ? (
+          <div style={{ marginTop: "1rem" }}>
+            <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem" }}>Agent findings (latest incident)</h3>
+            <IncidentFindingsPanel incident={incidents[0]} />
           </div>
-          <div className="table-wrap">
+        ) : null}
+      </div>
+
+      <div className="dashboard-grid">
+        <div className="card">
+          <h2>Executive summaries</h2>
+          {execSummaries.length ? (
+            <ul className="list-plain">
+              {execSummaries.map((s) => (
+                <li key={s.id}>
+                  <span className="status-chip succeeded">XI {s.xi_score.toFixed(2)}</span> {s.content}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState>No executive summaries yet.</EmptyState>
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-grid dashboard-grid-two">
+        <details className="card" open>
+          <summary style={{ cursor: "pointer" }}>
+            <h2 style={{ display: "inline-block", margin: 0 }}>Workflow runs</h2>
+          </summary>
+          <div className="table-wrap" style={{ marginTop: "1rem" }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Severity</th>
-                  <th>Consensus</th>
-                  <th>Confidence</th>
+                  <th>Workflow</th>
+                  <th>Decision</th>
+                  <th>Score</th>
                 </tr>
               </thead>
               <tbody>
-                {incidents.map((i) => (
-                  <tr key={i.id}>
-                    <td>{i.title}</td>
-                    <td>
-                      <span className={`status-chip ${i.severity === "critical" ? "failed" : "running"}`}>{i.severity}</span>
-                    </td>
-                    <td>{i.consensus_score.toFixed(2)}</td>
-                    <td>{i.confidence.toFixed(2)}</td>
-                  </tr>
-                ))}
-                {incidents.length === 0 ? (
+                {workflowRuns.length ? (
+                  workflowRuns.map((w) => (
+                    <tr key={w.id}>
+                      <td className="mono">{w.workflow_type}</td>
+                      <td>{w.decision ?? "—"}</td>
+                      <td>{w.score.toFixed(2)}</td>
+                    </tr>
+                  ))
+                ) : (
                   <tr>
-                    <td colSpan={4} className="table-empty">
-                      No correlated incidents detected in the current window.
+                    <td colSpan={3} className="runs-list-empty">
+                      No workflows
                     </td>
                   </tr>
-                ) : null}
+                )}
               </tbody>
             </table>
           </div>
+        </details>
+        <div className="card">
+          <h2>Alerts stream</h2>
+          {(summary?.recent_alerts ?? []).length ? (
+            <ul className="list-plain">
+              {(summary?.recent_alerts ?? []).map((e) => (
+                <li key={e.id}>
+                  <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
+                  {e.summary}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState>No recent alerts.</EmptyState>
+          )}
         </div>
-      </section>
-
-      <section className="dashboard-section">
-        <div className="workspace-section-intro">
-          <div>
-            <h2>Execution traceability</h2>
-            <p>Workflow outcomes, run history, alert stream, and endpoint pressure in one operational view.</p>
-          </div>
-          <div className="workspace-meta">Use this layer for drill-down and operational forensics</div>
-        </div>
-        <div className="dashboard-grid dashboard-grid-two">
-          <div className="card">
-            <h2>Workflow runs</h2>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Decision</th>
-                    <th>Score</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workflowRuns.map((w) => (
-                    <tr key={w.id}>
-                      <td>{w.workflow_type}</td>
-                      <td>{w.decision ?? "-"}</td>
-                      <td>{w.score.toFixed(2)}</td>
-                      <td>{new Date(w.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {workflowRuns.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="table-empty">
-                        No workflow runs available yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>Recent runs and readiness context</h2>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Prompt</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(summary?.recent_runs ?? []).map((run) => (
-                    <tr key={run.id}>
-                      <td>#{run.id}</td>
-                      <td>
-                        <span className={`status-chip ${run.status}`}>{run.status}</span>
-                      </td>
-                      <td className="mono">{run.prompt}</td>
-                      <td>{new Date(run.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {(summary?.recent_runs ?? []).length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="table-empty">
-                        No recent runs found.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div className="dashboard-grid dashboard-grid-two">
-          <div className="card">
-            <h2>Alerts stream</h2>
-            {(summary?.recent_alerts ?? []).length ? (
-              <ul className="list-plain">
-                {(summary?.recent_alerts ?? []).map((e) => (
-                  <li key={e.id}>
-                    <span className={`status-chip ${e.severity === "critical" ? "failed" : "running"}`}>{e.severity}</span>{" "}
-                    <span className="mono">
-                      {e.area}/{e.action}
-                    </span>{" "}
-                    {e.summary}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">No active alerts in the recent period.</div>
-            )}
-          </div>
-
-          <div className="card">
-            <h2>Hot endpoints</h2>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Endpoint</th>
-                    <th>Requests</th>
-                    <th>Errors</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(obs?.endpoints_top ?? []).map((row) => (
-                    <tr key={row.endpoint}>
-                      <td className="mono">{row.endpoint}</td>
-                      <td>{row.count}</td>
-                      <td>{row.errors}</td>
-                    </tr>
-                  ))}
-                  {(obs?.endpoints_top ?? []).length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="table-empty">
-                        Endpoint telemetry will appear after traffic is observed.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </WorkspacePageShell>
   );
 }

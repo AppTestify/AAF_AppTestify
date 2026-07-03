@@ -1,0 +1,5 @@
+{
+  "forecast_spend_usd": 5420.0,
+  "confidence_interval": {"lower": 5100.0, "upper": 5800.0},
+  "forecast_vs_budget_delta": 540.0
+}

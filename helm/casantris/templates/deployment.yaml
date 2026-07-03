@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}-api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            - name: APP_ENV
+              value: prod
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casantris.secretName" . }}
+                  key: jwtSecret
+            - name: APP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casantris.secretName" . }}
+                  key: encryptionKey
+            {{- if .Values.corsOrigins }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.corsOrigins | quote }}
+            {{- end }}
+            {{- if .Values.database.url }}
+            - name: DATABASE_URL
+              value: {{ .Values.database.url | quote }}
+            {{- end }}
+            {{- if and .Values.pgbouncer.enabled .Values.pgbouncer.dbUseNullpool }}
+            - name: DB_USE_NULLPOOL
+              value: "true"
+            {{- end }}
+            {{- if .Values.redis.url }}
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.celery.brokerUrl }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.celery.brokerUrl | quote }}
+            {{- else if .Values.redis.url }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.celery.resultBackend }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.celery.resultBackend | quote }}
+            {{- else if .Values.redis.url }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.kafka.enabled }}
+            - name: KAFKA_ENABLED
+              value: "true"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            {{- end }}
+            {{- if .Values.opensearch.enabled }}
+            - name: OPENSEARCH_ENABLED
+              value: "true"
+            - name: OPENSEARCH_URL
+              value: {{ .Values.opensearch.url | quote }}
+            {{- end }}
+            {{- if .Values.apisix.gatewayUrl }}
+            - name: APISIX_GATEWAY_URL
+              value: {{ .Values.apisix.gatewayUrl | quote }}
+            {{- end }}
+            - name: INTEGRATION_MODE
+              value: {{ .Values.integration.mode | quote }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

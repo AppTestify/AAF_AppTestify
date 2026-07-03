@@ -223,7 +223,7 @@ def _compute_slo_burn(short_error_rate: float, long_error_rate: float, target: f
     }
 
 
-def _evaluate_alert_rules(metrics: dict, slo_burn: dict) -> list[dict]:
+def _evaluate_alert_rules(metrics: dict, slo_burn: dict, dead_letter_count: int = 0) -> list[dict]:
     rules = [
         {
             "id": "high_error_rate",
@@ -248,6 +248,14 @@ def _evaluate_alert_rules(metrics: dict, slo_burn: dict) -> list[dict]:
             "severity": "warning",
             "threshold": 25,
             "current_value": metrics["run_queue_depth"],
+        },
+        {
+            "id": "governance_run_dead_letter",
+            "name": "Governance run dead-lettered",
+            "triggered": dead_letter_count > 0,
+            "severity": "critical" if dead_letter_count >= 3 else "warning",
+            "threshold": 1,
+            "current_value": dead_letter_count,
         },
         {
             "id": "slo_burn_rate",
@@ -296,6 +304,7 @@ def snapshot(window_seconds: int = 300) -> dict:
         "alert_rules": _evaluate_alert_rules(
             {"error_rate": base["error_rate"], "latency_ms_p95": base["latency_ms_p95"], "run_queue_depth": queue_depth},
             slo_burn,
+            dead_letter_count=dead_letters,
         ),
         "spans_recent": [
             {

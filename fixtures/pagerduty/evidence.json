@@ -1,0 +1,6 @@
+{
+  "simulated": true,
+  "incidents": [
+    {"id": "INC-1", "title": "API latency spike", "status": "acknowledged", "urgency": "high", "mttr_hours": 1.5}
+  ]
+}

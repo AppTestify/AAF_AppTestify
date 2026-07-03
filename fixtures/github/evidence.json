@@ -1,11 +1,14 @@
 {
   "simulated": true,
+  "owner": "apptestify",
+  "repo": "payment-service",
   "pull_requests": [
     {
       "number": 42,
       "title": "Release candidate: payment service rollout",
       "state": "open",
-      "draft": false
+      "draft": false,
+      "html_url": "https://github.com/apptestify/payment-service/pull/42"
     }
   ],
   "workflow_runs": [
@@ -13,7 +16,8 @@
       "id": 9001,
       "name": "ci",
       "status": "completed",
-      "conclusion": "failure"
+      "conclusion": "failure",
+      "html_url": "https://github.com/apptestify/payment-service/actions/runs/9001"
     },
     {
       "id": 9002,

@@ -1,0 +1,15 @@
+Casantris has been deployed.
+
+REQUIRED SECRETS (production):
+  Create a Kubernetes Secret named "{{ include "casantris.secretName" . }}" with keys:
+    - jwtSecret       (long random string, >= 32 chars)
+    - encryptionKey   (Fernet key, >= 32 chars, high entropy)
+
+  Recommended: Sealed Secrets or External Secrets Operator — do NOT use secrets.create=true in production.
+
+REQUIRED VALUES:
+  - corsOrigins: comma-separated frontend origins (e.g. https://app.example.com)
+  - database.url: Postgres connection string
+  - redis.url: Redis URL (required for rate limiting and Celery)
+
+Health checks: GET /health on port {{ .Values.service.port }}

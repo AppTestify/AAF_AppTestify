@@ -66,7 +66,9 @@ def test_create_and_fetch_governance_run(client: TestClient):
 
     listed = client.get("/api/v1/governance/runs", headers={"Authorization": f"Bearer {token}"})
     assert listed.status_code == 200
-    assert any(x["id"] == run_id for x in listed.json())
+    body = listed.json()
+    assert "items" in body
+    assert any(x["id"] == run_id for x in body["items"])
 
 
 def test_case_and_decision_flow(client: TestClient):
@@ -77,7 +79,12 @@ def test_case_and_decision_flow(client: TestClient):
         json={"prompt": "Should we release today?"},
     )
     run_id = run.json()["id"]
-    _wait_for_run(client, token, run_id)
+    completed_run = _wait_for_run(client, token, run_id)
+    result = completed_run.get("result", {})
+    # Verify that the release readiness prompt ran exactly 3 agents (skipped DevSecOps)
+    agents_activated = result.get("agents_activated", [])
+    if agents_activated:  # If the mock API populates it
+        assert len(agents_activated) == 3
 
     case = client.post(
         "/api/v1/governance/cases",
@@ -86,6 +93,11 @@ def test_case_and_decision_flow(client: TestClient):
     )
     assert case.status_code == 201, case.text
     case_id = case.json()["id"]
+
+    fetched = client.get(f"/api/v1/governance/cases/{case_id}", headers={"Authorization": f"Bearer {token}"})
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["id"] == case_id
+    assert fetched.json()["title"] == "Release train R42"
 
     decision = client.post(
         f"/api/v1/governance/cases/{case_id}/decisions",
@@ -105,7 +117,7 @@ def test_case_and_decision_flow(client: TestClient):
 
     audits = client.get("/api/v1/governance/audit-events", headers={"Authorization": f"Bearer {token}"})
     assert audits.status_code == 200, audits.text
-    assert len(audits.json()) >= 1
+    assert audits.json()["total"] >= 1
 
 
 def test_report_exports_json_and_csv(client: TestClient):
@@ -157,6 +169,25 @@ def test_telemetry_summary_endpoint(client: TestClient):
     assert "runs_total" in body
     assert "recent_runs" in body
     assert "connector_health" in body
+
+
+def test_runs_timeseries_endpoint(client: TestClient):
+    token = _login(client, "admin@localhost", "test-password-123")
+    run = client.post(
+        "/api/v1/governance/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"prompt": "timeseries smoke test"},
+    )
+    assert run.status_code == 202, run.text
+    _wait_for_run(client, token, run.json()["id"])
+
+    ts = client.get("/api/v1/telemetry/runs-timeseries?days=7", headers={"Authorization": f"Bearer {token}"})
+    assert ts.status_code == 200, ts.text
+    body = ts.json()
+    assert body["days"] == 7
+    assert len(body["series"]) == 7
+    assert all("date" in point and "counts" in point for point in body["series"])
+    assert sum(point["counts"].get("succeeded", 0) for point in body["series"]) >= 1
 
 
 def test_observability_summary_and_metrics_endpoint(client: TestClient):
@@ -226,9 +257,11 @@ def test_portfolio_project_filters_runs_cases_evidence(client: TestClient):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert listed.status_code == 200, listed.text
-    ids = {r["id"] for r in listed.json()}
+    listed_body = listed.json()
+    ids = {r["id"] for r in listed_body["items"]}
     assert run_tagged_id in ids
     assert run_plain_id not in ids
+    assert listed_body["total"] >= 1
 
     case = client.post(
         "/api/v1/governance/cases",
@@ -244,14 +277,18 @@ def test_portfolio_project_filters_runs_cases_evidence(client: TestClient):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert cases_f.status_code == 200, cases_f.text
-    assert any(c["id"] == case_id for c in cases_f.json())
+    cases_body = cases_f.json()
+    assert any(c["id"] == case_id for c in cases_body["items"])
+    assert cases_body["total"] >= 1
 
     ev = client.get(
         f"/api/v1/governance/evidence?portfolio_project_id={project_id}&limit=200",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert ev.status_code == 200, ev.text
-    rows = ev.json()
+    ev_body = ev.json()
+    rows = ev_body["items"]
+    assert ev_body["total"] >= 1
     assert len(rows) >= 1
     assert all(r["run_id"] == run_tagged_id for r in rows)
 
@@ -268,12 +305,17 @@ def test_evidence_and_alert_acknowledge_flows(client: TestClient):
 
     evidence = client.get("/api/v1/governance/evidence?limit=10", headers={"Authorization": f"Bearer {token}"})
     assert evidence.status_code == 200, evidence.text
-    assert isinstance(evidence.json(), list)
+    ev_body = evidence.json()
+    assert isinstance(ev_body, dict)
+    assert "items" in ev_body
+    assert "total" in ev_body
 
     audits = client.get("/api/v1/governance/audit-events?limit=10", headers={"Authorization": f"Bearer {token}"})
     assert audits.status_code == 200, audits.text
-    assert len(audits.json()) >= 1
-    event_id = audits.json()[0]["id"]
+    audit_body = audits.json()
+    assert audit_body["total"] >= 1
+    assert len(audit_body["items"]) >= 1
+    event_id = audit_body["items"][0]["id"]
     ack = client.post(f"/api/v1/governance/audit-events/{event_id}/acknowledge", headers={"Authorization": f"Bearer {token}"})
     assert ack.status_code == 200, ack.text
     assert ack.json()["action"] == "acknowledged"

@@ -1,0 +1,8 @@
+{
+  "cves": {"critical": 0, "high": 2, "packages": ["lodash@4.17.20", "axios@0.21.0"]},
+  "secrets_detected": false,
+  "secret_files": [],
+  "policy_violations": 1,
+  "violated_rules": ["s3-bucket-public-read"],
+  "dependencies": {"critical": 0, "high": 1, "medium": 3, "low": 5}
+}

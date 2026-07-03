@@ -53,3 +53,10 @@ def decode_governance_share_token(token: str) -> dict[str, Any]:
     if not isinstance(run_id, int) or not isinstance(tid, int):
         raise ValueError("invalid share token payload")
     return claims
+
+
+def build_public_share_url(token: str) -> str:
+    """SPA share URL on the public frontend origin (PUBLIC_SHARE_BASE_URL)."""
+    s = get_settings()
+    base = s.public_share_base_url.strip().rstrip("/") or "http://localhost:5173"
+    return f"{base}/share/{token}"

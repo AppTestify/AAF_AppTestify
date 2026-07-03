@@ -13,6 +13,13 @@ from app.models.tenant import Tenant
 from app.models.user import User
 
 
+import logging
+
+from app.security import decrypt_json
+
+_log = logging.getLogger("aaf.config")
+
+
 def resolve_tenant_for_user(db: Session, user: User, tenant_slug: Optional[str] = None) -> Optional[Tenant]:
     """Resolve tenant context for request-scoped operations."""
     if user.is_superadmin:
@@ -36,29 +43,103 @@ def resolve_effective_settings(db: Session, base: Settings, tenant: Optional[Ten
         .all()
     )
     enabled_any = False
+    encryption_key = base.app_encryption_key
+
     for row in rows:
         if not row.enabled:
             continue
         enabled_any = True
         cfg = row.config_json or {}
-        name = row.connector_name
-        if name == "github":
-            if cfg.get("repo"):
-                merged.github_repo = str(cfg["repo"])
-            if cfg.get("token"):
-                merged.github_token = str(cfg["token"])
-        elif name == "jira":
-            if cfg.get("url"):
-                merged.jira_url = str(cfg["url"])
-            if cfg.get("email"):
-                merged.jira_email = str(cfg["email"])
-            if cfg.get("api_token"):
-                merged.jira_api_token = str(cfg["api_token"])
-        elif name == "finops":
-            if cfg.get("cost_file"):
-                from pathlib import Path
+        # Decrypt credentials if they exist
+        try:
+            cred = (
+                decrypt_json(row.encrypted_credentials_json, secret=encryption_key)
+                if row.encrypted_credentials_json
+                else {}
+            )
+        except Exception:
+            _log.exception(f"Failed to decrypt credentials for connector {row.connector_name}")
+            cred = {}
 
-                merged.finops_cost_file = Path(str(cfg["cost_file"]))
+        name = row.connector_name
+        try:
+            if name == "github":
+                # Support both config and credentials for token
+                repo = cfg.get("repo") or cfg.get("repository")
+                if repo:
+                    merged.github_repo = str(repo)
+                token = cred.get("token") or cfg.get("token")
+                if token:
+                    merged.github_token = str(token)
+                branch = cfg.get("release_branch") or cfg.get("branch")
+                if branch:
+                    merged.release_branch = str(branch)
+            elif name == "jira":
+                url = cfg.get("base_url") or cfg.get("url")
+                if url:
+                    # Advanced sanitization: extract domain only if it's an Atlassian URL
+                    url_str = str(url).strip().lower().rstrip("/")
+                    if ".atlassian.net" in url_str:
+                        # Extract https://domain.atlassian.net
+                        parts = url_str.split(".atlassian.net")
+                        base_part = parts[0].split("://")[-1]
+                        scheme = "https" if "https" in url_str else "http"
+                        url_str = f"{scheme}://{base_part}.atlassian.net"
+                    elif "://" not in url_str:
+                        url_str = f"https://{url_str}"
+                    merged.jira_url = url_str
+                email = cred.get("email") or cfg.get("email")
+                if email:
+                    merged.jira_email = str(email)
+                token = cred.get("token") or cfg.get("token") or cfg.get("api_token")
+                if token:
+                    merged.jira_api_token = str(token)
+                project = cfg.get("project") or cfg.get("project_key")
+                if project:
+                    merged.jira_project = str(project)
+                board = cfg.get("board_id")
+                if board:
+                    merged.jira_board_id = str(board)
+            elif name == "aws":
+                region = cfg.get("region")
+                if region:
+                    merged.aws_region = str(region)
+                key = cred.get("access_key_id") or cred.get("aws_access_key_id")
+                secret = cred.get("secret_access_key") or cred.get("aws_secret_access_key")
+                if key:
+                    merged.aws_access_key_id = str(key)
+                if secret:
+                    merged.aws_secret_access_key = str(secret)
+            elif name == "finops":
+                if cfg.get("cost_file"):
+                    from pathlib import Path
+                    merged.finops_cost_file = Path(str(cfg["cost_file"]))
+            elif name == "gitlab":
+                url = cfg.get("gitlab_url") or cfg.get("url")
+                if url:
+                    merged.gitlab_url = str(url)
+                token = cred.get("token") or cfg.get("token") or cred.get("gitlab_token") or cfg.get("gitlab_token")
+                if token:
+                    merged.gitlab_token = str(token)
+                project = cfg.get("project_id") or cfg.get("gitlab_project_id") or cfg.get("project")
+                if project:
+                    merged.gitlab_project_id = str(project).strip()
+            elif name == "azure":
+                org = cfg.get("organization") or cfg.get("org")
+                if org:
+                    merged.azure_organization = str(org)
+                project = cfg.get("project")
+                if project:
+                    merged.azure_project = str(project)
+                repo = cfg.get("repo") or cfg.get("repository")
+                if repo:
+                    merged.azure_repo = str(repo)
+                pat = cred.get("token") or cfg.get("token") or cred.get("pat")
+                if pat:
+                    merged.azure_pat = str(pat)
+        except Exception:
+            _log.exception(f"Error merging config for connector {name}")
+            
     if enabled_any:
         merged.connector_mode = ConnectorMode.LIVE
     return merged

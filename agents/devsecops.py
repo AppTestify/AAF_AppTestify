@@ -1,30 +1,135 @@
-"""DevSecOps agent — policy / security posture."""
+"""DevSecOps agent — CVEs, secrets, policy violations, dependencies."""
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
+from typing import TYPE_CHECKING, Any
+
 from aaf.schema import AgentOpinion, EvidenceRecord, RiskTheme
+from agents.base_agent import BaseAgent
+from agents.schemas import EvidencePackage, ToolResult
+from tools.context import ToolContext, build_tool_context
+from tools.devsecops import (
+    audit_dependencies,
+    check_policy_violations,
+    check_compliance_posture,
+    check_ssl_expiry,
+    get_sast_results,
+    scan_cves,
+    scan_secrets,
+)
+
+if TYPE_CHECKING:
+    from aaf.config import Settings
+    from app.services.llm_runtime import ActiveProvider
+
+SYSTEM_PROMPT = (
+    "You are a DevSecOps and cloud security governance agent. "
+    "Assess security compliance violations, vulnerability scans, secret exposures, and access control anomalies."
+)
 
 
-def run(evidence: list[EvidenceRecord]) -> AgentOpinion:
-    refs: list[str] = []
-    risk = 0.0
-    claim = "No security policy violations flagged in evidence."
-    theme = RiskTheme.LOW_RISK
+class DevSecOpsAgent(BaseAgent):
+    agent_id = "devsecops"
+    risk_theme_default = RiskTheme.SECURITY_RISK
 
-    for e in evidence:
-        kl = (e.kind + " " + e.summary).lower()
-        if any(x in kl for x in ("security", "policy", "vuln", "secret", "devsec")):
-            refs.append(f"{e.source}:{e.summary[:40]}")
-            risk = max(risk, e.severity)
-            claim = "Security or policy risk indicated."
-            theme = RiskTheme.SECURITY_RISK
+    def system_prompt(self) -> str:
+        return SYSTEM_PROMPT
+    staleness_hours = 4.0
+    staleness_penalty = 0.5
 
-    conf = 0.35 + 0.5 * min(1.0, risk)
-    return AgentOpinion(
-        agent_id="devsecops",
-        claim=claim,
-        confidence=round(conf, 3),
-        evidence_refs=refs[:12] or ["devsec:baseline"],
-        risk_theme=theme,
-        raw_signals={"security_stress": risk},
-    )
+    def tool_weights(self) -> dict[str, float]:
+        return {
+            "scan_cves": 0.40,
+            "scan_secrets": 0.30,
+            "check_policy_violations": 0.20,
+            "audit_dependencies": 0.10,
+            "check_ssl_expiry": 0.08,
+            "get_sast_results": 0.06,
+            "check_compliance_posture": 0.06,
+        }
+
+    def tool_callables(self):
+        return [
+            scan_cves,
+            scan_secrets,
+            check_policy_violations,
+            audit_dependencies,
+            check_ssl_expiry,
+            get_sast_results,
+            check_compliance_posture,
+        ]
+
+    def generate_claim(self, tool_results: list[ToolResult], package: EvidencePackage) -> str:
+        by_name = {r.tool_name: r for r in tool_results}
+        cves = by_name.get("scan_cves")
+        secrets = by_name.get("scan_secrets")
+        if secrets and secrets.raw_signals.get("secrets_detected"):
+            return "Secret exposure detected — shipping is blocked from a security standpoint."
+        sast = by_name.get("get_sast_results")
+        if sast and str(sast.raw_signals.get("quality_gate_status", "OK")).upper() not in ("OK", "PASSED"):
+            return "SAST quality gate failed — release requires security review."
+        if cves and int(cves.raw_signals.get("critical_count", 0)) > 0:
+            return "Critical CVEs present — release should be blocked."
+        if cves and int(cves.raw_signals.get("high_count", 0)) > 0:
+            return "High-severity vulnerabilities require attention before release."
+        policy = by_name.get("check_policy_violations")
+        if policy and int(policy.raw_signals.get("violation_count", 0)) > 0:
+            return "Security or policy risk indicated."
+        return "No security policy violations flagged in evidence."
+
+    def apply_confidence_rules(self, confidence: float, tool_results: list[ToolResult]) -> float:
+        by_name = {r.tool_name: r for r in tool_results}
+        cves = by_name.get("scan_cves")
+        secrets = by_name.get("scan_secrets")
+        critical = int(cves.raw_signals.get("critical_count", 0)) if cves else 0
+        if critical > 0 or (secrets and secrets.raw_signals.get("secrets_detected")):
+            return max(confidence, 0.90)
+        return confidence
+
+
+_agent = DevSecOpsAgent()
+
+
+def _sync_await(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+async def run_async(
+    evidence: list[EvidenceRecord],
+    *,
+    tool_ctx: ToolContext | None = None,
+    settings: Settings | None = None,
+    llm_providers: list[ActiveProvider] | None = None,
+    refresh_tools: list[str] | None = None,
+    cost_tracker: Any | None = None,
+) -> AgentOpinion:
+    from aaf.config import get_settings
+
+    ctx = tool_ctx or build_tool_context(settings or get_settings())
+    package = EvidencePackage(records=evidence)
+    if llm_providers:
+        return await _agent.run_with_llm(
+            ctx,
+            package,
+            llm_providers=llm_providers,
+            settings=settings,
+            refresh_tools=refresh_tools,
+            cost_tracker=cost_tracker,
+        )
+    return await _agent.run_async(ctx, package, refresh_tools=refresh_tools)
+
+
+def run(
+    evidence: list[EvidenceRecord],
+    llm_providers: list[ActiveProvider] | None = None,
+    *,
+    tool_ctx: ToolContext | None = None,
+) -> AgentOpinion:
+    return _sync_await(run_async(evidence, tool_ctx=tool_ctx, llm_providers=llm_providers))

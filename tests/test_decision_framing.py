@@ -45,6 +45,47 @@ def test_build_decision_framing_with_agentic():
     assert df["findings_synthesis"]["consensus_score"] == 0.65
 
 
+def test_orchestration_snapshot_includes_utility_indices_and_reground():
+    out = {
+        "consensus": {"consensus_score": 0.7},
+        "rar": {
+            "rar_triggered": True,
+            "rar_loops": 1,
+            "consensus_before": 0.4,
+            "consensus_after": 0.7,
+            "reground_notes": ["Agents disagreed on security vs delivery risk"],
+        },
+        "utility": {
+            "recommended_action": "observe",
+            "utility_score": 0.55,
+            "global_utility": 0.62,
+            "perf_index": 0.5,
+            "cost_index": 0.7,
+            "risk_index": 0.4,
+        },
+        "explainability": {"xi_score": 0.66},
+        "pm_view": {"detail_json": {}},
+    }
+    snap = orchestration_snapshot_from_run_payload(out)
+    assert snap["reground_notes"] == ["Agents disagreed on security vs delivery risk"]
+    assert snap["global_utility"] == 0.62
+    assert snap["perf_index"] == 0.5
+
+
+def test_build_decision_framing_includes_intent():
+    out = {
+        "consensus": {"consensus_score": 0.8},
+        "rar": {"rar_triggered": False, "rar_loops": 0, "consensus_before": 0.8, "consensus_after": 0.8},
+        "utility": {"recommended_action": "observe", "utility_score": 0.5, "global_utility": 0.5, "perf_index": 0.5, "cost_index": 0.5, "risk_index": 0.5},
+        "explainability": {"xi_score": 0.7},
+        "pm_view": {"detail_json": {}},
+        "intent": {"category": "security_gate", "agents_needed": ["devops", "project_management", "finops", "devsecops"]},
+    }
+    df = build_decision_framing(out)
+    assert df["intent_category"] == "security_gate"
+    assert "devsecops" in (df["agents_activated"] or [])
+
+
 def test_apply_pipeline_overrides_from_ui_preferences():
     base = Settings()
     ts = SimpleNamespace(ui_preferences={"governance_pipeline": {"tau_consensus": 0.61, "w_perf": 0.5}})

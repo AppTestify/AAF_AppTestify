@@ -1,0 +1,10 @@
+{
+  "cost_by_team_tag": [
+    {"team": "platform", "cost_usd": 4200},
+    {"team": "payments", "cost_usd": 3100},
+    {"team": "data", "cost_usd": 1800}
+  ],
+  "cost_by_environment": {"prod": 7200, "staging": 1900},
+  "untagged_resource_cost": 450.0,
+  "top_spending_team": "platform"
+}

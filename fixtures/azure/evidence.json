@@ -1,0 +1,75 @@
+{
+  "simulated": true,
+  "pull_requests": [
+    {
+      "pullRequestId": 101,
+      "status": "active",
+      "title": "Fix database connection leak in Azure connector",
+      "isDraft": false,
+      "url": "https://dev.azure.com/org/proj/_git/repo/pullrequest/101"
+    },
+    {
+      "pullRequestId": 102,
+      "status": "active",
+      "title": "WIP: Initial draft for new auth system (blocker)",
+      "isDraft": true,
+      "url": "https://dev.azure.com/org/proj/_git/repo/pullrequest/102"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": 501,
+      "status": "completed",
+      "result": "failed",
+      "definition": {
+        "name": "Backend CI Pipeline"
+      },
+      "_links": {
+        "web": {
+          "href": "https://dev.azure.com/org/proj/_build/results?buildId=501"
+        }
+      }
+    },
+    {
+      "id": 502,
+      "status": "completed",
+      "result": "succeeded",
+      "definition": {
+        "name": "Frontend CI Pipeline"
+      },
+      "_links": {
+        "web": {
+          "href": "https://dev.azure.com/org/proj/_build/results?buildId=502"
+        }
+      }
+    }
+  ],
+  "work_items": [
+    {
+      "id": 2001,
+      "fields": {
+        "System.State": "Active",
+        "System.Title": "User cannot login via SSO",
+        "System.WorkItemType": "Bug"
+      },
+      "_links": {
+        "html": {
+          "href": "https://dev.azure.com/org/proj/_workitems/edit/2001"
+        }
+      }
+    },
+    {
+      "id": 2002,
+      "fields": {
+        "System.State": "New",
+        "System.Title": "Update documentation for Azure connector",
+        "System.WorkItemType": "Task"
+      },
+      "_links": {
+        "html": {
+          "href": "https://dev.azure.com/org/proj/_workitems/edit/2002"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+name: cd
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: casantris/api
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Configure kubeconfig (staging)
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_STAGING }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy staging
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          CORS_ORIGINS: ${{ secrets.STAGING_CORS_ORIGINS }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
+        run: |
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/casantris/api"
+          helm upgrade --install casantris ./helm/casantris \
+            --namespace casantris-staging \
+            --create-namespace \
+            --set image.repository="${REGISTRY}" \
+            --set image.tag="${{ github.sha }}" \
+            --set nginx.enabled=true \
+            --set secrets.create=false \
+            --set secrets.existingSecretName=casantris-secrets \
+            --set corsOrigins="${CORS_ORIGINS}" \
+            --set database.url="${DATABASE_URL}" \
+            --set redis.url="${REDIS_URL}" \
+            --set celery.enabled=true \
+            --wait --timeout 5m
+
+      - name: Post-deploy smoke test
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_SMOKE_BASE_URL }}
+          SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+        run: |
+          if [ -n "${SMOKE_BASE_URL:-}" ]; then
+            bash scripts/smoke.sh
+          else
+            echo "STAGING_SMOKE_BASE_URL not set — skipping remote smoke test"
+          fi
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Configure kubeconfig (production)
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy production
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          CORS_ORIGINS: ${{ secrets.PRODUCTION_CORS_ORIGINS }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.PRODUCTION_REDIS_URL }}
+        run: |
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/casantris/api"
+          helm upgrade --install casantris ./helm/casantris \
+            --namespace casantris-prod \
+            --create-namespace \
+            --set image.repository="${REGISTRY}" \
+            --set image.tag="${{ github.sha }}" \
+            --set secrets.create=false \
+            --set secrets.existingSecretName=casantris-secrets \
+            --set corsOrigins="${CORS_ORIGINS}" \
+            --set database.url="${DATABASE_URL}" \
+            --set redis.url="${REDIS_URL}" \
+            --set celery.enabled=true \
+            --wait --timeout 5m

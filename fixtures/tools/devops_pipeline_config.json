@@ -1,0 +1,6 @@
+{
+  "pipeline_has_approval_gate": true,
+  "environments_protected": ["deploy-prod.yml"],
+  "manual_gate_configured": true,
+  "freeze_window_active": true
+}

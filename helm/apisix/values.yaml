@@ -1,0 +1,17 @@
+image:
+  repository: apache/apisix
+  tag: 3.11.0-debian
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 9080
+  adminPort: 9180
+
+upstream:
+  apiHost: casantris-api
+  apiPort: 8000
+
+rateLimit:
+  rate: 120
+  burst: 60

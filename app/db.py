@@ -20,9 +20,26 @@ SessionLocal: Optional[sessionmaker[Session]] = None
 def init_db(database_url: str) -> None:
     global _engine, SessionLocal
     connect_args: dict = {}
+    engine_kwargs: dict = {}
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    _engine = create_engine(database_url, connect_args=connect_args)
+    else:
+        from aaf.config import get_settings
+
+        s = get_settings()
+        import os
+        if s.db_use_nullpool or os.getenv("DB_USE_NULLPOOL", "false").lower() == "true":
+            from sqlalchemy.pool import NullPool
+            engine_kwargs = {
+                "poolclass": NullPool,
+            }
+        else:
+            engine_kwargs = {
+                "pool_size": s.db_pool_size,
+                "max_overflow": s.db_max_overflow,
+                "pool_recycle": s.db_pool_recycle_seconds,
+            }
+    _engine = create_engine(database_url, connect_args=connect_args, **engine_kwargs)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
